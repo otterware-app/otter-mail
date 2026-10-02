@@ -1,3 +1,4 @@
+import { ScheduledMailButton } from "./mail-schedule";
 import {
   Fragment,
   createContext,
@@ -664,6 +665,7 @@ export function MailboxSidebarPage({
           onClick={onCompose}
         />
 
+        <ScheduledMailButton />
         <SidebarBody>
           {isCombined ? (
             <>

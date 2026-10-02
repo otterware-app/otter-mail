@@ -1,3 +1,4 @@
+import { TimePicker } from "./mail-schedule";
 import { useState, type ReactNode } from "react";
 import { PaperclipIcon, Trash2Icon, TypeIcon } from "lucide-react";
 import { matchesCommand } from "../keybindings/dispatch";
@@ -43,6 +44,8 @@ export function ComposerCard({
     <div
       className={cn("flex min-w-0 flex-col", variant === "card" && COMPOSER_SURFACE, className)}
       onKeyDown={(e) => {
+        // Dialogs are portalled but their key events still bubble through React.
+        if ((e.target as Element).closest('[role="dialog"]')) return;
         if (matchesCommand(e.nativeEvent, "composer.send")) {
           e.preventDefault();
           onSend();
@@ -311,6 +314,7 @@ export function ComposerFooter({
   statusTone = "muted",
   canSend,
   onSend,
+  onSchedule,
   className,
 }: {
   onAttach: () => void;
@@ -322,6 +326,7 @@ export function ComposerFooter({
   statusTone?: "muted" | "error";
   canSend: boolean;
   onSend: () => void;
+  onSchedule: (time: number) => Promise<unknown>;
   className?: string;
 }) {
   return (
@@ -366,6 +371,7 @@ export function ComposerFooter({
         </span>
       ) : null}
       <span className="flex-1" />
+      <TimePicker title="Schedule send" disabled={!canSend} onChoose={onSchedule} />
       <button
         type="button"
         onClick={onSend}

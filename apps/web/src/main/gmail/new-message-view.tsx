@@ -1,3 +1,4 @@
+import { toast } from "./toast";
 import { useEffect, useRef, useState } from "react";
 import { sendWithUndo } from "./undo-send";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "./menu";
@@ -188,7 +189,7 @@ export function NewMessageView({
     hasRecipient &&
     (text.trim().length > 0 || subject.trim().length > 0);
 
-  const handleSend = () => {
+  const handleSend = async (scheduledAt?: number) => {
     if (!canSend || !fromAccount) return;
     console.log("[NewMessageView:send]", { from: fromAccount.id, to });
     const payload = {
@@ -201,8 +202,14 @@ export function NewMessageView({
       bodyHtml: `<div dir="auto">${editorRef.current?.getHTML() ?? textToHtml(text)}</div>`,
       attachments: attachments.length > 0 ? attachments : undefined,
     };
-    // Optimistic: close now; the unmount flush keeps a draft backup, so a
-    // failed (or undone) send degrades to "still in Drafts" instead of lost work.
+    if (scheduledAt !== undefined) {
+      await sendMessage.mutateAsync({ ...payload, scheduledAt });
+      await draft.finalize({ deleteDraft: true });
+      toast.success("Send scheduled", { description: new Date(scheduledAt).toLocaleString() });
+      onClose();
+      return;
+    }
+    // Close now; the unmount flush keeps a draft backup until sending succeeds.
     onClose();
     sendWithUndo({
       subject: payload.subject,
@@ -234,7 +241,7 @@ export function NewMessageView({
         </HintTooltip>
       </div>
 
-      <ComposerCard onSend={handleSend} variant="plain" className="min-h-0 flex-1">
+      <ComposerCard onSend={() => void handleSend()} variant="plain" className="min-h-0 flex-1">
         <ComposeDocument
           fields={
             <>
@@ -304,7 +311,8 @@ export function NewMessageView({
               status={draftStatus(draft)}
               statusTone={draft.saveState === "error" ? "error" : "muted"}
               canSend={canSend}
-              onSend={handleSend}
+              onSchedule={handleSend}
+              onSend={() => void handleSend()}
             />
           }
         />

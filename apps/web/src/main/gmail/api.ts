@@ -264,6 +264,7 @@ export type ModifyThreadParams = {
 };
 
 export type SendMessageParams = {
+  scheduledAt?: number;
   accountId: string;
   to: string;
   cc?: string;
@@ -516,8 +517,15 @@ export const gmailApi = {
   emptyFolder: (accountId: string, labelId: "SPAM" | "TRASH"): Promise<{ deleted: number }> =>
     task("gmail:emptyFolder", { accountId, labelId }),
 
+  listSchedules: (): Promise<import("@otter-mail/contracts").MailSchedule[]> =>
+    ipc("gmail:listSchedules"),
+  cancelSchedule: (id: string): Promise<void> => task("gmail:cancelSchedule", { id }),
+  snoozeThread: (accountId: string, threadId: string, dueAt: number): Promise<void> =>
+    task("gmail:snoozeThread", { accountId, threadId, dueAt }),
   sendMessage: (params: SendMessageParams): Promise<{ ok: boolean }> =>
-    ipc("gmail:sendMessage", params),
+    params.scheduledAt === undefined
+      ? ipc("gmail:sendMessage", params)
+      : task("gmail:scheduleMessage", params),
 
   saveDraft: (params: SaveDraftParams): Promise<SaveDraftResult> => ipc("gmail:saveDraft", params),
 

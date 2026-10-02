@@ -1,5 +1,6 @@
 import { ListTodoIcon } from "lucide-react";
 import { addEmailToTodoist } from "../integrations/todoist";
+import { SnoozeButton } from "./mail-schedule";
 import {
   Fragment,
   useCallback,
@@ -1836,7 +1837,7 @@ function InlineComposer({
     forwardReady &&
     (mode === "forward" || text.trim().length > 0);
 
-  const handleSend = () => {
+  const handleSend = async (scheduledAt?: number) => {
     if (!canSend) return;
     const plain = editorRef.current?.getText() ?? text;
     const html = editorRef.current?.getHTML() ?? textToHtml(text);
@@ -1855,8 +1856,14 @@ function InlineComposer({
       attachments: attachments && attachments.length > 0 ? attachments : undefined,
       ...(mode === "forward" ? {} : { threadId, replyToMessageId: lastMessage.id }),
     };
-    // Optimistic: close now — the unmount flush keeps a draft backup, so a
-    // failed (or undone) send degrades to "still in Drafts" instead of lost work.
+    if (scheduledAt !== undefined) {
+      await sendMessage.mutateAsync({ ...payload, scheduledAt });
+      await draft.finalize({ deleteDraft: true });
+      toast.success("Send scheduled", { description: new Date(scheduledAt).toLocaleString() });
+      onClose();
+      return;
+    }
+    // Close now; the unmount flush keeps a draft backup until sending succeeds.
     onClose();
     sendWithUndo({
       subject,
@@ -1905,7 +1912,7 @@ function InlineComposer({
       {...dropProps}
     >
       <ComposeDropOverlay visible={isDragging} />
-      <ComposerCard onSend={handleSend}>
+      <ComposerCard onSend={() => void handleSend()}>
         <div className="flex min-h-10 items-center gap-1 border-b border-border/50 pl-2 pr-1.5">
           <ModeSwitcher mode={mode} onChange={onModeChange} />
           {!fieldsOpen ? (
@@ -1996,7 +2003,8 @@ function InlineComposer({
           }
           statusTone={draft.saveState === "error" ? "error" : "muted"}
           canSend={canSend}
-          onSend={handleSend}
+          onSchedule={handleSend}
+          onSend={() => void handleSend()}
         />
       </ComposerCard>
     </div>
@@ -2624,6 +2632,13 @@ export function MessageReader({
                 <ArchiveRestoreIcon className="size-4" />
               </IconBtn>
             </HintTooltip>
+          )}
+          {!isTrashed && rows.some((m) => m.labelIds.includes("INBOX")) && (
+            <SnoozeButton
+              accountId={accountId}
+              threadId={threadId || messageId}
+              onDone={onAdvance ?? onDeselect}
+            />
           )}
           {isTrashed ? null : (
             <HintTooltip label="Move to Trash" shortcut="message.trash" side="bottom">

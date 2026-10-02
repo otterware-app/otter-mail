@@ -217,23 +217,19 @@ export function DraftEditor({
   const hasRecipient = splitAddressList(to).some((e) => parseAddressEntry(e).email.includes("@"));
   const canSend =
     !sending &&
+    !sendMessage.isPending &&
     hasRecipient &&
     attachments != null &&
     (text.trim().length > 0 || subject.trim().length > 0);
 
-  const handleSend = () => {
+  const handleSend = async (scheduledAt?: number) => {
     if (!canSend) return;
-    setSending(true);
     const plain = editorRef.current?.getText() ?? text;
     const html = `<div dir="auto">${editorRef.current?.getHTML() ?? textToHtml(plain)}</div>`;
     // Reply drafts thread onto the newest non-draft message in the conversation.
     const others = threadMessages.filter((m) => !m.labelIds.includes("DRAFT"));
     const last = others[others.length - 1];
     console.log("[DraftEditor:send]", { draftId: draftIdQuery.data?.draftId, threaded: !!last });
-    // Optimistic: the draft row leaves the list and the editor closes now; a
-    // failed send restores the row (the draft still exists server-side).
-    pruneThreadRows(accountId, detail.threadId || detail.id);
-    onDone();
     const payload = {
       accountId,
       to: normalizeAddressList(to),
@@ -245,6 +241,17 @@ export function DraftEditor({
       attachments: attachments && attachments.length > 0 ? attachments : undefined,
       ...(last ? { threadId: detail.threadId, replyToMessageId: last.id } : {}),
     };
+    if (scheduledAt !== undefined) {
+      await sendMessage.mutateAsync({ ...payload, scheduledAt });
+      await draft.finalize({ deleteDraft: true });
+      toast.success("Send scheduled", { description: new Date(scheduledAt).toLocaleString() });
+      onDone();
+      return;
+    }
+    // Keep the draft backup until the immediate send succeeds.
+    setSending(true);
+    pruneThreadRows(accountId, detail.threadId || detail.id);
+    onDone();
     sendWithUndo({
       subject: payload.subject,
       send: () => sendMessage.mutateAsync(payload),
@@ -368,7 +375,8 @@ export function DraftEditor({
       }
       statusTone={draft.saveState === "error" || attachLoadFailed ? "error" : "muted"}
       canSend={canSend}
-      onSend={handleSend}
+      onSchedule={handleSend}
+      onSend={() => void handleSend()}
     />
   );
 
@@ -420,7 +428,7 @@ export function DraftEditor({
             })}
           </div>
           <div className="shrink-0 px-5 pb-4 pt-1" data-inline-compose="">
-            <ComposerCard onSend={handleSend}>
+            <ComposerCard onSend={() => void handleSend()}>
               {banner}
               {fields}
               {editor}
@@ -430,7 +438,7 @@ export function DraftEditor({
           </div>
         </>
       ) : (
-        <ComposerCard onSend={handleSend} variant="plain" className="min-h-0 flex-1">
+        <ComposerCard onSend={() => void handleSend()} variant="plain" className="min-h-0 flex-1">
           <ComposeDocument
             fields={
               <>

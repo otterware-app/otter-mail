@@ -7,11 +7,20 @@
  * lives in services.
  */
 
+import {
+  scheduleSend,
+  snoozeThread,
+  listSchedules,
+  cancelSchedule,
+  removeAccountSchedules,
+  futureTime,
+} from "../services/mail-schedule.js";
+
 import { GMAIL_CAPABILITIES, IMAP_CAPABILITIES } from "@otter-mail/contracts";
 
 import { fromBase64 } from "../bytes.js";
 import { SignInCancelledError } from "../google.js";
-import { broadcast, handle } from "../ipc.js";
+import { broadcast, handle, registeredHandlers } from "../ipc.js";
 import { platform } from "../platform.js";
 import { findProvider, isSignedIn, providerFor } from "../providers/index.js";
 import {
@@ -57,6 +66,7 @@ const LOCAL_PAGE_SIZE = 50;
 
 /** Removes an account from this device: its sync, sign-in, and cached mail. */
 export async function removeLocalAccount(accountId: string): Promise<void> {
+  removeAccountSchedules(accountId);
   mailSync.forgetAccount(accountId);
   forgetLiveCursors(accountId);
   await findProvider(accountId)?.removeAccount(accountId);
@@ -214,6 +224,28 @@ function parseAttachments(raw: unknown): ComposeAttachment[] | undefined {
 // ── Registration ──────────────────────────────────────────────────────────────
 
 export function registerGmailHandlers(): void {
+  handle("gmail:listSchedules", () => listSchedules());
+  handle("gmail:scheduleMessage", (params: unknown) => {
+    const p = params as Record<string, unknown>;
+    futureTime(p?.scheduledAt);
+    return runAsTask(asString(p?.taskId), async () =>
+      registeredHandlers().get("gmail:sendMessage")!(params),
+    );
+  });
+  handle("gmail:cancelSchedule", (params: unknown) => {
+    const p = params as Record<string, unknown>;
+    return runAsTask(asString(p?.taskId), () => cancelSchedule(assertString(p?.id, "id")));
+  });
+  handle("gmail:snoozeThread", (params: unknown) => {
+    const p = params as Record<string, unknown>;
+    return runAsTask(asString(p?.taskId), () =>
+      snoozeThread(
+        assertString(p?.accountId, "accountId"),
+        assertString(p?.threadId, "threadId"),
+        futureTime(p?.dueAt),
+      ),
+    );
+  });
   // gmail:listAccounts
   handle("gmail:listAccounts", async () => {
     console.log("[gmail:listAccounts]", {});
@@ -1075,6 +1107,11 @@ export function registerGmailHandlers(): void {
         threadId,
         attachments,
       };
+      if (p?.scheduledAt !== undefined) {
+        if (!(await getAccount(accountId))) throw new Error("Mailbox no longer exists.");
+        scheduleSend(accountId, { ...message, inReplyTo, references }, futureTime(p.scheduledAt));
+        return { ok: true as const };
+      }
       const provider = providerFor(accountId);
       const send = provider
         .send(accountId, { ...message, inReplyTo, references })

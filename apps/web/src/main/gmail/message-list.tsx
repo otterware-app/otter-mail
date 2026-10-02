@@ -13,6 +13,7 @@ import { Dialog } from "~/components/ui/dialog";
 import { EmptyState } from "~/components/ui/empty-state";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { Text } from "~/components/ui/text";
+import { SnoozeDialog } from "./mail-schedule";
 import { toast } from "./toast";
 import {
   ContextMenu,
@@ -373,6 +374,7 @@ function MessageRow({
   const trashThread = useTrashThread();
   const untrashThread = useUntrashThread();
 
+  const [snoozeOpen, setSnoozeOpen] = useState(false);
   const ownerAccountId = message.accountId ?? accountId;
   const threadId = message.threadId || message.id;
   const threadCount = message.threadCount ?? 1;
@@ -689,6 +691,9 @@ function MessageRow({
               {inInbox ? "Archive" : "Move to inbox"}
             </ContextMenuItem>
           )}
+          {inInbox && !trashed && !junk && (
+            <ContextMenuItem onSelect={() => setSnoozeOpen(true)}>Snooze…</ContextMenuItem>
+          )}
           {trashed ? null : (
             <ContextMenuItem icon={junk ? "checkmark.shield" : "xmark.bin"} onSelect={handleJunk}>
               {junk ? "Not junk" : "Move to junk"}
@@ -710,6 +715,14 @@ function MessageRow({
           ) : null}
         </ContextMenuContent>
       </ContextMenu>
+      {snoozeOpen && (
+        <SnoozeDialog
+          accountId={ownerAccountId}
+          threadId={threadId}
+          onClose={() => setSnoozeOpen(false)}
+          onDone={selected ? onDeselect : undefined}
+        />
+      )}
     </div>
   );
 }

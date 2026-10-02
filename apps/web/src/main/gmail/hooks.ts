@@ -96,9 +96,16 @@ export function useGmailWriteFailureToasts(): void {
       );
       invalidateMailCaches(qc);
     });
+    const offSchedule = window.desktopBridge.on("gmail:schedule-failed", () => {
+      toast.error("Scheduled mail needs attention", {
+        description: "Open Scheduled & snoozed to review or recover it.",
+      });
+      invalidateMailCaches(qc);
+    });
     return () => {
       offWrite();
       offSend();
+      offSchedule();
     };
   }, [qc]);
 }

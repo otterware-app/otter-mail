@@ -66,3 +66,15 @@ export const IMAP_CAPABILITIES: MailCapabilities = {
   calendar: false,
   relayPush: false,
 };
+
+/** Actions saved on this device; executed by its mail backend while running. */
+export type MailSchedule = {
+  id: string;
+  accountId: string;
+  kind: "send" | "snooze";
+  dueAt: number;
+  state: "pending" | "running" | "failed";
+  subject: string;
+  threadId: string | null;
+  error: string | null;
+};
