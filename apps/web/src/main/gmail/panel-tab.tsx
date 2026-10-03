@@ -7,8 +7,8 @@ import { cn } from "./ui";
  * One of the agent panel's pill tabs (Codex's): a chat or a browser page.
  * The × closes it (always on the selected tab, on hover otherwise), and so
  * does a middle-click, as in a browser. In a strip too narrow for them all,
- * tabs give way as Chrome's do, the others down to their icon, before the
- * strip scrolls the selected one into view.
+ * tabs give way down to a width that still names them, then the strip
+ * scrolls, and a tab that gets selected scrolls into view.
  */
 export function PanelTab({
   title,
@@ -47,10 +47,10 @@ export function PanelTab({
         }
       }}
       className={cn(
-        "group/tab flex h-7 max-w-44 cursor-pointer items-center gap-1.5 overflow-hidden rounded-lg pl-2.5 pr-1 text-sm outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus-ring",
+        "group/tab flex h-7 min-w-32 max-w-44 shrink cursor-pointer items-center gap-1.5 rounded-lg pl-2.5 pr-1 text-sm outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus-ring",
         selected
-          ? "min-w-24 shrink-[0.2] bg-foreground/10 text-foreground"
-          : "min-w-9 shrink text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground",
+          ? "bg-foreground/10 text-foreground"
+          : "text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground",
       )}
     >
       <span className="relative flex size-3.5 shrink-0 items-center justify-center">{icon}</span>
