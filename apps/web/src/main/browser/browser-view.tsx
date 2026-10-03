@@ -167,6 +167,9 @@ function BrowserPage({
   useEffect(() => {
     if (!view) return;
     let ready = false;
+    // The page last shown: Chromium only reports a favicon that changed, so
+    // the tab drops its icon only for another site's page.
+    let shown = "";
     const sync = () => {
       if (ready) setHistory({ back: view.canGoBack(), forward: view.canGoForward() });
     };
@@ -187,7 +190,9 @@ function BrowserPage({
       },
       "did-navigate": (e) => {
         const url = e.url as string;
-        updateTab(tab.id, { url, title: hostOf(url), favicon: null });
+        const otherSite = hostOf(shown) !== hostOf(url);
+        shown = url;
+        updateTab(tab.id, otherSite ? { url, title: hostOf(url), favicon: null } : { url });
         sync();
       },
       "did-navigate-in-page": (e) => {
