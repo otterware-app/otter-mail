@@ -16,9 +16,11 @@ import { setSettingsTarget, takeSettingsTarget } from "../windows/settings-windo
 import { registerTrayPopoverHandlers } from "./tray-popover.js";
 import { registerSupportHandlers } from "./support.js";
 import { registerAppIconHandlers } from "./app-icon.js";
+import { registerBrowserHandlers } from "./browser.js";
 
 export function registerHandlers(): void {
   registerAppIconHandlers();
+  registerBrowserHandlers();
   // Settings live in the main window. Any window can deep-link into a pane;
   // the main window pulls the target on mount and whenever settings:open is
   // broadcast.
@@ -31,6 +33,7 @@ export function registerHandlers(): void {
       p?.pane === "keybindings" ||
       p?.pane === "agents" ||
       p?.pane === "integrations" ||
+      p?.pane === "browser" ||
       p?.pane === "otter"
         ? p.pane
         : undefined;

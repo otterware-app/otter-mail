@@ -12,6 +12,7 @@ import {
   ArrowUpRightIcon,
   CircleHelpIcon,
   CircleUserRoundIcon,
+  GlobeIcon,
   KeyboardIcon,
   PaletteIcon,
   PlugIcon,
@@ -25,6 +26,7 @@ import {
   XIcon,
 } from "lucide-react";
 import { changelogUrl } from "@otter-mail/shared/changelog";
+import { openLink } from "../browser/store";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { gmailApi, type SettingsPane } from "../gmail/api";
 import {
@@ -52,14 +54,17 @@ const SETTINGS_SECTION_ICONS: Readonly<
   keybindings: KeyboardIcon,
   accounts: MailIcon,
   agents: MousePointer2Icon,
+  browser: GlobeIcon,
   integrations: PlugIcon,
 };
 
-const SETTINGS_SECTIONS = (Object.keys(SETTINGS_SECTION_LABELS) as SettingsPane[]).map((id) => ({
-  id,
-  label: SETTINGS_SECTION_LABELS[id],
-  icon: SETTINGS_SECTION_ICONS[id],
-}));
+const SETTINGS_SECTIONS = (Object.keys(SETTINGS_SECTION_LABELS) as SettingsPane[])
+  .filter((id) => id !== "browser" || features.browser)
+  .map((id) => ({
+    id,
+    label: SETTINGS_SECTION_LABELS[id],
+    icon: SETTINGS_SECTION_ICONS[id],
+  }));
 
 /** The mail sidebar's row (Codex): 14px regular text, muted icon, rounded pill. */
 const ROW =
@@ -285,10 +290,7 @@ function HelpMenu() {
         <DropdownMenuItem icon={<MessageSquareIcon />} onSelect={requestProblemReport}>
           Send feedback
         </DropdownMenuItem>
-        <DropdownMenuItem
-          icon={<ScrollTextIcon />}
-          onSelect={() => void window.desktopBridge.openExternal(changelogUrl())}
-        >
+        <DropdownMenuItem icon={<ScrollTextIcon />} onSelect={() => openLink(changelogUrl())}>
           Changelog
           <ArrowUpRightIcon className="ms-1 inline size-3.5 align-[-2px]" />
         </DropdownMenuItem>

@@ -106,6 +106,7 @@ import { NewProjectDialog } from "./gmail/project-menus";
 import { UpdateCard } from "./updates";
 import { useRecordRecentlyViewed } from "./recently-viewed";
 import { SetupFlow } from "./onboarding/setup";
+import { openLink, useBrowser, useBrowserEvents } from "./browser/store";
 import { Tour } from "./onboarding/tour";
 import {
   endTour,
@@ -494,6 +495,7 @@ function MailHome() {
   const globalSync = useGlobalSyncStatus(accountIds);
   useGmailWriteFailureToasts();
   useExternalMailChanges();
+  useBrowserEvents();
 
   const sidebarPane = useStoredWidth("gmail:pane:sidebar", 256, 224, 400);
   const listPane = useStoredWidth("gmail:pane:list", 400, 300, 640);
@@ -562,6 +564,20 @@ function MailHome() {
     localStorage.setItem("gmail:chat-open", "1");
     setChatOpen(true);
   };
+  // The panel can fill the window (the mail hides) until it closes, or mail
+  // asks for the window: a new message, a conversation opened from elsewhere.
+  const [chatExpanded, setChatExpanded] = useState(false);
+  useEffect(() => {
+    if (!chatOpen || composeOpen || selectedMessageId) setChatExpanded(false);
+  }, [chatOpen, composeOpen, selectedMessageId]);
+  const panelExpanded = chatExpanded && chatVisible;
+  // A page opening in the browser (a link, ⌘T) shows in the panel, out of Settings.
+  const browserRevealed = useBrowser((s) => s.revealed);
+  useEffect(() => {
+    if (!browserRevealed) return;
+    if (settingsRouteRef.current) leaveSettingsRef.current();
+    openChat();
+  }, [browserRevealed]);
   // Getting started. A device whose mail was already here skips the setup,
   // and is offered the tour, once.
   useEffect(() => {
@@ -715,6 +731,7 @@ function MailHome() {
   // Keyboard commands (Settings › Keybindings; defaults in keybindings/commands.ts).
   useKeybindingDispatcher();
   useKeybindingContext("settingsOpen", settingsRoute !== null);
+  useKeybindingContext("panelExpanded", panelExpanded);
   useKeybindingContext("messageOpen", selectedMessageId !== null);
   const goTo = (combinedViewId: string, labelId: string) => {
     // From Projects or a view, to the first mailbox's.
@@ -1017,7 +1034,7 @@ function MailHome() {
     } else if (target.kind === "theme") {
       openSettings({ pane: "appearance" });
     } else if (target.kind === "event") {
-      if (target.url) await window.desktopBridge.openExternal(target.url);
+      if (target.url) openLink(target.url);
     } else if (target.kind === "label") {
       goToSpace(target.accountId, target.id);
     } else {
@@ -1376,7 +1393,7 @@ function MailHome() {
             <div
               ref={setMailWorkspace}
               data-mail-workspace=""
-              className="relative flex min-h-0 min-w-0 flex-1"
+              className={cn("relative flex min-h-0 min-w-0 flex-1", panelExpanded && "hidden")}
             >
               {peekSpace ? (
                 <SpacePeekCard
@@ -1627,23 +1644,28 @@ function MailHome() {
             </div>
             {chatPresent ? (
               <>
-                {chatVisible ? <PaneResizer onPointerDown={chatPane.start} /> : null}
+                {chatVisible && !panelExpanded ? (
+                  <PaneResizer onPointerDown={chatPane.start} />
+                ) : null}
                 <div
                   ref={chatPane.frameRef}
                   data-tour="agent"
-                  style={{ width: chatVisible ? chatPane.width : 0 }}
+                  style={{ width: panelExpanded ? undefined : chatVisible ? chatPane.width : 0 }}
                   className={cn(
                     PANE_FRAME,
+                    panelExpanded && "flex-1",
                     chatVisible && "[[data-panel-animations=true]_&]:starting:w-0!",
                     !chatVisible && "pointer-events-none",
                   )}
                 >
                   <div
                     ref={chatPane.paneRef}
-                    style={{ width: chatPane.width }}
-                    className={`${PANE_CHAT} shrink-0`}
+                    style={{ width: panelExpanded ? undefined : chatPane.width }}
+                    className={cn(PANE_CHAT, panelExpanded ? "flex-1 before:hidden" : "shrink-0")}
                   >
                     <AgentChatPanel
+                      expanded={panelExpanded}
+                      onToggleExpanded={() => setChatExpanded((expanded) => !expanded)}
                       onOpenChange={openChatChange}
                       closeTabRef={closeChatTabRef}
                       onClosePanel={closeChat}
@@ -1667,7 +1689,7 @@ function MailHome() {
       </div>
 
       {/* Pinned titlebar toggles (Otter Code): same window spot whatever the panes do. */}
-      {viewSpace && !settingsRoute ? null : (
+      {(viewSpace && !settingsRoute) || panelExpanded ? null : (
         <SidebarControl sidebarOpen={sidebarOpen} onToggleSidebar={toggleSidebar} />
       )}
       {!settingsRoute ? (

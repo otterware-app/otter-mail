@@ -21,7 +21,8 @@ when a feature lands or goes.
   messages in `src/backend-protocol.ts`), so syncing never holds up the app itself.
   - `src/handlers/`: the Mac-only handlers (tray, default mail app, …); `backend.ts` there holds
     the ones the backend serves.
-  - `src/services/`: Google sign-in (loopback OAuth), tray, Apple's translator, the local agents
+  - `src/services/`: Google sign-in (loopback OAuth), tray, Apple's translator, the agent panel's
+    browser (its session, Chrome Web Store extensions, popups and permissions), the local agents
     (Claude, Codex; Hermes is in core) and the MCP server that gives them, and other agents on
     the Mac with a token, Otter Mail's tools, default mail app.
   - `src/windows/`: the main window, the menu-bar popover, and where their pages load from.
@@ -31,6 +32,8 @@ when a feature lands or goes.
   Where the main window is (mailbox, label, conversation, Settings pane) is its route
   (`src/main/router.tsx`, TanStack Router): in the hash in the Mac app, real paths on the web
   (`/you@gmail.com/INBOX/<id>`, `/all/inbox`, `/settings/appearance`).
+  `src/main/browser/` is the agent panel's browser (Mac): `<webview>` tabs beside the chats, and
+  `openLink`, where links from mail and chat go.
   `src/web/` is the browser shell: core in a Web Worker (SQLite WASM on OPFS) hosted by one
   tab for every open tab (`backend.ts`), and the bridge that stands in for the preload. What only the Mac app has is off in `desktopBridge.features`.
 - `apps/ios`: Otter Mail for iPhone, a native SwiftUI app (iOS 27, Liquid Glass): ChatGPT's

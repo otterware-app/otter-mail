@@ -12,6 +12,7 @@ import { useCapabilities } from "./capabilities";
 import { CalendarIcon, CheckIcon, ExternalLinkIcon, MapPinIcon } from "lucide-react";
 import { gmailApi, type CalendarInvite, type RsvpResponse } from "./api";
 import { HintTooltip, IconBtn, cn } from "./ui";
+import { openLink } from "../browser/store";
 
 const inviteKey = (accountId: string, messageId: string) => [
   "calendar-invite",
@@ -149,10 +150,7 @@ export function InviteCard({ accountId, messageId }: { accountId: string; messag
         </div>
         {invite.htmlLink ? (
           <HintTooltip label="Open in Google Calendar">
-            <IconBtn
-              label="Open in Google Calendar"
-              onClick={() => void window.desktopBridge.openExternal(invite.htmlLink!)}
-            >
+            <IconBtn label="Open in Google Calendar" onClick={() => openLink(invite.htmlLink!)}>
               <ExternalLinkIcon className="size-4" />
             </IconBtn>
           </HintTooltip>

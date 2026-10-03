@@ -13,6 +13,7 @@ import { requestSupportReport } from "./handlers/support.js";
 import { broadcast } from "./ipc.js";
 import { logger, logToFile } from "./logger.js";
 import { configureAppPaths } from "./paths.js";
+import { focusedBrowserPage, setupBrowser } from "./services/browser.js";
 import { parseMailtoUrl, setPendingMailto } from "./services/mailto-target.js";
 import { createTray, destroyTray } from "./services/tray.js";
 import { initUpdates } from "./updates.js";
@@ -183,6 +184,18 @@ function setupApplicationMenu(): void {
             BrowserWindow.getFocusedWindow()?.close();
           },
         },
+        { type: "separator" },
+        // The agent panel's browser (services/browser.ts).
+        {
+          label: "New Tab",
+          accelerator: "Command+T",
+          click: () => void focusMainWindow().then(() => broadcast("browser:newTab")),
+        },
+        {
+          label: "Open Location…",
+          accelerator: "Command+L",
+          click: () => void focusMainWindow().then(() => broadcast("browser:focusAddress")),
+        },
       ],
     },
     {
@@ -190,11 +203,17 @@ function setupApplicationMenu(): void {
       submenu: [
         // ⌘Z undoes the last mail action (archive, move, send…), ⇧⌘Z redoes
         // it — but text fields keep their own undo: the main window decides
-        // (edit:undo → mail undo, or edit:nativeUndo back to the page).
+        // (edit:undo → mail undo, or edit:nativeUndo back to the page). A
+        // browser tab's page undoes its own typing.
         {
           label: "Undo",
           accelerator: "CommandOrControl+Z",
           click: () => {
+            const page = focusedBrowserPage();
+            if (page) {
+              page.undo();
+              return;
+            }
             if (isMainFocused()) {
               broadcast("edit:undo");
               return;
@@ -206,6 +225,11 @@ function setupApplicationMenu(): void {
           label: "Redo",
           accelerator: "Shift+CommandOrControl+Z",
           click: () => {
+            const page = focusedBrowserPage();
+            if (page) {
+              page.redo();
+              return;
+            }
             if (isMainFocused()) {
               broadcast("edit:redo");
               return;
@@ -244,20 +268,43 @@ function setupApplicationMenu(): void {
     },
     {
       label: "Go",
+      // Through the mail's history, or a focused browser tab's.
       submenu: [
-        { label: "Back", accelerator: "Command+[", click: () => broadcast("nav:back") },
-        { label: "Forward", accelerator: "Command+]", click: () => broadcast("nav:forward") },
+        {
+          label: "Back",
+          accelerator: "Command+[",
+          click: () => {
+            const page = focusedBrowserPage();
+            if (page) page.navigationHistory.goBack();
+            else broadcast("nav:back");
+          },
+        },
+        {
+          label: "Forward",
+          accelerator: "Command+]",
+          click: () => {
+            const page = focusedBrowserPage();
+            if (page) page.navigationHistory.goForward();
+            else broadcast("nav:forward");
+          },
+        },
       ],
     },
     {
       label: "Mailbox",
       submenu: [
         // ⌘R refreshes mail like the sidebar's Sync button (with its spinner)
-        // instead of reloading the page; see the View menu below.
+        // instead of reloading the page; see the View menu below. In a
+        // focused browser tab it reloads that page, as in a browser.
         {
           label: "Sync Now",
           accelerator: "Command+R",
           click: () => {
+            const page = focusedBrowserPage();
+            if (page) {
+              page.reload();
+              return;
+            }
             logger.info("main", "Menu: Sync Now");
             broadcast("mail:syncNow");
           },
@@ -320,6 +367,7 @@ void app.whenReady().then(async () => {
     applicationVersion: app.getVersion(),
   });
 
+  setupBrowser();
   // The mail backend (@otter-mail/core) runs in its own process.
   await startBackend();
   registerHandlers();

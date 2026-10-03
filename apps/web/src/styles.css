@@ -851,6 +851,56 @@ html[data-theme-switching] *::after {
   );
 }
 
+/* A strip that scrolls sideways (the agent panel's tabs) fades out at an edge
+   with more beyond it. Scroll-driven: where nothing overflows, the timeline is
+   inactive and the edges stay plain. */
+@property --scroll-fade-start {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+@property --scroll-fade-end {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+@keyframes scroll-fade-x {
+  from {
+    --scroll-fade-start: 0px;
+    --scroll-fade-end: 1.5rem;
+  }
+  2% {
+    --scroll-fade-start: 1.5rem;
+  }
+  98% {
+    --scroll-fade-end: 1.5rem;
+  }
+  to {
+    --scroll-fade-start: 1.5rem;
+    --scroll-fade-end: 0px;
+  }
+}
+@utility scroll-fade-x {
+  @supports (animation-timeline: scroll()) {
+    -webkit-mask-image: linear-gradient(
+      to right,
+      transparent,
+      black var(--scroll-fade-start),
+      black calc(100% - var(--scroll-fade-end)),
+      transparent
+    );
+    mask-image: linear-gradient(
+      to right,
+      transparent,
+      black var(--scroll-fade-start),
+      black calc(100% - var(--scroll-fade-end)),
+      transparent
+    );
+    animation: scroll-fade-x linear both;
+    animation-timeline: scroll(self inline);
+  }
+}
+
 /* Settings search: the result's row, card or section pulses once it's scrolled
    to (Otter Code's). A row's ring is inset, so it stays inside its card. */
 @keyframes settings-search-target-pulse {

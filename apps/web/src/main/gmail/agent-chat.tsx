@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type MutableRefObject } from "react";
+import { useEffect, useRef, useState, type MutableRefObject, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { MessageScroller } from "@shadcn/react/message-scroller";
 import { ScrollArea } from "~/components/ui/scroll-area";
@@ -23,11 +23,14 @@ import {
   CornerUpRightIcon,
   ListPlusIcon,
   CopyIcon,
+  Maximize2Icon,
+  Minimize2Icon,
 } from "lucide-react";
 import { IconBtn, HintTooltip, buttonClass, cn } from "./ui";
 import { COMPOSER_SURFACE } from "./composer-kit";
 import { WorkLog, type TurnItem } from "./work-log";
 import { PanelControlSlot } from "./top-bar";
+import { PanelTab } from "./panel-tab";
 import {
   gmailApi,
   type ChatEvent,
@@ -75,6 +78,9 @@ import { toast } from "./toast";
 import { useCommandHandlers, useKeybindingContext } from "../keybindings/dispatch";
 import { useAccounts, useMessage } from "./hooks";
 import type { GmailMessageSummary } from "./types";
+import { features } from "../features";
+import { BrowserPages, BrowserTabs } from "../browser/browser-view";
+import { closeTab as closeBrowserTab, newTab, selectTab, useBrowser } from "../browser/store";
 
 /** What the attached context items are, so the chip shows a fitting icon. */
 type ContextKind = "draft" | "sent" | "mail" | "mixed" | "quote" | "project";
@@ -725,87 +731,60 @@ const TAB_STATE_LABEL: Record<ChatTab["state"], string | null> = {
 };
 
 /**
- * Codex-style pill tabs for chats open side by side — always shown, so the
- * current chat is named even when it's the only one. The icon carries the
- * chat's state (working, waiting on an approval, or finished while you were
- * elsewhere); the × closes it (always on the active tab, on hover otherwise).
+ * The panel's strip: Codex-style pill tabs for chats open side by side, then
+ * the browser's (`children`) — always shown, so the current chat is named
+ * even when it's the only one. A chat's icon carries its state (working,
+ * waiting on an approval, or finished while you were elsewhere).
  */
 function ChatTabs({
   tabs,
   activeId,
   onSelect,
   onClose,
+  children,
 }: {
   tabs: ChatTab[];
-  activeId: string;
+  /** The chat showing; null while a browser tab is. */
+  activeId: string | null;
   onSelect: (id: string) => void;
   onClose: (id: string) => void;
+  children?: ReactNode;
 }) {
   return (
     <div
       role="tablist"
-      aria-label="Open chats"
-      className="no-drag flex min-w-0 shrink items-center gap-1 overflow-x-auto [scrollbar-width:none]"
+      aria-label="Open chats and pages"
+      className="no-drag scroll-fade-x flex min-w-0 shrink items-center gap-1 overflow-x-auto [scrollbar-width:none]"
     >
       {tabs.map((tab) => {
-        const selected = tab.id === activeId;
         const status = TAB_STATE_LABEL[tab.state];
         return (
-          <div
+          <PanelTab
             key={tab.id}
-            role="tab"
-            aria-selected={selected}
-            tabIndex={selected ? 0 : -1}
-            title={status ? `${tab.title} — ${status}` : tab.title}
-            onClick={() => onSelect(tab.id)}
-            onAuxClick={(e) => {
-              // Middle-click closes, like browser tabs.
-              if (e.button === 1) onClose(tab.id);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                onSelect(tab.id);
-              }
-            }}
-            className={cn(
-              "group/tab flex h-7 max-w-44 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg pl-2.5 pr-1 text-sm outline-none focus-visible:ring-2 focus-visible:ring-focus-ring",
-              selected
-                ? "bg-foreground/10 text-foreground"
-                : "text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground",
-            )}
-          >
-            <span className="relative flex size-3.5 shrink-0 items-center justify-center">
-              <MousePointer2Icon className="size-3.5" />
-              {tab.state !== "idle" ? (
-                <span
-                  aria-hidden
-                  className={cn(
-                    "absolute -bottom-0.5 -right-0.5 size-1.5 rounded-full ring-1 ring-canvas",
-                    tab.state === "approval" ? "bg-warning" : "bg-primary",
-                    tab.state === "working" && "animate-status-pulse",
-                  )}
-                />
-              ) : null}
-            </span>
-            <span className="min-w-0 truncate">{tab.title}</span>
-            <button
-              type="button"
-              aria-label={`Close ${tab.title}`}
-              onClick={(e) => {
-                e.stopPropagation();
-                onClose(tab.id);
-              }}
-              className={cn(
-                "flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-foreground/8 hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-focus-ring",
-                selected ? "opacity-100" : "opacity-0 group-hover/tab:opacity-100",
-              )}
-            >
-              <XIcon className="size-3.5" />
-            </button>
-          </div>
+            title={tab.title}
+            tooltip={status ? `${tab.title} — ${status}` : tab.title}
+            selected={tab.id === activeId}
+            onSelect={() => onSelect(tab.id)}
+            onClose={() => onClose(tab.id)}
+            icon={
+              <>
+                <MousePointer2Icon className="size-3.5" />
+                {tab.state !== "idle" ? (
+                  <span
+                    aria-hidden
+                    className={cn(
+                      "absolute -bottom-0.5 -right-0.5 size-1.5 rounded-full ring-1 ring-canvas",
+                      tab.state === "approval" ? "bg-warning" : "bg-primary",
+                      tab.state === "working" && "animate-status-pulse",
+                    )}
+                  />
+                ) : null}
+              </>
+            }
+          />
         );
       })}
+      {children}
     </div>
   );
 }
@@ -820,7 +799,12 @@ export function AgentChatPanel({
   onClosePanel,
   project,
   onOpenChange,
+  expanded = false,
+  onToggleExpanded,
 }: {
+  /** The panel fills the window (the mail hides), for a page or a long chat. */
+  expanded?: boolean;
+  onToggleExpanded?: () => void;
   /** The project on screen: attached along with (or without) a conversation. */
   project?: { id: string; name: string } | null;
   /** Account of the open conversation (context attach), null when none. */
@@ -841,6 +825,8 @@ export function AgentChatPanel({
   const { conversations, activeId } = store;
   const active = conversations.find((c) => c.id === activeId) ?? conversations[0];
   const turns = active?.turns ?? [];
+  // The browser's tab showing over the chat (Mac), if one is.
+  const browserTabId = useBrowser((s) => (features.browser ? s.activeId : null));
 
   const [draft, setDraft] = useState("");
   // Turns in flight, one per conversation: each streams into its own chat, so
@@ -1525,6 +1511,7 @@ export function AgentChatPanel({
 
   /** A fresh chat, in a new tab beside the current one. */
   const newChat = () => {
+    selectTab(null);
     setHistoryOpen(false);
     // An already-empty active session just refocuses — no empty duplicates.
     if (active && active.turns.length === 0) {
@@ -1547,6 +1534,7 @@ export function AgentChatPanel({
 
   /** Shows a chat: its tab if open, else a new tab. */
   const switchTo = (id: string) => {
+    selectTab(null);
     setHistoryOpen(false);
     setUnseen((u) => {
       if (!u.has(id)) return u;
@@ -1625,6 +1613,11 @@ export function AgentChatPanel({
   useCommandHandlers({ "agent.newChat": () => newChat() });
 
   const closeActiveTab = () => {
+    const page = useBrowser.getState().activeId;
+    if (features.browser && page) {
+      closeBrowserTab(page);
+      return true;
+    }
     if (storeRef.current.tabs.length < 2) return false;
     closeTab(storeRef.current.activeId);
     return true;
@@ -1652,7 +1645,7 @@ export function AgentChatPanel({
     shownIdRef.current = activeId;
   }, [activeId]);
 
-  useKeybindingContext("agentOpen", true);
+  useKeybindingContext("agentOpen", browserTabId === null);
 
   const updateSettings = (patch: AgentSettingsPatch) => {
     console.log("[AgentChat:updateSettings]", patch);
@@ -1733,7 +1726,13 @@ export function AgentChatPanel({
       {drop.active ? <DropOverlay /> : null}
       {/* Header: chat actions on the left; the panel toggle stays at the
           window's top-right, exactly where it sits while the panel is closed. */}
-      <div className="drag-region flex h-(--workspace-topbar-height) shrink-0 items-center gap-1 px-3">
+      <div
+        className={cn(
+          "drag-region flex h-(--workspace-topbar-height) shrink-0 items-center gap-1 px-3",
+          // Filling the window, the strip starts by the traffic lights.
+          expanded && "pl-[calc(var(--workspace-controls-left)-var(--workspace-rail-width))]",
+        )}
+      >
         {store.tabs.length > 0 ? (
           <ChatTabs
             tabs={store.tabs.map((id) => {
@@ -1751,17 +1750,28 @@ export function AgentChatPanel({
                     : "idle",
               };
             })}
-            activeId={activeId}
+            activeId={browserTabId ? null : activeId}
             onSelect={switchTo}
             onClose={closeTab}
-          />
+          >
+            {features.browser ? <BrowserTabs /> : null}
+          </ChatTabs>
         ) : null}
-        {/* New chat right after the tabs, like a browser's new-tab button. */}
-        <HintTooltip label="New chat" shortcut="agent.newChat" side="bottom">
-          <IconBtn label="New chat" className="size-8 shrink-0" onClick={() => newChat()}>
-            <PlusIcon className="size-4" />
-          </IconBtn>
-        </HintTooltip>
+        {/* Right after the tabs, like a browser's new-tab button: with the
+            browser, its start page (which offers a new chat too). */}
+        {features.browser ? (
+          <HintTooltip label="New tab" hint="⌘T" side="bottom">
+            <IconBtn label="New tab" className="size-8 shrink-0" onClick={newTab}>
+              <PlusIcon className="size-4" />
+            </IconBtn>
+          </HintTooltip>
+        ) : (
+          <HintTooltip label="New chat" shortcut="agent.newChat" side="bottom">
+            <IconBtn label="New chat" className="size-8 shrink-0" onClick={() => newChat()}>
+              <PlusIcon className="size-4" />
+            </IconBtn>
+          </HintTooltip>
+        )}
         <span className="min-w-0 flex-1" />
         <HintTooltip label="Chat history" side="bottom">
           <IconBtn
@@ -1773,9 +1783,27 @@ export function AgentChatPanel({
             <HistoryIcon className="size-4" />
           </IconBtn>
         </HintTooltip>
+        {onToggleExpanded ? (
+          <HintTooltip label={expanded ? "Collapse panel" : "Expand panel"} side="bottom">
+            <IconBtn
+              label={expanded ? "Collapse panel" : "Expand panel"}
+              active={expanded}
+              className="size-8 shrink-0"
+              onClick={onToggleExpanded}
+            >
+              {expanded ? (
+                <Minimize2Icon className="size-4" />
+              ) : (
+                <Maximize2Icon className="size-4" />
+              )}
+            </IconBtn>
+          </HintTooltip>
+        ) : null}
         {/* The pinned agent toggle (home view) sits here. */}
         <PanelControlSlot />
       </div>
+
+      {features.browser ? <BrowserPages onNewChat={newChat} /> : null}
 
       {historyOpen ? (
         <HistoryList

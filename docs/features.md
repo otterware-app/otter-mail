@@ -262,6 +262,29 @@ again: safe is anything that can be undone (archive, label, trash, drafts, proje
 sending mail or invitations or deleting for good. Agents that run in the cloud (Langdock,
 claude.ai connectors) can't reach a server on the Mac.
 
+## Browser
+
+The agent panel's tabs hold pages as well as chats (ChatGPT's in-app browser). Links in mail and
+chat open there by default; Settings › Browser can send them to the default browser instead. The
+pages live in a session of their own, apart from the app's, and sites see Chrome. A web page
+can't embed other sites, so the web app opens links in a new browser tab as before.
+
+| Feature                                                                      | Mac | Web | iPhone |
+| ---------------------------------------------------------------------------- | --- | --- | ------ |
+| Pages as tabs beside the chats: back, forward, reload, address and search    | ✓   | —   | —      |
+| Links in mail and chat open in a tab (or the default browser, a setting)     | ✓   | —   | —      |
+| Start page (⌘T): new chat, extensions, suggested sites; ⌘L for the address   | ✓   | —   | —      |
+| Panel fills the window (expand), for a page or a long chat                   | ✓   | ✓   | —      |
+| Sign-in popups, links to other apps (asked first), mailto: opens a message   | ✓   | —   | —      |
+| Context menu, site info (clear a site's data), clear all browsing data       | ✓   | —   | —      |
+| Chrome Web Store extensions: add (asked first), options, remove, auto-update | ✓   | —   | —      |
+| Extensions' toolbar buttons and popups                                       | —   | —   | —      |
+
+Extensions come from electron-chrome-web-store and run on Electron's own extension support:
+content scripts and the APIs Electron implements work; toolbar buttons, popups and the rest of
+`chrome.tabs` don't (electron-chrome-extensions would add them, under GPL-3 or a paid license).
+Camera, microphone, location and notifications are refused to pages.
+
 ## Translation
 
 | Feature                                        | Mac                  | Web                               | iPhone               |

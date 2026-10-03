@@ -6,6 +6,7 @@
 import { app, BrowserWindow, shell } from "electron";
 
 import { logger } from "../logger.js";
+import { attachBrowser } from "../services/browser.js";
 import { getPreloadPath, getWindowUrl } from "./window-paths.js";
 import { savedFrame, trackFrame } from "./window-state.js";
 
@@ -79,12 +80,15 @@ export async function createMainWindow(): Promise<BrowserWindow> {
         // mailbox pages' swipe included) stretch past their ends, harder
         // the further, like any Mac app.
         scrollBounce: true,
+        // The agent panel's browser tabs (services/browser.ts vets each one).
+        webviewTag: true,
       },
     });
     mainWindow = win;
     if (frame?.maximized) win.maximize();
     trackFrame(FRAME_KEY, win);
     openLinksExternally(win);
+    attachBrowser(win);
 
     win.once("ready-to-show", () => win.show());
     win.on("closed", () => {

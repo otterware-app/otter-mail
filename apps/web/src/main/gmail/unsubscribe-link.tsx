@@ -10,6 +10,7 @@ import { Dialog } from "~/components/ui/dialog";
 import { Text } from "~/components/ui/text";
 import { toast } from "./toast";
 import { gmailApi } from "./api";
+import { openLink } from "../browser/store";
 
 export function UnsubscribeLink({
   accountId,
@@ -45,8 +46,8 @@ export function UnsubscribeLink({
     try {
       const result = await gmailApi.unsubscribe(accountId, messageId);
       if ("openUrl" in result) {
-        await window.desktopBridge.openExternal(result.openUrl);
-        toast.info(`Finish unsubscribing from ${who} in your browser`);
+        openLink(result.openUrl);
+        toast.info(`Finish unsubscribing from ${who} on their page`);
       } else {
         qc.setQueryData(key, { ...info, unsubscribed: true });
         toast.success(`Unsubscribed from ${who}`);

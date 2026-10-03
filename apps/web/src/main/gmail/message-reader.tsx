@@ -133,6 +133,7 @@ import type {
   GmailMessageSummary,
 } from "./types";
 import { features } from "../features";
+import { openLink } from "../browser/store";
 import { AttachmentPreview, attachmentPreview, type PreviewFile } from "./attachment-preview";
 
 type MessageReaderProps = {
@@ -719,7 +720,8 @@ function HtmlBody({
           { once: true },
         );
       });
-      // Open every link in the browser. The sandbox has no `allow-popups`, so
+      // Open every link in a browser tab (the agent panel's, on the Mac), or
+      // mail for mailto:. The sandbox has no `allow-popups`, so
       // `target="_blank"` links (common in marketing mail) otherwise do nothing
       // on a plain click, and a targetless link would navigate the iframe away
       // from the email — route them all through the OS instead.
@@ -755,7 +757,8 @@ function HtmlBody({
         if (/^(https?|mailto):/i.test(url)) {
           console.log("[MessageBody:linkClick]", { href: raw.slice(0, 60) });
           e.preventDefault();
-          void window.desktopBridge.openExternal(url).catch(() => {});
+          if (/^mailto:/i.test(url)) void window.desktopBridge.openExternal(url).catch(() => {});
+          else openLink(url);
         }
       });
       // The click handler above is the fast path, but WKWebView doesn't reliably

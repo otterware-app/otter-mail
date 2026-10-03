@@ -36,6 +36,7 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPane, string>> = {
   keybindings: "Keybindings",
   accounts: "Mailboxes",
   agents: "Agents",
+  browser: "Browser",
   integrations: "Integrations",
 };
 
@@ -367,6 +368,28 @@ export const SETTINGS_SEARCH_ITEMS = [
     pane: "agents",
     available: features.localAgents,
     searchTerms: ["mcp server token connect claude code codex cursor external tools"],
+  },
+  // Browser
+  {
+    id: "browser-links",
+    title: "Open links",
+    pane: "browser",
+    available: features.browser,
+    searchTerms: ["links mail chat tab default browser safari chrome external"],
+  },
+  {
+    id: "browser-extensions",
+    title: "Extensions",
+    pane: "browser",
+    available: features.browser,
+    searchTerms: ["chrome web store add-ons plugins ad blocker password manager"],
+  },
+  {
+    id: "browser-data",
+    title: "Clear browsing data",
+    pane: "browser",
+    available: features.browser,
+    searchTerms: ["cookies cache site data sign out history"],
   },
 ] as const satisfies ReadonlyArray<SettingsSearchItem>;
 

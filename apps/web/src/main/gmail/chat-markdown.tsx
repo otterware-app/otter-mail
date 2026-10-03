@@ -2,9 +2,11 @@ import { memo } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
+import { openLink } from "../browser/store";
+
 /**
  * Agent replies rendered as GitHub-flavored markdown, styled for the app palette.
- * Links open in the default browser (never navigate the app window). Memoized
+ * Links open in a browser tab (never navigate the app window). Memoized
  * on the text so streaming deltas only re-parse the growing string.
  */
 export const ChatMarkdown = memo(function ChatMarkdown({ text }: { text: string }) {
@@ -19,7 +21,7 @@ export const ChatMarkdown = memo(function ChatMarkdown({ text }: { text: string 
               href={href}
               onClick={(e) => {
                 e.preventDefault();
-                if (href) void window.desktopBridge.openExternal(href);
+                if (href) openLink(href);
               }}
               className="text-primary underline underline-offset-2 hover:opacity-80"
             >

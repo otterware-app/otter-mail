@@ -36,6 +36,7 @@ const bridge: DesktopBridge = {
     openFiles: true,
     externalAgent: true,
     localAgents: true,
+    browser: true,
   },
   invoke: <T>(channel: string, params?: unknown) =>
     ipcRenderer.invoke(channel, params) as Promise<T>,

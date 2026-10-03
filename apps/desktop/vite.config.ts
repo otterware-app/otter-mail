@@ -52,6 +52,9 @@ export default defineConfig({
       entry: ["src/main.ts"],
       clean: true,
       outputOptions: { codeSplitting: false },
+      // electron-chrome-web-store's preload, for the Web Store's pages: the
+      // library looks for it next to main.cjs when there's no node_modules.
+      copy: { from: "node_modules/electron-chrome-web-store/dist/chrome-web-store.preload.js" },
     },
     {
       // The mail backend's utility process (backend-host.ts forks it).

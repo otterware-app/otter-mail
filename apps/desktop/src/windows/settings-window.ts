@@ -7,6 +7,7 @@ export type SettingsTarget = {
     | "accounts"
     | "agents"
     | "integrations"
+    | "browser"
     | "otter";
 };
 

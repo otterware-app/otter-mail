@@ -49,6 +49,7 @@ import { senderLabel } from "./address";
 import { cn } from "./ui";
 import { COMBINED_ACCOUNT_ID } from "./custom-views";
 import { changelogUrl } from "@otter-mail/shared/changelog";
+import { openLink } from "../browser/store";
 import { getThemeModes } from "../theme/themePalette";
 import {
   previewTheme,
@@ -375,7 +376,7 @@ export function CommandPalette({
         icon: <ScrollTextIcon className={ICON} />,
         title: "Changelog",
         keywords: "what's new release notes new version",
-        run: () => void window.desktopBridge.openExternal(changelogUrl()),
+        run: () => openLink(changelogUrl()),
       },
       ...(update && update.status !== "disabled"
         ? [

@@ -7,6 +7,7 @@
  * - editableFocus: typing in an input, textarea, or rich-text field
  * - dialogOpen:    a dialog, popover, or menu is open
  * - settingsOpen:  the settings page is showing
+ * - panelExpanded: the agent panel fills the window (the mail is hidden)
  * - messageOpen:   a conversation is open in the reader
  * - agentOpen:     the agent chat panel is showing
  * - modelPickerOpen: the composer's model picker is open
@@ -125,6 +126,7 @@ export const WHEN_VARIABLES = [
   "editableFocus",
   "dialogOpen",
   "settingsOpen",
+  "panelExpanded",
   "messageOpen",
   "agentOpen",
   "modelPickerOpen",
@@ -133,7 +135,7 @@ export const WHEN_VARIABLES = [
 ] as const;
 
 const OUTSIDE_FIELDS = "!editableFocus && !dialogOpen";
-export const IN_MAIL = "!editableFocus && !dialogOpen && !settingsOpen";
+export const IN_MAIL = "!editableFocus && !dialogOpen && !settingsOpen && !panelExpanded";
 const ON_MESSAGE = `${IN_MAIL} && messageOpen`;
 
 export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [

@@ -6,6 +6,7 @@ import { SenderAvatar } from "./sender-avatar";
 import type { GmailMessageDetail, GmailMessageSummary } from "./types";
 import { HintTooltip, cn } from "./ui";
 import { UnsubscribeLink } from "./unsubscribe-link";
+import { openLink } from "../browser/store";
 
 type OpenFile = (messageId: string, attachment: GmailMessageDetail["attachments"][number]) => void;
 
@@ -42,9 +43,7 @@ export function ConversationSummary({
 
   const openInGmail = () => {
     const user = encodeURIComponent(account?.email ?? accountId);
-    void window.desktopBridge.openExternal(
-      `https://mail.google.com/mail/u/${user}/#all/${threadId}`,
-    );
+    openLink(`https://mail.google.com/mail/u/${user}/#all/${threadId}`);
   };
 
   return (

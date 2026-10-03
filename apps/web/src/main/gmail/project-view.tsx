@@ -38,6 +38,7 @@ import {
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./menu";
 import { toast } from "./toast";
 import { IconBtn, cn } from "./ui";
+import { openLink } from "../browser/store";
 
 const date = (ms: number) =>
   new Date(ms).toLocaleDateString([], {
@@ -252,7 +253,7 @@ function Links({ project }: { project: Project }) {
             role="button"
             tabIndex={0}
             title={link.url}
-            onClick={() => void window.desktopBridge.openExternal(link.url)}
+            onClick={() => openLink(link.url)}
             className={SIDE_ROW}
           >
             <LinkIcon className="size-3.5 shrink-0 text-muted-foreground" />

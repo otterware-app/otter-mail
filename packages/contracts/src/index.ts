@@ -70,6 +70,11 @@ export interface BridgeFeatures {
    * Otter Mail's tools for any agent on it (agent-tokens.ts' ConnectedAgent).
    */
   localAgents: boolean;
+  /**
+   * The browser in the agent panel: links from mail and chat open there as
+   * tabs, with Chrome Web Store extensions (a web page can't embed sites).
+   */
+  browser: boolean;
 }
 
 export interface DesktopBridge {

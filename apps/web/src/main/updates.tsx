@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { UpdateState } from "@otter-mail/contracts";
 import { changelogUrl } from "@otter-mail/shared/changelog";
+import { openLink } from "./browser/store";
 
 import { ArrowDownCircleIcon, SparklesIcon, XIcon } from "lucide-react";
 
@@ -170,7 +171,7 @@ export function UpdateCard() {
           {state.status === "downloading" || state.status === "downloaded" ? (
             <button
               type="button"
-              onClick={() => void window.desktopBridge.openExternal(changelogUrl())}
+              onClick={() => openLink(changelogUrl())}
               className="cursor-pointer text-2xs text-foreground/80 underline-offset-2 outline-none hover:text-foreground hover:underline focus-visible:underline"
             >
               Changelog →
