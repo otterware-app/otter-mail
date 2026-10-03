@@ -168,13 +168,13 @@ export function selectTab(id: string | null): void {
   set({ activeId: id });
 }
 
-/** Closes a tab; the one before it shows, or the chat after the first. */
+/** Closes a tab; prefer the one before it, then the one after it, else the chat. */
 export function closeTab(id: string): void {
   set((s) => {
     const at = s.tabs.findIndex((tab) => tab.id === id);
     if (at < 0) return s;
     const tabs = s.tabs.toSpliced(at, 1);
-    const activeId = s.activeId === id ? (tabs[at - 1]?.id ?? null) : s.activeId;
+    const activeId = s.activeId === id ? (tabs[at - 1]?.id ?? tabs[at]?.id ?? null) : s.activeId;
     return { tabs, activeId };
   });
 }

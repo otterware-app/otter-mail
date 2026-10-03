@@ -162,6 +162,20 @@ export function attachBrowser(win: BrowserWindow): void {
   win.webContents.on("did-attach-webview", (_event, page) => {
     preparePage(win, page);
     trackTab(page);
+    // A focused guest page's keys never reach the panel's dispatcher.
+    page.on("before-input-event", (event, input) => {
+      if (
+        input.type !== "keyDown" ||
+        input.key !== "Tab" ||
+        !input.control ||
+        input.meta ||
+        input.alt ||
+        input.shift
+      )
+        return;
+      event.preventDefault();
+      if (!win.isDestroyed()) win.webContents.send("browser:previousTab");
+    });
   });
 }
 

@@ -47,6 +47,7 @@ export const KEYBINDING_COMMANDS = [
   "sidebar.toggle",
   "agent.toggle",
   "agent.newChat",
+  "agent.previousTab",
   "modelPicker.toggle",
   "composer.mode",
   "agent.sendQueuedNow",
@@ -146,6 +147,7 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "mod+b", command: "sidebar.toggle", when: OUTSIDE_FIELDS },
   { key: "mod+i", command: "agent.toggle", when: OUTSIDE_FIELDS },
   { key: "mod+shift+o", command: "agent.newChat", when: "!dialogOpen" },
+  { key: "ctrl+tab", command: "agent.previousTab", when: "!dialogOpen" },
   { key: "mod+shift+m", command: "modelPicker.toggle", when: "agentOpen" },
   { key: "mod+shift+a", command: "composer.mode", when: "agentOpen" },
   {

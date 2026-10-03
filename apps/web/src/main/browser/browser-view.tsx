@@ -93,7 +93,7 @@ function TabIcon({ tab }: { tab: BrowserTab }) {
 }
 
 /** The browser's tabs in the panel's strip, after the chats'. */
-export function BrowserTabs() {
+export function BrowserTabs({ onClose }: { onClose: (id: string) => void }) {
   const tabs = useBrowser((s) => s.tabs);
   const activeId = useBrowser((s) => s.activeId);
   return tabs.map((tab) => {
@@ -106,7 +106,7 @@ export function BrowserTabs() {
         icon={<TabIcon tab={tab} />}
         selected={tab.id === activeId}
         onSelect={() => selectTab(tab.id)}
-        onClose={() => closeTab(tab.id)}
+        onClose={() => onClose(tab.id)}
       />
     );
   });

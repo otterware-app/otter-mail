@@ -31,6 +31,7 @@ import { COMPOSER_SURFACE } from "./composer-kit";
 import { WorkLog, type TurnItem } from "./work-log";
 import { PanelControlSlot } from "./top-bar";
 import { PanelTab } from "./panel-tab";
+import { mostRecentTab, tabAfterClose } from "./panel-tabs";
 import {
   gmailApi,
   type ChatEvent,
@@ -244,7 +245,7 @@ type Conversation = {
   updatedAt: number;
 };
 
-/** `tabs`: chats open side by side (Otter Code's tabs), in order; the strip shows from two. */
+/** `tabs`: open chats, in strip order; empty while only browser tabs remain. */
 type Store = { conversations: Conversation[]; activeId: string; tabs: string[] };
 
 /** A turn in flight, bound to its conversation (several chats can run at once). */
@@ -388,8 +389,10 @@ function loadStore(): Store {
       // no legacy data
     }
   }
-  // Only non-empty sessions are kept; always land on a usable active one.
+  // Only non-empty sessions are kept. A panel with only pages needs no chat.
   conversations = conversations.filter((c) => c.turns.length > 0);
+  if (activeId === "" && tabs.length === 0 && features.browser && useBrowser.getState().tabs.length)
+    return { conversations, activeId, tabs };
   if (!activeId || !conversations.some((c) => c.id === activeId)) {
     const fresh = newConversation();
     conversations = [fresh, ...conversations];
@@ -815,7 +818,7 @@ export function AgentChatPanel({
   /** A highlighted excerpt to attach; overrides the auto-derived context. */
   quote?: QuoteContext | null;
   onClearQuote?: () => void;
-  /** ⌘W: closes the active tab (true), or false when it's the only one. */
+  /** ⌘W: closes the active chat or page (true), or false for the last chat. */
   closeTabRef?: MutableRefObject<(() => boolean) | null>;
   /** Closing the last tab closes the panel. */
   onClosePanel?: () => void;
@@ -823,10 +826,31 @@ export function AgentChatPanel({
 }) {
   const [store, setStore] = useState<Store>(() => loadStore());
   const { conversations, activeId } = store;
-  const active = conversations.find((c) => c.id === activeId) ?? conversations[0];
+  const active = conversations.find((c) => c.id === activeId);
   const turns = active?.turns ?? [];
   // The browser's tab showing over the chat (Mac), if one is.
   const browserTabId = useBrowser((s) => (features.browser ? s.activeId : null));
+  const browserTabs = useBrowser((s) => s.tabs);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const recentTabsRef = useRef<string[]>([]);
+  useEffect(() => {
+    const tabs = new Set([
+      ...store.tabs,
+      ...(features.browser ? browserTabs.map((tab) => tab.id) : []),
+    ]);
+    const shown = browserTabId ?? activeId;
+    recentTabsRef.current = [
+      ...(tabs.has(shown) ? [shown] : []),
+      ...recentTabsRef.current.filter((id) => id !== shown && tabs.has(id)),
+    ];
+  }, [activeId, browserTabId, store.tabs, browserTabs]);
+  // The final page can close through its × or an extension, leaving a fresh chat.
+  if (!browserTabId && store.tabs.length === 0) {
+    setStore((s) => {
+      const fresh = newConversation();
+      return { conversations: [fresh, ...s.conversations], activeId: fresh.id, tabs: [fresh.id] };
+    });
+  }
 
   const [draft, setDraft] = useState("");
   // Turns in flight, one per conversation: each streams into its own chat, so
@@ -1557,13 +1581,26 @@ export function AgentChatPanel({
   };
 
   /**
-   * Closes a tab; the chat stays in history (a running turn finishes there).
+   * Closes a chat or page, following the full strip. Chats stay in history
+   * (a running turn finishes there).
    * The last tab closes the panel, leaving a fresh "New chat" for next time.
    */
   const closeTab = (id: string) => {
-    if (storeRef.current.tabs.length < 2) onClosePanel?.();
+    const s = storeRef.current;
+    const browser = useBrowser.getState();
+    const pages = features.browser ? browser.tabs : [];
+    const tabs = [...s.tabs, ...pages.map((tab) => tab.id)];
+    if (!tabs.includes(id)) return;
+    const shown = (features.browser ? browser.activeId : null) ?? s.activeId;
+    const next = tabAfterClose(tabs, id);
+    if (tabs.length < 2) onClosePanel?.();
+    if (pages.some((tab) => tab.id === id)) {
+      closeBrowserTab(id);
+      if (shown === id && next) showPanelTab(next);
+      return;
+    }
     setStore((s) => {
-      if (s.tabs.length < 2) {
+      if (s.tabs.length < 2 && pages.length === 0) {
         const current = s.conversations.find((c) => c.id === id);
         if (!current || current.turns.length === 0) return s;
         const fresh = newConversation(selectedKind);
@@ -1575,9 +1612,10 @@ export function AgentChatPanel({
       }
       const at = s.tabs.indexOf(id);
       const tabs = s.tabs.filter((t) => t !== id);
-      const activeId = s.activeId === id ? tabs[Math.max(0, at - 1)] : s.activeId;
+      const activeId = s.activeId === id ? (tabs[Math.max(0, at - 1)] ?? "") : s.activeId;
       return { conversations: pruned(s.conversations, tabs), activeId, tabs };
     });
+    if (shown === id && next) showPanelTab(next);
   };
 
   const deleteConversation = (id: string) => {
@@ -1610,15 +1648,50 @@ export function AgentChatPanel({
     });
   };
 
-  useCommandHandlers({ "agent.newChat": () => newChat() });
+  const focusPanelTab = () => {
+    requestAnimationFrame(() => {
+      panelRef.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus();
+    });
+  };
+  const showPanelTab = (id: string) => {
+    if (useBrowser.getState().tabs.some((tab) => tab.id === id)) selectTab(id);
+    else switchTo(id);
+    focusPanelTab();
+  };
+  const previousTab = () => {
+    const s = storeRef.current;
+    const browser = useBrowser.getState();
+    const tabs = [...s.tabs, ...(features.browser ? browser.tabs.map((tab) => tab.id) : [])];
+    const shown = (features.browser ? browser.activeId : null) ?? s.activeId;
+    const id = mostRecentTab(tabs, shown, recentTabsRef.current);
+    if (!id) return false;
+    showPanelTab(id);
+    return true;
+  };
+  useCommandHandlers({
+    "agent.newChat": () => newChat(),
+    "agent.previousTab": (event) => {
+      if (!(event.target instanceof Node) || !panelRef.current?.contains(event.target))
+        return false;
+      return previousTab();
+    },
+  });
+  useEffect(() => {
+    if (!features.browser) return;
+    return window.desktopBridge.on("browser:previousTab", previousTab);
+  });
 
   const closeActiveTab = () => {
     const page = useBrowser.getState().activeId;
     if (features.browser && page) {
-      closeBrowserTab(page);
+      closeTab(page);
       return true;
     }
-    if (storeRef.current.tabs.length < 2) return false;
+    if (
+      storeRef.current.tabs.length < 2 &&
+      (!features.browser || useBrowser.getState().tabs.length === 0)
+    )
+      return false;
     closeTab(storeRef.current.activeId);
     return true;
   };
@@ -1722,7 +1795,11 @@ export function AgentChatPanel({
   const busy = run != null;
 
   return (
-    <div className="relative flex h-full min-w-0 flex-col" {...(needsSetup ? {} : drop.handlers)}>
+    <div
+      ref={panelRef}
+      className="relative flex h-full min-w-0 flex-col"
+      {...(needsSetup ? {} : drop.handlers)}
+    >
       {drop.active ? <DropOverlay /> : null}
       {/* Header: chat actions on the left; the panel toggle stays at the
           window's top-right, exactly where it sits while the panel is closed. */}
@@ -1733,30 +1810,28 @@ export function AgentChatPanel({
           expanded && "pl-[calc(var(--workspace-controls-left)-var(--workspace-rail-width))]",
         )}
       >
-        {store.tabs.length > 0 ? (
-          <ChatTabs
-            tabs={store.tabs.map((id) => {
-              const convo = conversations.find((c) => c.id === id);
-              const tabRun = runs[id];
-              return {
-                id,
-                title: convo && convo.turns.length > 0 ? convo.title : "New chat",
-                state: tabRun
-                  ? approvals.some((a) => a.requestId === tabRun.requestId)
-                    ? "approval"
-                    : "working"
-                  : unseen.has(id)
-                    ? "unseen"
-                    : "idle",
-              };
-            })}
-            activeId={browserTabId ? null : activeId}
-            onSelect={switchTo}
-            onClose={closeTab}
-          >
-            {features.browser ? <BrowserTabs /> : null}
-          </ChatTabs>
-        ) : null}
+        <ChatTabs
+          tabs={store.tabs.map((id) => {
+            const convo = conversations.find((c) => c.id === id);
+            const tabRun = runs[id];
+            return {
+              id,
+              title: convo && convo.turns.length > 0 ? convo.title : "New chat",
+              state: tabRun
+                ? approvals.some((a) => a.requestId === tabRun.requestId)
+                  ? "approval"
+                  : "working"
+                : unseen.has(id)
+                  ? "unseen"
+                  : "idle",
+            };
+          })}
+          activeId={browserTabId ? null : activeId}
+          onSelect={switchTo}
+          onClose={closeTab}
+        >
+          {features.browser ? <BrowserTabs onClose={closeTab} /> : null}
+        </ChatTabs>
         {/* Right after the tabs, like a browser's new-tab button: with the
             browser, its start page (which offers a new chat too). */}
         {features.browser ? (
