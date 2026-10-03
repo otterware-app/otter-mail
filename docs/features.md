@@ -62,7 +62,7 @@ to another app. This page is where they're compared.
 | Empty Trash / Empty Junk                 | ✓                        | ✓            | —                                        |
 | Star (flag), read / unread               | ✓                        | ✓            | ✓                                        |
 | Mark all as read                         | —                        | —            | ✓                                        |
-| Multi-select and bulk actions            | ✓ (⌘/⇧-click)            | ✓            | ✓ (archive, trash, read, labels/folders) |
+| Multi-select and bulk actions            | ✓ (⌘/⇧-click, ⇧↑/⇧↓)     | ✓            | ✓ (archive, trash, read, labels/folders) |
 | Undo and redo (z ⌘Z, ⇧Z ⇧⌘Z)             | ✓                        | ✓            | Undo archive/trash (6 seconds)           |
 | Apply / remove labels                    | ✓ (IMAP: move to folder) | ✓            | ✓ (IMAP: move)                           |
 | Create, rename, delete labels            | ✓ (IMAP: folders)        | ✓            | —                                        |

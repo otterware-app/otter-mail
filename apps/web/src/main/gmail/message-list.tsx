@@ -500,6 +500,7 @@ function MessageRow({
             ref={rowRef}
             type="button"
             data-message-row=""
+            data-message-id={message.id}
             data-draft={isDraft || undefined}
             data-flagged={message.starred || undefined}
             data-unread={unread || undefined}
@@ -1049,9 +1050,12 @@ export function MessageList({
   // falling back to the open message, so shift-click ranges feel native.
   const [checked, setChecked] = useState<ReadonlySet<string>>(new Set());
   const anchorRef = useRef<string | null>(null);
+  /** The selection's other end, where Shift+↑/↓ go on from. */
+  const extentRef = useRef<string | null>(null);
   const clearChecked = () => {
     setChecked(new Set());
     anchorRef.current = null;
+    extentRef.current = null;
   };
   const toggleDay = (group: MessageDay) => {
     const collapsing = !collapsedDays.has(group.day);
@@ -1086,6 +1090,7 @@ export function MessageList({
       e.stopPropagation();
       setChecked(new Set());
       anchorRef.current = null;
+      extentRef.current = null;
     };
     window.addEventListener("keydown", down, true);
     return () => window.removeEventListener("keydown", down, true);
@@ -1099,6 +1104,7 @@ export function MessageList({
       return next;
     });
     anchorRef.current = id;
+    extentRef.current = null;
   };
 
   const rangeSelect = (id: string) => {
@@ -1116,6 +1122,7 @@ export function MessageList({
       for (let i = lo; i <= hi; i++) next.add(ids[i]);
       return next;
     });
+    extentRef.current = id;
   };
 
   const openMessage = (row: GmailMessageSummary, focus?: GmailMessageSummary) => {
@@ -1445,17 +1452,48 @@ export function MessageList({
       focusedMessage: focus,
     } = shortcutState.current;
     if (nav.length === 0) return false;
-    const idx = nav.findIndex(
-      (n) => n.row.id === selId && (n.focus?.id ?? null) === (focus?.id ?? null),
-    );
+    // A plain move drops a multi-selection and goes on from where Shift+↑/↓ left it.
+    const extent = extentRef.current;
+    let idx = extent ? nav.findIndex((n) => n.row.id === extent && !n.focus) : -1;
+    if (idx === -1)
+      idx = nav.findIndex(
+        (n) => n.row.id === selId && (n.focus?.id ?? null) === (focus?.id ?? null),
+      );
+    if (checkedRef.current.size > 0) clearChecked();
     // Handled even at the ends of the list — arrows must never scroll it.
     const target = idx === -1 ? nav[0] : nav[idx + step];
     if (!target) return;
     selectForNavigation(target.row, target.focus?.id);
   };
+  /** Shift+↑/↓: selects from the anchor to a row past the extent, so heading
+      back toward the anchor shrinks the selection (Finder-style). */
+  const extendCommand = (step: 1 | -1) => (e: KeyboardEvent) => {
+    if (e.repeat && performance.now() - e.timeStamp > 80) return;
+    // Nothing to select in a list the reader covers (Full inbox).
+    if (scrollRef.current?.closest("[inert]")) return false;
+    const { visibleMessages: rows, selectedMessageId: selId } = shortcutState.current;
+    const ids = rows.map((m) => m.id);
+    // With nothing selected yet, the selection starts at the current row.
+    const anchor = ids.indexOf(
+      (checkedRef.current.size > 0 ? anchorRef.current : null) ?? selId ?? "",
+    );
+    // No current row: move onto the first, like ↓.
+    if (anchor === -1) return navCommand(step)(e);
+    const extent = extentRef.current ? ids.indexOf(extentRef.current) : -1;
+    const to = (extent === -1 ? anchor : extent) + step;
+    if (to < 0 || to >= ids.length) return;
+    anchorRef.current = ids[anchor];
+    extentRef.current = ids[to];
+    setChecked(new Set(ids.slice(Math.min(anchor, to), Math.max(anchor, to) + 1)));
+    scrollRef.current
+      ?.querySelector(`[data-message-id="${CSS.escape(ids[to])}"]`)
+      ?.scrollIntoView({ block: "nearest", behavior: "instant" });
+  };
   useCommandHandlers({
     "list.next": navCommand(1),
     "list.previous": navCommand(-1),
+    "list.extendSelectionDown": extendCommand(1),
+    "list.extendSelectionUp": extendCommand(-1),
     "list.open": rowCommand(({ row, focus }) => {
       if (!row) return false;
       openMessage(row, focus ?? undefined);
