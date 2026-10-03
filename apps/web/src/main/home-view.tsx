@@ -504,7 +504,7 @@ function MailHome() {
     "gmail:pane:chat",
     340,
     280,
-    900,
+    1200,
     -1,
     () =>
       window.innerWidth -
