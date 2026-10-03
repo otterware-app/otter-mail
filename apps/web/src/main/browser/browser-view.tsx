@@ -29,6 +29,7 @@ import {
 import { PanelTab } from "../gmail/panel-tab";
 import { toast } from "../gmail/toast";
 import { Btn, HintTooltip, IconBtn, cn } from "../gmail/ui";
+import { ExtensionToolbar } from "./extension-toolbar";
 import {
   CHROME_WEB_STORE_URL,
   addressToUrl,
@@ -43,6 +44,7 @@ import {
 
 /** Electron's `<webview>`, the parts used here. */
 type Webview = HTMLElement & {
+  getWebContentsId(): number;
   loadURL(url: string): Promise<void>;
   canGoBack(): boolean;
   canGoForward(): boolean;
@@ -132,7 +134,7 @@ export function BrowserPages({ onNewChat }: { onNewChat: () => void }) {
             className="absolute inset-0 flex flex-col"
             style={tab.id === activeId ? undefined : OFFSCREEN}
           >
-            <BrowserPage tab={tab} onNewChat={onNewChat} />
+            <BrowserPage tab={tab} active={tab.id === activeId} onNewChat={onNewChat} />
           </div>
         ) : null,
       )}
@@ -140,8 +142,18 @@ export function BrowserPages({ onNewChat }: { onNewChat: () => void }) {
   );
 }
 
-function BrowserPage({ tab, onNewChat }: { tab: BrowserTab; onNewChat: () => void }) {
+function BrowserPage({
+  tab,
+  active,
+  onNewChat,
+}: {
+  tab: BrowserTab;
+  active: boolean;
+  onNewChat: () => void;
+}) {
   const [view, setView] = useState<Webview | null>(null);
+  // The page's webContents id once it's attached: its tab id, to extensions.
+  const [pageId, setPageId] = useState<number | null>(null);
   // The address the page opens at; later ones go through loadURL (a new src
   // attribute would load the page over again).
   const [src, setSrc] = useState(tab.url);
@@ -161,6 +173,7 @@ function BrowserPage({ tab, onNewChat }: { tab: BrowserTab; onNewChat: () => voi
     const on: Record<string, (event: Event & Record<string, unknown>) => void> = {
       "dom-ready": () => {
         ready = true;
+        setPageId(view.getWebContentsId());
         sync();
       },
       "did-start-loading": () => {
@@ -206,6 +219,25 @@ function BrowserPage({ tab, onNewChat }: { tab: BrowserTab; onNewChat: () => voi
       updateTab(tab.id, { loading: false });
     };
   }, [view, tab.id]);
+
+  // Extensions see the page showing as the active tab, and can show or close one.
+  useEffect(() => {
+    if (active && pageId !== null) void window.desktopBridge.invoke("browser:activeTab", pageId);
+  }, [active, pageId]);
+  useEffect(() => {
+    if (pageId === null) return;
+    const mine = (params: unknown) =>
+      (params as { webContentsId?: number }).webContentsId === pageId;
+    const offs = [
+      window.desktopBridge.on("browser:selectTab", (params) => {
+        if (mine(params)) selectTab(tab.id);
+      }),
+      window.desktopBridge.on("browser:closeTab", (params) => {
+        if (mine(params)) closeTab(tab.id);
+      }),
+    ];
+    return () => offs.forEach((off) => off());
+  }, [pageId, tab.id]);
 
   const navigate = (url: string) => {
     updateTab(tab.id, { url });
@@ -263,6 +295,7 @@ function BrowserPage({ tab, onNewChat }: { tab: BrowserTab; onNewChat: () => voi
           onNavigate={navigate}
           onSiteDataCleared={() => view?.reload()}
         />
+        {src ? <ExtensionToolbar /> : null}
         <PageMenu url={tab.url} onDevTools={view ? () => view.openDevTools() : undefined} />
       </div>
       <div className="relative flex min-h-0 flex-1 flex-col">
@@ -456,7 +489,7 @@ function PageMenu({ url, onDevTools }: { url: string; onDevTools?: () => void })
         ) : null}
         <DropdownMenuItem
           icon={<PuzzleIcon className="size-4" />}
-          onSelect={() => void gmailApi.openSettings({ pane: "browser" })}
+          onSelect={() => void gmailApi.openSettings({ pane: "extensions" })}
         >
           Extensions
         </DropdownMenuItem>
@@ -492,7 +525,7 @@ function StartPage({
           <button
             type="button"
             className={tile}
-            onClick={() => void gmailApi.openSettings({ pane: "browser" })}
+            onClick={() => void gmailApi.openSettings({ pane: "extensions" })}
           >
             <PuzzleIcon />
             Extensions

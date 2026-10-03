@@ -266,24 +266,30 @@ claude.ai connectors) can't reach a server on the Mac.
 
 The agent panel's tabs hold pages as well as chats (ChatGPT's in-app browser). Links in mail and
 chat open there by default; Settings › Browser can send them to the default browser instead. The
-pages live in a session of their own, apart from the app's, and sites see Chrome. A web page
+pages live in a session of their own, apart from the app's. A web page
 can't embed other sites, so the web app opens links in a new browser tab as before.
 
-| Feature                                                                      | Mac | Web | iPhone |
-| ---------------------------------------------------------------------------- | --- | --- | ------ |
-| Pages as tabs beside the chats: back, forward, reload, address and search    | ✓   | —   | —      |
-| Links in mail and chat open in a tab (or the default browser, a setting)     | ✓   | —   | —      |
-| Start page (⌘T): new chat, extensions, suggested sites; ⌘L for the address   | ✓   | —   | —      |
-| Panel fills the window (expand), for a page or a long chat                   | ✓   | ✓   | —      |
-| Sign-in popups, links to other apps (asked first), mailto: opens a message   | ✓   | —   | —      |
-| Context menu, site info (clear a site's data), clear all browsing data       | ✓   | —   | —      |
-| Chrome Web Store extensions: add (asked first), options, remove, auto-update | ✓   | —   | —      |
-| Extensions' toolbar buttons and popups                                       | —   | —   | —      |
+| Feature                                                                    | Mac | Web | iPhone |
+| -------------------------------------------------------------------------- | --- | --- | ------ |
+| Pages as tabs beside the chats: back, forward, reload, address and search  | ✓   | —   | —      |
+| Links in mail and chat open in a tab (or the default browser, a setting)   | ✓   | —   | —      |
+| Start page (⌘T): new chat, extensions, suggested sites; ⌘L for the address | ✓   | —   | —      |
+| Panel fills the window (expand), for a page or a long chat                 | ✓   | ✓   | —      |
+| Sign-in popups, links to other apps (asked first), mailto: opens a message | ✓   | —   | —      |
+| Context menu, site info (clear a site's data), clear all browsing data     | ✓   | —   | —      |
+| Chrome Web Store extensions: add (asked first), auto-update                | ✓   | —   | —      |
+| Toolbar: pinned extensions, Extensions menu, badges, popups                | ✓   | —   | —      |
+| Settings › Extensions: on/off, details, remove, developer mode (unpacked)  | ✓   | —   | —      |
+| Extensions' context menu items and notifications                           | ✓   | —   | —      |
+| Native messaging (an extension talking to its Mac app, e.g. 1Password's)   | —   | —   | —      |
 
-Extensions come from electron-chrome-web-store and run on Electron's own extension support:
-content scripts and the APIs Electron implements work; toolbar buttons, popups and the rest of
-`chrome.tabs` don't (electron-chrome-extensions would add them, under GPL-3 or a paid license).
-Camera, microphone, location and notifications are refused to pages.
+Extensions install through electron-chrome-web-store (MIT) and run on Electron's extension
+support, plus Otter Mail's own layer for what Chrome has and Electron doesn't
+(`apps/desktop/src/services/extensions.ts` and its preload): `chrome.action`, the rest of
+`chrome.tabs`, `chrome.windows`, `contextMenus`, `notifications`, `webNavigation`, `commands`,
+`permissions`, and simple `downloads` and `privacy`. 1Password signs in and unlocks in its
+popup, but can't reach the 1Password app. Camera, microphone, location and notifications are
+refused to pages.
 
 ## Translation
 

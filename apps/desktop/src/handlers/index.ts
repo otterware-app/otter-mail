@@ -34,6 +34,7 @@ export function registerHandlers(): void {
       p?.pane === "agents" ||
       p?.pane === "integrations" ||
       p?.pane === "browser" ||
+      p?.pane === "extensions" ||
       p?.pane === "otter"
         ? p.pane
         : undefined;

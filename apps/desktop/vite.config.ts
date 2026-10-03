@@ -69,5 +69,12 @@ export default defineConfig({
       entry: ["src/preload.ts"],
       clean: false,
     },
+    {
+      // The browser's extensions' preload (services/extensions.ts).
+      ...shared,
+      entry: ["src/extensions-preload.ts"],
+      clean: false,
+      outputOptions: { codeSplitting: false },
+    },
   ],
 });

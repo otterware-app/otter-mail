@@ -1,10 +1,10 @@
-import { useEffect, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { PuzzleIcon } from "lucide-react";
+import { useState } from "react";
 
 import { Dialog } from "~/components/ui/dialog";
+import { Switch } from "~/components/ui/switch";
 import { Text } from "~/components/ui/text";
 import { ipc } from "~/lib/ipc";
+import { gmailApi } from "../gmail/api";
 import { toast } from "../gmail/toast";
 import { Btn } from "../gmail/ui";
 import {
@@ -15,48 +15,17 @@ import {
   SettingsSection,
 } from "../settings/settings-ui";
 import { searchableSetting } from "../settings/settings-search";
-import {
-  CHROME_WEB_STORE_URL,
-  openTab,
-  setOpenLinksIn,
-  useBrowser,
-  type OpenLinksIn,
-} from "./store";
-
-/** An installed extension (apps/desktop/src/services/browser.ts' BrowserExtension). */
-type Extension = {
-  id: string;
-  name: string;
-  version: string;
-  description: string;
-  icon: string | null;
-  optionsUrl: string | null;
-};
+import { setExtensionsButton, setOpenLinksIn, useBrowser, type OpenLinksIn } from "./store";
 
 const OPEN_LINKS_OPTIONS: { value: OpenLinksIn; label: string }[] = [
   { value: "app", label: "In Otter Mail" },
   { value: "browser", label: "In your default browser" },
 ];
 
-const EXTENSIONS_KEY = ["browser-extensions"];
-
-/** Settings › Browser (Mac): where links open, the Web Store's extensions, browsing data. */
+/** Settings › Browser (Mac): where links open, the toolbar's extensions, browsing data. */
 export function BrowserSettingsPane() {
   const openLinksIn = useBrowser((s) => s.openLinksIn);
-  const queryClient = useQueryClient();
-  const extensions = useQuery({
-    queryKey: EXTENSIONS_KEY,
-    queryFn: () => ipc<Extension[]>("browser:extensions"),
-  });
-  // Added from the Web Store's page, or removed.
-  useEffect(
-    () =>
-      window.desktopBridge.on("browser:extensionsChanged", () => {
-        void queryClient.invalidateQueries({ queryKey: EXTENSIONS_KEY });
-      }),
-    [queryClient],
-  );
-  const [removing, setRemoving] = useState<Extension | null>(null);
+  const extensionsButton = useBrowser((s) => s.extensionsButton);
   const [clearing, setClearing] = useState(false);
 
   return (
@@ -81,51 +50,29 @@ export function BrowserSettingsPane() {
         />
       </SettingsSection>
 
-      <SettingsSection
-        {...searchableSetting("browser-extensions")}
-        description="From the Chrome Web Store, as in Chrome. Otter Mail has no toolbar for them: one that works through a toolbar button or popup won't work here."
-        headerAction={
-          <Btn size="sm" onClick={() => openTab(CHROME_WEB_STORE_URL)}>
-            Chrome Web Store
-          </Btn>
-        }
-      >
-        {extensions.data && extensions.data.length > 0 ? (
-          extensions.data.map((extension) => (
-            <SettingsRow
-              key={extension.id}
-              title={
-                <span className="flex items-center gap-2">
-                  {extension.icon ? (
-                    <img src={extension.icon} alt="" className="size-4 shrink-0" />
-                  ) : (
-                    <PuzzleIcon className="size-4 shrink-0 text-muted-foreground" />
-                  )}
-                  {extension.name}
-                  <span className="text-muted-foreground">{extension.version}</span>
-                </span>
-              }
-              description={extension.description}
-              control={
-                <div className="flex gap-2">
-                  {extension.optionsUrl ? (
-                    <Btn size="sm" onClick={() => openTab(extension.optionsUrl!)}>
-                      Options
-                    </Btn>
-                  ) : null}
-                  <Btn size="sm" onClick={() => setRemoving(extension)}>
-                    Remove
-                  </Btn>
-                </div>
-              }
-            />
-          ))
-        ) : (
-          <SettingsRow
-            title={extensions.isPending ? "Loading…" : "No extensions yet"}
-            description="Add one from the Chrome Web Store: open it, find an extension, and choose Add to Chrome."
-          />
-        )}
+      <SettingsSection title="Extensions">
+        <SettingsRow
+          {...searchableSetting("browser-extensions-button")}
+          resetAction={
+            extensionsButton ? null : (
+              <SettingResetButton
+                label="extensions button"
+                onClick={() => setExtensionsButton(true)}
+              />
+            )
+          }
+          description="The puzzle in the browser's toolbar, listing every extension to run or pin."
+          control={<Switch checked={extensionsButton} onCheckedChange={setExtensionsButton} />}
+        />
+        <SettingsRow
+          title="Manage extensions"
+          description="Turn them on or off, see what they can read, or remove them."
+          control={
+            <Btn size="sm" onClick={() => void gmailApi.openSettings({ pane: "extensions" })}>
+              Manage
+            </Btn>
+          }
+        />
       </SettingsSection>
 
       <SettingsSection title="Browsing data">
@@ -139,29 +86,6 @@ export function BrowserSettingsPane() {
           }
         />
       </SettingsSection>
-
-      <Dialog
-        open={removing !== null}
-        onOpenChange={(open) => {
-          if (!open) setRemoving(null);
-        }}
-        title={`Remove ${removing?.name ?? "this extension"}?`}
-        confirmLabel="Remove"
-        confirmVariant="destructive"
-        onConfirm={async () => {
-          if (!removing) return;
-          try {
-            await ipc("browser:removeExtension", removing.id);
-            setRemoving(null);
-          } catch (error) {
-            toast.error(`Couldn't remove ${removing.name}: ${error}`);
-          }
-        }}
-      >
-        <Text variant="small">
-          Its settings go with it. You can add it again from the Web Store.
-        </Text>
-      </Dialog>
 
       <Dialog
         open={clearing}

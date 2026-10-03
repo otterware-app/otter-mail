@@ -55,6 +55,7 @@ const SETTINGS_PANES = new Set<string>([
   "accounts",
   "agents",
   "browser",
+  "extensions",
   "integrations",
   "otter",
 ]);

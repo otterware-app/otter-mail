@@ -22,7 +22,8 @@ when a feature lands or goes.
   - `src/handlers/`: the Mac-only handlers (tray, default mail app, …); `backend.ts` there holds
     the ones the backend serves.
   - `src/services/`: Google sign-in (loopback OAuth), tray, Apple's translator, the agent panel's
-    browser (its session, Chrome Web Store extensions, popups and permissions), the local agents
+    browser (`browser.ts`: its session, the Web Store, popups and permissions; `extensions.ts`
+    with `src/extensions-preload.ts`: Chrome's extension APIs Electron lacks), the local agents
     (Claude, Codex; Hermes is in core) and the MCP server that gives them, and other agents on
     the Mac with a token, Otter Mail's tools, default mail app.
   - `src/windows/`: the main window, the menu-bar popover, and where their pages load from.

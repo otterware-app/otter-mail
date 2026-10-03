@@ -31,10 +31,25 @@ type BrowserState = {
   /** Open Location (⌘L): that tab's address bar takes focus (`seq` tells requests apart). */
   addressFocus: { tabId: string; seq: number } | null;
   openLinksIn: OpenLinksIn;
+  /** Extensions with their button on the toolbar, in order. */
+  pinned: string[];
+  /** The toolbar's Extensions button (the puzzle), unless hidden from its menu. */
+  extensionsButton: boolean;
 };
 
 const TABS_KEY = "gmail:browser-tabs";
 const LINKS_KEY = "gmail:browser-open-links";
+const PINNED_KEY = "gmail:browser-pinned";
+const EXTENSIONS_BUTTON_KEY = "gmail:browser-extensions-button";
+
+function savedPinned(): string[] {
+  try {
+    const pinned: unknown = JSON.parse(localStorage.getItem(PINNED_KEY) ?? "[]");
+    return Array.isArray(pinned) ? pinned.filter((id) => typeof id === "string") : [];
+  } catch {
+    return [];
+  }
+}
 
 export const CHROME_WEB_STORE_URL = "https://chromewebstore.google.com/";
 
@@ -70,6 +85,8 @@ export const useBrowser = create<BrowserState>(() => ({
   revealed: 0,
   addressFocus: null,
   openLinksIn: localStorage.getItem(LINKS_KEY) === "browser" ? "browser" : "app",
+  pinned: savedPinned(),
+  extensionsButton: localStorage.getItem(EXTENSIONS_BUTTON_KEY) !== "0",
 }));
 
 useBrowser.subscribe((state, prev) => {
@@ -164,6 +181,21 @@ export function closeTab(id: string): void {
 
 export function updateTab(id: string, patch: Partial<Omit<BrowserTab, "id">>): void {
   set((s) => ({ tabs: s.tabs.map((tab) => (tab.id === id ? { ...tab, ...patch } : tab)) }));
+}
+
+export function setPinned(id: string, pinned: boolean): void {
+  set((s) => {
+    const next = pinned
+      ? [...s.pinned.filter((each) => each !== id), id]
+      : s.pinned.filter((each) => each !== id);
+    localStorage.setItem(PINNED_KEY, JSON.stringify(next));
+    return { pinned: next };
+  });
+}
+
+export function setExtensionsButton(shown: boolean): void {
+  localStorage.setItem(EXTENSIONS_BUTTON_KEY, shown ? "1" : "0");
+  set({ extensionsButton: shown });
 }
 
 export function setOpenLinksIn(value: OpenLinksIn): void {

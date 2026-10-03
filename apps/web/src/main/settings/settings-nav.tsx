@@ -14,6 +14,7 @@ import {
   CircleUserRoundIcon,
   GlobeIcon,
   KeyboardIcon,
+  PuzzleIcon,
   PaletteIcon,
   PlugIcon,
   Settings2Icon,
@@ -55,11 +56,12 @@ const SETTINGS_SECTION_ICONS: Readonly<
   accounts: MailIcon,
   agents: MousePointer2Icon,
   browser: GlobeIcon,
+  extensions: PuzzleIcon,
   integrations: PlugIcon,
 };
 
 const SETTINGS_SECTIONS = (Object.keys(SETTINGS_SECTION_LABELS) as SettingsPane[])
-  .filter((id) => id !== "browser" || features.browser)
+  .filter((id) => (id !== "browser" && id !== "extensions") || features.browser)
   .map((id) => ({
     id,
     label: SETTINGS_SECTION_LABELS[id],

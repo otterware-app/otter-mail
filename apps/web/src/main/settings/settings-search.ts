@@ -37,6 +37,7 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPane, string>> = {
   accounts: "Mailboxes",
   agents: "Agents",
   browser: "Browser",
+  extensions: "Extensions",
   integrations: "Integrations",
 };
 
@@ -378,11 +379,20 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["links mail chat tab default browser safari chrome external"],
   },
   {
-    id: "browser-extensions",
-    title: "Extensions",
+    id: "browser-extensions-button",
+    title: "Extensions button",
     pane: "browser",
     available: features.browser,
-    searchTerms: ["chrome web store add-ons plugins ad blocker password manager"],
+    searchTerms: ["toolbar puzzle pin extensions menu"],
+  },
+  {
+    id: "browser-extensions",
+    title: "Extensions",
+    pane: "extensions",
+    available: features.browser,
+    searchTerms: [
+      "chrome web store add-ons plugins ad blocker password manager developer mode unpacked",
+    ],
   },
   {
     id: "browser-data",

@@ -112,25 +112,36 @@ export function DropdownMenuLabel({ className, ...props }: ComponentProps<typeof
   );
 }
 
-/** Submenu with a text trigger (`label`), like the native menu's API. */
+/**
+ * Submenu with a text trigger (`label`), like the native menu's API, or with
+ * a `trigger` of its own (a row's ⋯ button).
+ */
 export function DropdownMenuSub({
   label,
+  trigger,
   inset,
   children,
 }: {
   label: string;
+  trigger?: ReactNode;
   /** Indent past the check column, when siblings are checkbox items. */
   inset?: boolean;
   children: ReactNode;
 }) {
   return (
     <Menu.Sub>
-      <Menu.SubTrigger
-        className={cn(ROW, inset && "ps-8", "data-[state=open]:bg-foreground/[0.07]")}
-      >
-        <span className="min-w-0 flex-1 truncate">{label}</span>
-        <ChevronRightIcon className="ms-auto size-3.5 text-muted-foreground" />
-      </Menu.SubTrigger>
+      {trigger ? (
+        <Menu.SubTrigger asChild aria-label={label}>
+          {trigger}
+        </Menu.SubTrigger>
+      ) : (
+        <Menu.SubTrigger
+          className={cn(ROW, inset && "ps-8", "data-[state=open]:bg-foreground/[0.07]")}
+        >
+          <span className="min-w-0 flex-1 truncate">{label}</span>
+          <ChevronRightIcon className="ms-auto size-3.5 text-muted-foreground" />
+        </Menu.SubTrigger>
+      )}
       <Menu.Portal>
         <Menu.SubContent sideOffset={4} alignOffset={-4} collisionPadding={8} className={POPUP}>
           {children}

@@ -24,6 +24,7 @@ const watchedFiles = [
   "dist-electron/main.cjs",
   "dist-electron/backend.cjs",
   "dist-electron/preload.cjs",
+  "dist-electron/extensions-preload.cjs",
 ].map((file) => NodePath.join(desktopDir, file));
 const waitTimeoutMs = 120_000;
 const restartDebounceMs = 300;

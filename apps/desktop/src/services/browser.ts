@@ -1,8 +1,8 @@
 /**
  * The browser in the agent panel: the renderer's `<webview>` tabs, in one
  * persistent session of their own (never the app's), with extensions from the
- * Chrome Web Store (electron-chrome-web-store; Electron runs them, without
- * Chrome's toolbar buttons and popups). Around a page it does what Chrome
+ * Chrome Web Store (electron-chrome-web-store installs them; extensions.ts
+ * gives them Chrome's toolbar and tabs). Around a page it does what Chrome
  * does: links that open a tab, sign-in popups, links to other apps, the
  * context menu, and asking before a site gets more than the basics.
  */
@@ -13,40 +13,26 @@ import {
   app,
   clipboard,
   dialog,
-  nativeImage,
   session,
   shell,
   webContents,
   type ContextMenuParams,
-  type Extension,
   type MenuItemConstructorOptions,
   type Session,
   type WebContents,
 } from "electron";
-import { installChromeWebStore, uninstallExtension } from "electron-chrome-web-store";
+import { installChromeWebStore } from "electron-chrome-web-store";
 import * as path from "node:path";
 
 import { broadcast } from "../ipc.js";
 import { logger } from "../logger.js";
+import { extensionMenuItems, reachOf, setupExtensions, trackTab } from "./extensions.js";
 import { parseMailtoUrl, setPendingMailto } from "./mailto-target.js";
 
 export const BROWSER_PARTITION = "persist:browser";
 
 /** What a page may use without asking; anything else (camera, location, notifications…) is refused. */
 const ALLOWED_PERMISSIONS = new Set(["fullscreen", "clipboard-sanitized-write", "pointerLock"]);
-
-/** Plain Chrome's user agent: some sites (Google's sign-in) turn Electron's away. */
-const CHROME_USER_AGENT = `Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${process.versions.chrome.split(".")[0]}.0.0.0 Safari/537.36`;
-
-/** The parts of an extension's manifest.json read here. */
-type Manifest = {
-  description?: string;
-  icons?: { [size: number]: string };
-  options_page?: string;
-  options_ui?: { page?: string };
-  host_permissions?: string[];
-  content_scripts?: { matches?: string[] }[];
-};
 
 /** Where a tab may go: the web, and extensions' own pages (their options). */
 export function isPageUrl(url: string): boolean {
@@ -59,11 +45,9 @@ export function getBrowserSession(): Session {
 
 /** Sets up the browser's session and its extensions. Once, before the main window opens. */
 export function setupBrowser(): void {
-  // Popups from a page take the app's fallback, not their session's: the
-  // app's own windows send no user agent anyone reads.
-  app.userAgentFallback = CHROME_USER_AGENT;
+  // Electron's own user agent stays: overriding it drops the client hints
+  // Chromium sends with it, and Google's sign-in turns that mismatch away.
   const ses = getBrowserSession();
-  ses.setUserAgent(CHROME_USER_AGENT);
   ses.setPermissionRequestHandler((page, permission, callback, details) => {
     if (permission === "openExternal" && "externalURL" in details && details.externalURL) {
       void openOutside(page, details.externalURL);
@@ -75,6 +59,8 @@ export function setupBrowser(): void {
   ses.setPermissionCheckHandler((_page, permission) => ALLOWED_PERMISSIONS.has(permission));
   ses.extensions.on("extension-loaded", () => broadcast("browser:extensionsChanged"));
   ses.extensions.on("extension-unloaded", () => broadcast("browser:extensionsChanged"));
+  // Before any extension loads, so each worker and page gets its chrome.action.
+  setupExtensions(path.join(__dirname, "extensions-preload.cjs"));
   installChromeWebStore({ session: ses, beforeInstall: confirmInstall }).catch((error: unknown) =>
     logger.error("browser", "Chrome Web Store setup failed", { error: String(error) }),
   );
@@ -108,32 +94,17 @@ async function openOutside(page: WebContents, url: string): Promise<void> {
   if (response === 0) await shell.openExternal(url);
 }
 
-/** What an extension may touch, in a sentence (Chrome lists its permissions when adding one). */
-function reachOf(manifest: Manifest): string {
-  const hosts = [
-    ...(manifest.host_permissions ?? []),
-    ...(manifest.content_scripts ?? []).flatMap((script) => script.matches ?? []),
-  ];
-  if (hosts.some((host) => host === "<all_urls>" || /^\*:\/\/\*\/|^https?:\/\/\*\//.test(host))) {
-    return "It can read and change what's on every site you visit in Otter Mail.";
-  }
-  const names = [...new Set(hosts.map((host) => host.replace(/^[^:]+:\/\/|\/.*$/g, "")))];
-  return names.length > 0
-    ? `It can read and change what's on ${names.slice(0, 3).join(", ")}${names.length > 3 ? " and other sites" : ""}.`
-    : "It doesn't ask to read the sites you visit.";
-}
-
 /** The Web Store's "Add to Chrome": asks before anything is installed. */
 async function confirmInstall(details: {
   localizedName: string;
-  manifest: Manifest;
+  manifest: Parameters<typeof reachOf>[0];
   icon: Electron.NativeImage;
   browserWindow?: BrowserWindow;
 }): Promise<{ action: "allow" | "deny" }> {
   const window = details.browserWindow ?? BrowserWindow.getFocusedWindow();
   const options = {
     message: `Add “${details.localizedName}”?`,
-    detail: `${reachOf(details.manifest)}\n\nOtter Mail has no toolbar for extensions: one that works through a toolbar button or popup won't work here.`,
+    detail: reachOf(details.manifest),
     icon: details.icon.isEmpty() ? undefined : details.icon,
     buttons: ["Add Extension", "Cancel"],
     defaultId: 0,
@@ -147,47 +118,6 @@ async function confirmInstall(details: {
     allowed: response === 0,
   });
   return { action: response === 0 ? "allow" : "deny" };
-}
-
-export type BrowserExtension = {
-  id: string;
-  name: string;
-  version: string;
-  description: string;
-  /** A data: URL of its largest icon up to 128px, if it has one. */
-  icon: string | null;
-  /** Its options page, which opens in a tab. */
-  optionsUrl: string | null;
-};
-
-function describe(extension: Extension): BrowserExtension {
-  const manifest = extension.manifest as Manifest;
-  const sizes = Object.keys(manifest.icons ?? {})
-    .map(Number)
-    .filter((size) => size <= 128)
-    .toSorted((a, b) => b - a);
-  const iconFile = sizes[0] === undefined ? undefined : manifest.icons?.[sizes[0]];
-  const icon = iconFile ? nativeImage.createFromPath(path.join(extension.path, iconFile)) : null;
-  const options = manifest.options_ui?.page ?? manifest.options_page;
-  return {
-    id: extension.id,
-    name: extension.name,
-    version: extension.version,
-    description: manifest.description ?? "",
-    icon: icon && !icon.isEmpty() ? icon.toDataURL() : null,
-    optionsUrl: options ? `${extension.url}${options.replace(/^\//, "")}` : null,
-  };
-}
-
-export function listExtensions(): BrowserExtension[] {
-  return getBrowserSession()
-    .extensions.getAllExtensions()
-    .map(describe)
-    .toSorted((a, b) => a.name.localeCompare(b.name));
-}
-
-export async function removeExtension(id: string): Promise<void> {
-  await uninstallExtension(id, { session: getBrowserSession() });
 }
 
 /**
@@ -229,7 +159,10 @@ export function attachBrowser(win: BrowserWindow): void {
     prefs.webviewTag = false;
     prefs.scrollBounce = true;
   });
-  win.webContents.on("did-attach-webview", (_event, page) => preparePage(win, page));
+  win.webContents.on("did-attach-webview", (_event, page) => {
+    preparePage(win, page);
+    trackTab(page);
+  });
 }
 
 /** Opens `url` in a new tab of `win`'s browser (the renderer's `browser:openTab`). */
@@ -238,7 +171,8 @@ function openTab(win: BrowserWindow, url: string, background = false): void {
   win.webContents.send("browser:openTab", { url, background });
 }
 
-function preparePage(win: BrowserWindow, page: WebContents): void {
+/** Chrome's ways around a page: links to tabs, popups, the context menu. */
+export function preparePage(win: BrowserWindow, page: WebContents): void {
   page.setWindowOpenHandler(({ url, disposition }) => {
     // A popup (a site's sign-in window) stays one: it reports back to its opener.
     if (disposition === "new-window" && isPageUrl(url)) {
@@ -310,6 +244,8 @@ function contextMenu(
       { label: "Reload", click: () => page.reload() },
     ]);
   }
+  const fromExtensions = extensionMenuItems(page, params);
+  if (fromExtensions.length > 0) groups.push(fromExtensions);
   groups.push([{ label: "Inspect Element", click: () => page.inspectElement(params.x, params.y) }]);
   return groups.flatMap((group, i) => (i === 0 ? group : [{ type: "separator" }, ...group]));
 }
