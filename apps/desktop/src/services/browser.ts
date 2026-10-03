@@ -45,9 +45,12 @@ export function getBrowserSession(): Session {
 
 /** Sets up the browser's session and its extensions. Once, before the main window opens. */
 export function setupBrowser(): void {
-  // Electron's own user agent stays: overriding it drops the client hints
+  // Electron's own user agent stays, less its Electron/x: Google's sign-in gives
+  // agents that name Electron a lite page that never offers your passkeys (as
+  // 1Password's) until you ask. A whole new string drops the client hints
   // Chromium sends with it, and Google's sign-in turns that mismatch away.
   const ses = getBrowserSession();
+  ses.setUserAgent(ses.getUserAgent().replace(/ Electron\/\S+/, ""));
   ses.setPermissionRequestHandler((page, permission, callback, details) => {
     if (permission === "openExternal" && "externalURL" in details && details.externalURL) {
       void openOutside(page, details.externalURL);
