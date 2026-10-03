@@ -57,3 +57,7 @@ pnpm dev
 See [docs/development.md](docs/development.md) for the full setup and
 [docs/release.md](docs/release.md) for how releases are cut. Contributions are welcome;
 start with [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## License
+
+[MIT](LICENSE)
