@@ -497,8 +497,8 @@ function MailHome() {
   useExternalMailChanges();
   useBrowserEvents();
 
-  const sidebarPane = useStoredWidth("gmail:pane:sidebar", 224, 200, 400);
-  const listPane = useStoredWidth("gmail:pane:list", 400, 300, 640);
+  const sidebarPane = useStoredWidth("gmail:pane:sidebar", 200, 180, 400);
+  const listPane = useStoredWidth("gmail:pane:list", 340, 280, 640);
   // The chat can grow wide, as long as the reader keeps READER_MIN_WIDTH.
   const chatPane = useStoredWidth(
     "gmail:pane:chat",
