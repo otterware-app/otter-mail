@@ -168,6 +168,19 @@ export function attachBrowser(win: BrowserWindow): void {
     // A focused guest page's keys never reach the panel's dispatcher.
     page.on("before-input-event", (event, input) => {
       if (
+        input.type === "keyDown" &&
+        input.key.toLowerCase() === "b" &&
+        input.meta &&
+        input.shift &&
+        !input.control &&
+        !input.alt
+      ) {
+        event.preventDefault();
+        if (!win.isDestroyed())
+          win.webContents.send("keybindings:keydown", { key: "b", metaKey: true, shiftKey: true });
+        return;
+      }
+      if (
         input.type !== "keyDown" ||
         input.key !== "Tab" ||
         !input.control ||

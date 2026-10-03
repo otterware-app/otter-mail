@@ -189,7 +189,17 @@ function setupApplicationMenu(): void {
         {
           label: "New Tab",
           accelerator: "Command+T",
-          click: () => void focusMainWindow().then(() => broadcast("browser:newTab")),
+          click: (_item, _window, event) => {
+            if (event.triggeredByAccelerator) {
+              if (isMainFocused())
+                getMainWindow()?.webContents.send("keybindings:keydown", {
+                  key: "t",
+                  metaKey: true,
+                });
+              return;
+            }
+            void focusMainWindow().then(() => broadcast("browser:newTab"));
+          },
         },
         {
           label: "Open Location…",

@@ -239,6 +239,8 @@ optional fix PRs. See [support.md](support.md).
 | Chat about a conversation (pointers, not mail)            | ✓ (also selections, quotes) | ✓          | ✓ (a thread)               |
 | Attach images and files to a chat                         | ✓                           | ✓          | —                          |
 | Queued follow-ups                                         | ✓                           | ✓          | —                          |
+| ⌘⇧B toggles the right panel                               | ✓                           | ✓          | —                          |
+| ⌘T opens a tab while focus is in the panel                | ✓ (start page)              | ✓ (chat)   | —                          |
 | Control + Tab returns to the most recently used panel tab | ✓ (chats and pages)         | ✓ (chats)  | —                          |
 | Mail and calendar tools (Claude, Codex)                   | ✓ (every mailbox)           | —          | —                          |
 | Theme tools: make, change and wear themes                 | ✓                           | —          | —                          |

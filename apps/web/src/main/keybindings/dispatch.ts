@@ -107,7 +107,19 @@ export function useKeybindingDispatcher(): void {
   useEffect(() => {
     getKeybindings();
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    // Menu accelerators and focused browser pages don't deliver DOM keydowns.
+    const off = window.desktopBridge.on("keybindings:keydown", (params) => {
+      const event = new KeyboardEvent("keydown", {
+        ...(params as KeyboardEventInit),
+        bubbles: true,
+        cancelable: true,
+      });
+      (document.activeElement ?? document.body).dispatchEvent(event);
+    });
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      off();
+    };
   }, []);
 }
 

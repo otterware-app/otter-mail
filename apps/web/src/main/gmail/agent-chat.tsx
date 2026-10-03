@@ -1534,11 +1534,11 @@ export function AgentChatPanel({
     conversations.filter((c) => c.turns.length > 0 || tabs.includes(c.id));
 
   /** A fresh chat, in a new tab beside the current one. */
-  const newChat = () => {
+  const newChat = (reuseEmpty = true) => {
     selectTab(null);
     setHistoryOpen(false);
     // An already-empty active session just refocuses — no empty duplicates.
-    if (active && active.turns.length === 0) {
+    if (reuseEmpty && active && active.turns.length === 0) {
       inputRef.current?.focus();
       return;
     }
@@ -1670,6 +1670,12 @@ export function AgentChatPanel({
   };
   useCommandHandlers({
     "agent.newChat": () => newChat(),
+    "agent.newTab": (event) => {
+      if (!(event.target instanceof Node) || !panelRef.current?.contains(event.target))
+        return false;
+      if (features.browser) newTab();
+      else newChat(false);
+    },
     "agent.previousTab": (event) => {
       if (!(event.target instanceof Node) || !panelRef.current?.contains(event.target))
         return false;
@@ -1835,7 +1841,7 @@ export function AgentChatPanel({
         {/* Right after the tabs, like a browser's new-tab button: with the
             browser, its start page (which offers a new chat too). */}
         {features.browser ? (
-          <HintTooltip label="New tab" hint="⌘T" side="bottom">
+          <HintTooltip label="New tab" shortcut="agent.newTab" side="bottom">
             <IconBtn label="New tab" className="size-8 shrink-0" onClick={newTab}>
               <PlusIcon className="size-4" />
             </IconBtn>

@@ -46,6 +46,7 @@ export const KEYBINDING_COMMANDS = [
   "commandPalette.toggle",
   "sidebar.toggle",
   "agent.toggle",
+  "agent.newTab",
   "agent.newChat",
   "agent.previousTab",
   "modelPicker.toggle",
@@ -143,9 +144,10 @@ const ON_MESSAGE = `${IN_MAIL} && messageOpen`;
 
 export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "mod+k", command: "commandPalette.toggle" },
-  // ⌘B / ⌘I mean bold / italic while typing.
+  // ⌘B means bold while typing.
   { key: "mod+b", command: "sidebar.toggle", when: OUTSIDE_FIELDS },
-  { key: "mod+i", command: "agent.toggle", when: OUTSIDE_FIELDS },
+  { key: "mod+shift+b", command: "agent.toggle", when: "!dialogOpen" },
+  { key: "mod+t", command: "agent.newTab", when: "!dialogOpen" },
   { key: "mod+shift+o", command: "agent.newChat", when: "!dialogOpen" },
   { key: "ctrl+tab", command: "agent.previousTab", when: "!dialogOpen" },
   { key: "mod+shift+m", command: "modelPicker.toggle", when: "agentOpen" },
