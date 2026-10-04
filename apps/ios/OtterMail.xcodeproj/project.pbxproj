@@ -6,9 +6,20 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXCopyFilesBuildPhase section */
+		0B0000000000000000000003 = {isa = PBXCopyFilesBuildPhase; buildActionMask = 2147483647; dstPath = ""; dstSubfolderSpec = 13; files = (0B0000000000000000000001, ); name = "Embed App Extensions"; runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXBuildFile section */
+		0B0000000000000000000001 = {isa = PBXBuildFile; fileRef = 0B0000000000000000000002; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		0B0000000000000000000012 /* MailDecoding.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B0000000000000000000011; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		0A0000000000000000000001 /* Otter Mail.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Otter Mail.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		0A0000000000000000000011 /* OtterMailTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OtterMailTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		0B0000000000000000000002 = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = OtterMailNotificationService.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		0B0000000000000000000011 /* MailDecoding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OtterMail/Imap/MailDecoding.swift; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXContainerItemProxy section */
@@ -19,6 +30,7 @@
 			remoteGlobalIDString = 0A0000000000000000000006;
 			remoteInfo = OtterMail;
 		};
+		0B0000000000000000000004 = {isa = PBXContainerItemProxy; containerPortal = 0A0000000000000000000009; proxyType = 1; remoteGlobalIDString = 0B0000000000000000000005; remoteInfo = OtterMailNotificationService; };
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -26,9 +38,11 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
+				OtterMail.entitlements,
 			);
 			target = 0A0000000000000000000006 /* OtterMail */;
 		};
+		0B0000000000000000000006 = {isa = PBXFileSystemSynchronizedBuildFileExceptionSet; membershipExceptions = (Info.plist, NotificationService.entitlements, ); target = 0B0000000000000000000005; };
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -45,6 +59,8 @@
 			path = OtterMailTests;
 			sourceTree = "<group>";
 		};
+        0B0000000000000000000007 = {isa = PBXFileSystemSynchronizedRootGroup; path = NotificationShared; sourceTree = "<group>"; };
+        0B0000000000000000000008 = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (0B0000000000000000000006, ); path = OtterMailNotificationService; sourceTree = "<group>"; };
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -62,6 +78,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		0B0000000000000000000009 = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -70,6 +87,8 @@
 			children = (
 				0A0000000000000000000002 /* OtterMail */,
 				0A0000000000000000000012 /* OtterMailTests */,
+				0B0000000000000000000007 /* NotificationShared */,
+				0B0000000000000000000008 /* OtterMailNotificationService */,
 				0A0000000000000000000005 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -79,6 +98,7 @@
 			children = (
 				0A0000000000000000000001 /* Otter Mail.app */,
 				0A0000000000000000000011 /* OtterMailTests.xctest */,
+				0B0000000000000000000002 /* NotificationService.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -93,13 +113,16 @@
 				0A0000000000000000000007 /* Sources */,
 				0A0000000000000000000003 /* Frameworks */,
 				0A0000000000000000000008 /* Resources */,
+				0B0000000000000000000003 /* Embed App Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				0B000000000000000000000A,
 			);
 			fileSystemSynchronizedGroups = (
 				0A0000000000000000000002 /* OtterMail */,
+				0B0000000000000000000007 /* NotificationShared */,
 			);
 			name = OtterMail;
 			productName = OtterMail;
@@ -127,6 +150,16 @@
 			productReference = 0A0000000000000000000011 /* OtterMailTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+        0B0000000000000000000005 /* OtterMailNotificationService */ = {
+            isa = PBXNativeTarget;
+            buildConfigurationList = 0B000000000000000000000B;
+            buildPhases = (0B000000000000000000000C, 0B0000000000000000000009, 0B000000000000000000000D, );
+            buildRules = (); dependencies = ();
+            fileSystemSynchronizedGroups = (0B0000000000000000000007, 0B0000000000000000000008, );
+            name = OtterMailNotificationService; productName = OtterMailNotificationService;
+            productReference = 0B0000000000000000000002;
+            productType = "com.apple.product-type.app-extension";
+        };
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -137,7 +170,9 @@
 				LastSwiftUpdateCheck = 2700;
 				LastUpgradeCheck = 2700;
 				TargetAttributes = {
+					0B0000000000000000000005 = {CreatedOnToolsVersion = 27.0; SystemCapabilities = {com.apple.ApplicationGroups.iOS = {enabled = 1; }; com.apple.Keychain = {enabled = 1; }; }; };
 					0A0000000000000000000006 = {
+						SystemCapabilities = {com.apple.Push = {enabled = 1; }; com.apple.ApplicationGroups.iOS = {enabled = 1; }; com.apple.Keychain = {enabled = 1; }; };
 						CreatedOnToolsVersion = 27.0;
 					};
 					0A0000000000000000000016 = {
@@ -162,6 +197,7 @@
 			targets = (
 				0A0000000000000000000006 /* OtterMail */,
 				0A0000000000000000000016 /* OtterMailTests */,
+				0B0000000000000000000005 /* OtterMailNotificationService */,
 			);
 		};
 /* End PBXProject section */
@@ -181,6 +217,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		0B000000000000000000000D = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -198,6 +235,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		0B000000000000000000000C = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (0B0000000000000000000012, ); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -206,6 +244,7 @@
 			target = 0A0000000000000000000006 /* OtterMail */;
 			targetProxy = 0A0000000000000000000018 /* PBXContainerItemProxy */;
 		};
+		0B000000000000000000000A = {isa = PBXTargetDependency; target = 0B0000000000000000000005; targetProxy = 0B0000000000000000000004; };
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
@@ -280,6 +319,9 @@
 				MARKETING_VERSION = 0.6.0;
 				GOOGLE_IOS_CLIENT_ID = 187875144740-tegr2te43tofcdogbr72tesmfcg3vbk3.apps.googleusercontent.com;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.otterware.mail.dev;
+                CODE_SIGN_ENTITLEMENTS = OtterMail/OtterMail.entitlements;
+                NOTIFICATION_APP_GROUP = group.dev.otterware.mail.dev.notifications;
+                APNS_ENVIRONMENT = development;
 				PRODUCT_NAME = "Otter Mail";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -318,6 +360,9 @@
 				MARKETING_VERSION = 0.6.0;
 				GOOGLE_IOS_CLIENT_ID = 187875144740-vu3ordog4vcqnn0nvh2o4jocvtbkbbdi.apps.googleusercontent.com;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.otterware.mail;
+                CODE_SIGN_ENTITLEMENTS = OtterMail/OtterMail.entitlements;
+                NOTIFICATION_APP_GROUP = group.dev.otterware.mail.notifications;
+                APNS_ENVIRONMENT = production;
 				PRODUCT_NAME = "Otter Mail";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -371,6 +416,50 @@
 			};
 			name = Release;
 		};
+        0B000000000000000000000E /* Debug */ = {
+            isa = XCBuildConfiguration;
+            buildSettings = {
+                APPLICATION_EXTENSION_API_ONLY = YES;
+                CODE_SIGN_ENTITLEMENTS = OtterMailNotificationService/NotificationService.entitlements;
+                CODE_SIGN_STYLE = Automatic;
+                DEVELOPMENT_TEAM = 838JVGY7W4;
+                CURRENT_PROJECT_VERSION = 1;
+                MARKETING_VERSION = 0.6.0;
+                GENERATE_INFOPLIST_FILE = YES;
+                INFOPLIST_FILE = OtterMailNotificationService/Info.plist;
+                GOOGLE_IOS_CLIENT_ID = 187875144740-tegr2te43tofcdogbr72tesmfcg3vbk3.apps.googleusercontent.com;
+                NOTIFICATION_APP_GROUP = group.dev.otterware.mail.dev.notifications;
+                PRODUCT_BUNDLE_IDENTIFIER = dev.otterware.mail.dev.notifications;
+                PRODUCT_NAME = "$(TARGET_NAME)";
+                SKIP_INSTALL = YES;
+                SWIFT_VERSION = 6.0;
+                TARGETED_DEVICE_FAMILY = 1;
+                LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../../Frameworks", );
+            };
+            name = Debug;
+        };
+        0B000000000000000000000F /* Release */ = {
+            isa = XCBuildConfiguration;
+            buildSettings = {
+                APPLICATION_EXTENSION_API_ONLY = YES;
+                CODE_SIGN_ENTITLEMENTS = OtterMailNotificationService/NotificationService.entitlements;
+                CODE_SIGN_STYLE = Manual; CODE_SIGN_IDENTITY = "Apple Distribution"; PROVISIONING_PROFILE_SPECIFIER = "Otter Mail Notifications App Store";
+                DEVELOPMENT_TEAM = 838JVGY7W4;
+                CURRENT_PROJECT_VERSION = 1;
+                MARKETING_VERSION = 0.6.0;
+                GENERATE_INFOPLIST_FILE = YES;
+                INFOPLIST_FILE = OtterMailNotificationService/Info.plist;
+                GOOGLE_IOS_CLIENT_ID = 187875144740-vu3ordog4vcqnn0nvh2o4jocvtbkbbdi.apps.googleusercontent.com;
+                NOTIFICATION_APP_GROUP = group.dev.otterware.mail.notifications;
+                PRODUCT_BUNDLE_IDENTIFIER = dev.otterware.mail.notifications;
+                PRODUCT_NAME = "$(TARGET_NAME)";
+                SKIP_INSTALL = YES;
+                SWIFT_VERSION = 6.0;
+                TARGETED_DEVICE_FAMILY = 1;
+                LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../../Frameworks", );
+            };
+            name = Release;
+        };
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -401,6 +490,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		0B000000000000000000000B = {isa = XCConfigurationList; buildConfigurations = (0B000000000000000000000E, 0B000000000000000000000F, ); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
 /* End XCConfigurationList section */
 	};
 	rootObject = 0A0000000000000000000009 /* Project object */;

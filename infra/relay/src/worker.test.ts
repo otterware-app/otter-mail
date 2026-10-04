@@ -11,10 +11,18 @@ import * as fs from "node:fs";
 import * as net from "node:net";
 import * as os from "node:os";
 import * as path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { createLocalJWKSet, exportJWK, generateKeyPair, jwtVerify, SignJWT } from "jose";
+import {
+  createLocalJWKSet,
+  exportJWK,
+  exportPKCS8,
+  generateKeyPair,
+  jwtVerify,
+  SignJWT,
+} from "jose";
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
 import { unstable_startWorker } from "wrangler";
 import { localConfig } from "../scripts/local-config.ts";
@@ -46,8 +54,44 @@ let persistDir: string;
 /** A mail server for the tunnel: greets, then echoes; `bye` makes it hang up, `stall` stop reading. */
 let mailServer: net.Server;
 let mailTarget: string;
+let apnsMock: http.Server;
+const apnsDelays = new Map<string, number>();
+const notifications: {
+  token: string;
+  body: Record<string, unknown>;
+  headers: http.IncomingHttpHeaders;
+}[] = [];
 
 beforeAll(async () => {
+  const apple = await generateKeyPair("ES256", { extractable: true });
+  const appleKey = await exportPKCS8(apple.privateKey);
+  apnsMock = http.createServer((req, res) => {
+    if (req.method !== "POST" || !/^\/3\/device\/[a-f0-9]{64,512}$/.test(req.url ?? "")) {
+      res.writeHead(404).end();
+      return;
+    }
+    let data = "";
+    req.on("data", (chunk) => (data += chunk));
+    req.on("end", () => {
+      let body: Record<string, unknown>;
+      try {
+        body = JSON.parse(data) as Record<string, unknown>;
+      } catch {
+        res.writeHead(400).end();
+        return;
+      }
+      const token = req.url!.split("/").at(-1)!;
+      notifications.push({
+        token,
+        body,
+        headers: req.headers,
+      });
+      const delay = apnsDelays.get(token);
+      if (delay) setTimeout(() => res.writeHead(200).end(), delay);
+      else res.writeHead(200).end();
+    });
+  });
+  await new Promise<void>((resolve) => apnsMock.listen(0, "127.0.0.1", resolve));
   const pair = await generateKeyPair("RS256");
   signingKey = pair.privateKey;
   const publicJwk = { ...(await exportJWK(pair.publicKey)), kid: "test", alg: "RS256" };
@@ -110,6 +154,15 @@ beforeAll(async () => {
   worker = await unstable_startWorker({
     config,
     bindings: {
+      APNS_KEY_ID: { type: "plain_text", value: "TESTKEY123" },
+      APNS_TEAM_ID: { type: "plain_text", value: "TESTTEAM12" },
+      APNS_PRIVATE_KEY: { type: "plain_text", value: appleKey },
+      APNS_SANDBOX_TOPIC: { type: "plain_text", value: "dev.otterware.mail.dev" },
+      APNS_PRODUCTION_TOPIC: { type: "plain_text", value: "dev.otterware.mail" },
+      APNS_TEST_ORIGIN: {
+        type: "plain_text",
+        value: `http://127.0.0.1:${(apnsMock.address() as net.AddressInfo).port}`,
+      },
       IDENTITY_MODE: { type: "plain_text", value: "legacy" },
       GOOGLE_CLIENT_ID: { type: "plain_text", value: CLIENT_ID },
       GOOGLE_IOS_CLIENT_ID: {
@@ -145,6 +198,7 @@ afterAll(async () => {
   await worker?.dispose();
   jwks?.close();
   mailServer?.close();
+  apnsMock?.close();
   fs.rmSync(persistDir, { recursive: true, force: true });
 });
 
@@ -1448,4 +1502,184 @@ describe("Otter identity provider", () => {
     expect(response.status).toBe(403);
     expect((await call("GET", "/v1/me", token)).status).toBe(200);
   });
+});
+
+/** Read the actual workerd D1, including foreign-key cleanup after lifecycle hooks. */
+function pushRows(table: "push_devices" | "push_mailboxes", userId?: string) {
+  const file = fs
+    .readdirSync(persistDir, { recursive: true })
+    .find((file) => String(file).includes("d1/") && String(file).endsWith(".sqlite"));
+  if (!file) throw new Error("Test D1 not found");
+  const db = new DatabaseSync(path.join(persistDir, String(file)), { readOnly: true });
+  try {
+    return db
+      .prepare(`SELECT * FROM ${table}${userId ? " WHERE user_id=?" : ""}`)
+      .all(...(userId ? [userId] : []));
+  } finally {
+    db.close();
+  }
+}
+
+const pushRegistration = (token: string, mailboxes: string[]) => ({
+  token,
+  mailboxes,
+  topic: "dev.otterware.mail.dev",
+  environment: "sandbox",
+  mode: "inbox",
+});
+
+describe("iPhone push registration and lifecycle", () => {
+  it("requires a session, linked Gmail ownership, allowed topic/environment and metadata-only input", async () => {
+    const owner = await signIn("native-push-owner@example.com");
+    const stranger = await signIn("native-push-stranger@example.com");
+    await link(owner.token, "native-inbox@example.com");
+    const body = pushRegistration("a".repeat(64), ["native-inbox@example.com"]);
+    expect((await call("PUT", "/v1/push/device", undefined, body)).status).toBe(401);
+    expect((await call("PUT", "/v1/push/device", stranger.token, body)).status).toBe(403);
+    expect(
+      (await call("PUT", "/v1/push/device", owner.token, { ...body, environment: "production" }))
+        .status,
+    ).toBe(400);
+    expect(
+      (await call("PUT", "/v1/push/device", owner.token, { ...body, subject: "private" })).status,
+    ).toBe(400);
+    expect((await call("PUT", "/v1/push/device", owner.token, body)).status).toBe(204);
+    expect(pushRows("push_devices", owner.user.id)).toHaveLength(1);
+    await call("DELETE", "/v1/push/device", stranger.token);
+    expect(pushRows("push_devices", owner.user.id)).toHaveLength(1);
+    await call("DELETE", "/v1/push/device", owner.token);
+    expect(pushRows("push_devices", owner.user.id)).toHaveLength(0);
+    expect(pushRows("push_mailboxes", owner.user.id)).toHaveLength(0);
+  });
+
+  it("rotates tokens and transfers a phone to another account without retaining the old owner's routes", async () => {
+    const first = await signIn("push-transfer-first@example.com");
+    const second = await signIn("push-transfer-second@example.com");
+    await link(first.token, "push-transfer-a@example.com");
+    await link(second.token, "push-transfer-b@example.com");
+    const token = "b".repeat(64),
+      rotated = "c".repeat(64);
+    await call(
+      "PUT",
+      "/v1/push/device",
+      first.token,
+      pushRegistration(token, ["push-transfer-a@example.com"]),
+    );
+    await call(
+      "PUT",
+      "/v1/push/device",
+      first.token,
+      pushRegistration(rotated, ["push-transfer-a@example.com"]),
+    );
+    expect(pushRows("push_devices", first.user.id).map((row) => row.token)).toEqual([rotated]);
+    await call(
+      "PUT",
+      "/v1/push/device",
+      second.token,
+      pushRegistration(rotated, ["push-transfer-b@example.com"]),
+    );
+    expect(pushRows("push_devices", first.user.id)).toHaveLength(0);
+    expect(pushRows("push_mailboxes", first.user.id)).toHaveLength(0);
+    expect(pushRows("push_devices", second.user.id)).toHaveLength(1);
+  });
+
+  it("unlinks routes and removes registrations on sign-out, remote revocation, and account deletion", async () => {
+    const owner = await signIn("push-cleanup@example.com", "push-cleanup-sub");
+    const other = await signIn("push-cleanup@example.com", "push-cleanup-sub");
+    await link(owner.token, "push-cleanup-mail@example.com");
+    await call(
+      "PUT",
+      "/v1/push/device",
+      other.token,
+      pushRegistration("d".repeat(64), ["push-cleanup-mail@example.com"]),
+    );
+    await call("DELETE", "/v1/accounts/push-cleanup-mail@example.com", owner.token);
+    expect(pushRows("push_mailboxes", owner.user.id)).toHaveLength(0);
+    await link(owner.token, "push-cleanup-mail@example.com");
+    await call(
+      "PUT",
+      "/v1/push/device",
+      other.token,
+      pushRegistration("d".repeat(64), ["push-cleanup-mail@example.com"]),
+    );
+    const sessions = (await (await call("GET", "/v1/auth/list-sessions", owner.token)).json()) as {
+      token: string;
+    }[];
+    const target = sessions.find((s) => s.token !== owner.token.split(".")[0])!;
+    expect(
+      (await call("POST", "/v1/auth/revoke-session", owner.token, { token: target.token })).status,
+    ).toBe(200);
+    expect(pushRows("push_devices", owner.user.id)).toHaveLength(0);
+    expect(
+      (await call("PUT", "/v1/push/device", other.token, pushRegistration("d".repeat(64), [])))
+        .status,
+    ).toBe(401);
+    await call(
+      "PUT",
+      "/v1/push/device",
+      owner.token,
+      pushRegistration("e".repeat(64), ["push-cleanup-mail@example.com"]),
+    );
+    await call("POST", "/v1/auth/sign-out", owner.token, {});
+    expect(pushRows("push_devices", owner.user.id)).toHaveLength(0);
+    const deleting = await signIn("push-deletion@example.com");
+    await link(deleting.token, "push-deletion-mail@example.com");
+    await call(
+      "PUT",
+      "/v1/push/device",
+      deleting.token,
+      pushRegistration("f".repeat(64), ["push-deletion-mail@example.com"]),
+    );
+    await call("POST", "/v1/auth/delete-user", deleting.token, {});
+    expect(pushRows("push_devices", deleting.user.id)).toHaveLength(0);
+    expect(pushRows("push_mailboxes", deleting.user.id)).toHaveLength(0);
+  });
+
+  it(
+    "coalesces bursts/repeated deliveries in the real UserHub and obeys Off before delivery",
+    { timeout: 20_000 },
+    async () => {
+      const owner = await signIn("push-delivery@example.com");
+      const email = "push-delivery-mail@example.com",
+        token = "ab".repeat(32);
+      apnsDelays.set(token, 1500);
+      await link(owner.token, email);
+      await call("PUT", "/v1/push/device", owner.token, pushRegistration(token, [email]));
+      await push({ emailAddress: email, historyId: "9007199254740993" });
+      await push({ emailAddress: email, historyId: "9007199254740994" });
+      await push({ emailAddress: email, historyId: "9007199254740994" });
+      await push({ emailAddress: email, historyId: "9007199254740992" });
+      await expect
+        .poll(() => notifications.filter((n) => n.token === token).length, { timeout: 10_000 })
+        .toBe(1);
+      // The provider is still responding: a new event must wait a full interval after that submission.
+      await push({ emailAddress: email, historyId: "9007199254740995" });
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+      expect(notifications.filter((n) => n.token === token)).toHaveLength(1);
+      apnsDelays.delete(token);
+      const delivered = notifications.find((n) => n.token === token)!;
+      expect(delivered.body.otter).toEqual({
+        version: 1,
+        userId: owner.user.id,
+        email,
+        historyId: "9007199254740994",
+        mode: "inbox",
+      });
+      expect(delivered.headers["apns-topic"]).toBe("dev.otterware.mail.dev");
+      expect(JSON.stringify(delivered.body)).not.toMatch(
+        /subject|snippet|access_token|refresh_token|badge/,
+      );
+      const off = await signIn("push-off@example.com");
+      const offEmail = "push-off-mail@example.com",
+        offToken = "cd".repeat(32);
+      await link(off.token, offEmail);
+      await call("PUT", "/v1/push/device", off.token, pushRegistration(offToken, [offEmail]));
+      await push({ emailAddress: offEmail, historyId: "10" });
+      await call("PUT", "/v1/preferences", off.token, {
+        preferences: { settings: { notificationsMode: "off" } },
+      });
+      await new Promise((resolve) => setTimeout(resolve, 6000));
+      expect(notifications.filter((n) => n.token === offToken)).toHaveLength(0);
+    },
+  );
 });

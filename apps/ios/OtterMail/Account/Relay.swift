@@ -56,6 +56,12 @@ final class Relay {
 
     var isSignedIn: Bool { token != nil }
 
+    private struct PendingSignOut: Codable, Equatable { var token: String; var origin: String }
+    private static let pendingSignOutKey = "otter-pending-sign-outs"
+    private var retryingSignOuts = false
+
+    init() { Task { await retrySignOuts() } }
+
     // ── Session ──────────────────────────────────────────────────────────────
 
     /** Signs in with a Google ID token, as the Mac app does; keeps the session. */
@@ -73,8 +79,44 @@ final class Relay {
 
     /** Ends the session on the relay when it can, and forgets it here. */
     func signOut() async {
-        _ = try? await send("POST", "/v1/auth/sign-out", body: [String: String]())
+        guard let token else { return }
+        let entry = PendingSignOut(token: token, origin: baseURL.absoluteString)
         forget()
+        // Persist before the request so background suspension can't lose the revocation.
+        var pending = Self.pendingSignOuts
+        if !pending.contains(entry) { pending.append(entry) }
+        Self.savePendingSignOuts(pending)
+        await retrySignOuts()
+    }
+
+    /** Offline sign-out forgets local access immediately and retries server revocation on later launches/foregrounding. */
+    func retrySignOuts() async {
+        guard !retryingSignOuts else { return }
+        retryingSignOuts = true
+        defer { retryingSignOuts = false }
+        for entry in Self.pendingSignOuts {
+            guard let origin = URL(string: entry.origin), let url = URL(string: "/v1/auth/sign-out", relativeTo: origin) else { continue }
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.timeoutInterval = 8
+            request.setValue("Bearer \(entry.token)", forHTTPHeaderField: "Authorization")
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = Data("{}".utf8)
+            guard let (_, response) = try? await URLSession.shared.data(for: request),
+                  let status = (response as? HTTPURLResponse)?.statusCode,
+                  (200..<300).contains(status) || status == 401 else { continue }
+            Self.savePendingSignOuts(Self.pendingSignOuts.filter { $0 != entry })
+        }
+    }
+
+    private static var pendingSignOuts: [PendingSignOut] {
+        guard let value = Keychain.get(pendingSignOutKey), let data = value.data(using: .utf8) else { return [] }
+        return (try? JSONDecoder().decode([PendingSignOut].self, from: data)) ?? []
+    }
+
+    private static func savePendingSignOuts(_ entries: [PendingSignOut]) {
+        let value = entries.isEmpty ? nil : (try? JSONEncoder().encode(entries)).flatMap { String(data: $0, encoding: .utf8) }
+        Keychain.set(pendingSignOutKey, value, thisDeviceOnly: true)
     }
 
     private func forget() {
@@ -140,6 +182,14 @@ final class Relay {
     }
 
     // ── Preferences ──────────────────────────────────────────────────────────
+
+    func registerPush(token: String, mode: String, mailboxes: [String]) async throws {
+        struct Body: Encodable { var token: String; var topic: String; var environment: String; var mode: String; var mailboxes: [String] }
+        let environment = Bundle.main.object(forInfoDictionaryKey: "APNsEnvironment") as? String
+        guard let environment, let topic = Bundle.main.bundleIdentifier else { throw Failure(status: 0, message: "Push isn't configured for this build.") }
+        _ = try await send("PUT", "/v1/push/device", body: Body(token: token, topic: topic,
+            environment: environment == "development" ? "sandbox" : "production", mode: mode, mailboxes: mailboxes))
+    }
 
     /** The account's preference sections (`ui`, `settings`, `assistant`, …) as JSON, and the Hermes key. */
     func preferences() async throws -> (sections: [String: Any], hermesKey: String?) {
@@ -246,7 +296,9 @@ final class Relay {
         _ method: String, _ route: String, data: Data? = nil, authorized: Bool = true
     ) async throws -> (Data, HTTPURLResponse) {
         var request = URLRequest(url: URL(string: route, relativeTo: baseURL)!)
+        let requestToken = token
         request.httpMethod = method
+        request.timeoutInterval = 15
         request.setValue("Otter Mail/\(Bundle.main.version) (iPhone)", forHTTPHeaderField: "User-Agent")
         if let data {
             request.httpBody = data
@@ -261,7 +313,7 @@ final class Relay {
         guard (200..<300).contains(http.statusCode) else {
             let message = (try? JSONSerialization.jsonObject(with: body) as? [String: Any])
                 .flatMap { ($0["error"] as? String) ?? ($0["message"] as? String) }
-            if http.statusCode == 401, authorized, token != nil {
+            if http.statusCode == 401, authorized, token != nil, token == requestToken {
                 forget()
                 onSignedOut()
             }

@@ -6,8 +6,8 @@ import Foundation
  * Google sign-in, per mailbox, as the Mac app does it: the installed-app flow
  * (RFC 8252) with PKCE, in a browser sheet. The "iOS" OAuth client has no
  * secret and Google returns to its reversed id. Refresh tokens stay in the
- * Keychain and never leave the phone; access tokens are kept in memory and
- * renewed a minute before they expire.
+ * Keychain and never leave the phone; access tokens are shared with the
+ * notification extension on-device and renewed a minute before they expire.
  */
 @MainActor
 final class GoogleAuth {
@@ -27,11 +27,7 @@ final class GoogleAuth {
         "openid", "email", "profile",
     ]
 
-    struct Tokens {
-        var accessToken: String
-        var idToken: String?
-        var expiresAt: Date
-    }
+    typealias Tokens = GoogleCredentials.Tokens
 
     struct Profile: Decodable {
         var email: String
@@ -56,13 +52,17 @@ final class GoogleAuth {
 
     private var tokens: [String: Tokens] = [:]
     private var refreshing: [String: Task<Tokens, Error>] = [:]
+    private var credentialVersions: [String: UUID] = [:]
     private let presenter = Presenter()
 
     private static var redirectScheme: String { clientID.split(separator: ".").reversed().joined(separator: ".") }
     private static var redirectURI: String { "\(redirectScheme):/oauth2redirect" }
     private static func refreshKey(_ email: String) -> String { "google-refresh-token:\(email.lowercased())" }
 
-    func isSignedIn(_ email: String) -> Bool { Keychain.get(Self.refreshKey(email)) != nil }
+    func isSignedIn(_ email: String) -> Bool {
+        Keychain.migrateGoogle(email)
+        return Keychain.get(Self.refreshKey(email)) != nil
+    }
 
     /** Opens Google's sign-in; keeps the refresh token for the address it signed in. */
     func signIn(loginHint: String? = nil) async throws -> (profile: Profile, tokens: Tokens) {
@@ -99,17 +99,21 @@ final class GoogleAuth {
         guard let refreshToken = response.refresh_token else {
             throw Failure.google("Google did not return a refresh token. Try again.")
         }
-        let tokens = Tokens(response)
+        let tokens = response.tokens
         let profile = try await Self.profile(accessToken: tokens.accessToken)
-        Keychain.set(Self.refreshKey(profile.email), refreshToken)
+        try await PushState.locked("oauth:" + profile.email) {
+            guard Keychain.set(Self.refreshKey(profile.email), refreshToken) else { throw Failure.google("Couldn't save the Google sign-in on this iPhone.") }
+            credentialVersions[profile.email.lowercased()] = UUID()
+        }
         self.tokens[profile.email.lowercased()] = tokens
         return (profile, tokens)
     }
 
     /** A fresh access token for the mailbox (`force`: not the one Gmail just refused). */
     func accessToken(_ email: String, force: Bool = false) async throws -> String {
+        guard isSignedIn(email) else { throw Failure.signedOut(email) }
         if !force, let cached = tokens[email.lowercased()], cached.expiresAt > .now { return cached.accessToken }
-        return try await refresh(email).accessToken
+        return try await refresh(email, force: force).accessToken
     }
 
     /** A fresh ID token, the proof the relay asks for to link a mailbox. */
@@ -120,58 +124,64 @@ final class GoogleAuth {
     }
 
     /** Forgets the mailbox here and asks Google to end its sign-in. */
+    func forget(_ email: String) -> Task<String?, Never> {
+        let key = email.lowercased()
+        let version = credentialVersions[key]
+        refreshing[key]?.cancel()
+        tokens[key] = nil
+        // Deletion and refresh/rotation share the same cross-process lock. A later sign-in owns a new version.
+        return Task {
+            try? await PushState.locked("oauth:" + email) {
+                guard credentialVersions[key] == version else { return nil as String? }
+                let refreshToken = Keychain.get(Self.refreshKey(email))
+                GoogleCredentials.forget(email)
+                return refreshToken
+            }
+        }
+    }
+
     func signOut(_ email: String) async {
-        let key = Self.refreshKey(email)
-        if let refreshToken = Keychain.get(key) {
+        let refreshToken = await forget(email).value
+        await revoke(refreshToken)
+    }
+
+    func revoke(_ refreshToken: String?) async {
+        if let refreshToken {
             var request = URLRequest(url: URL(string: "https://oauth2.googleapis.com/revoke")!)
             request.httpMethod = "POST"
             request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
             request.httpBody = Self.form(["token": refreshToken])
             _ = try? await URLSession.shared.data(for: request)
         }
-        Keychain.set(key, nil)
-        tokens[email.lowercased()] = nil
     }
 
-    private func refresh(_ email: String) async throws -> Tokens {
+    private func refresh(_ email: String, force: Bool = false) async throws -> Tokens {
         let key = email.lowercased()
+        let version = credentialVersions[key]
         if let running = refreshing[key] { return try await running.value }
         let task = Task { () throws -> Tokens in
-            guard let refreshToken = Keychain.get(Self.refreshKey(email)) else { throw Failure.signedOut(email) }
+            guard isSignedIn(email) else { throw Failure.signedOut(email) }
             do {
-                return Tokens(try await Self.tokenRequest(["grant_type": "refresh_token", "refresh_token": refreshToken]))
-            } catch Failure.google("invalid_grant") {
-                Keychain.set(Self.refreshKey(email), nil)
+                return try await GoogleCredentials.refresh(email, force: force)
+            } catch GoogleCredentials.Failure.revoked {
                 throw Failure.signedOut(email)
             }
         }
         refreshing[key] = task
         defer { refreshing[key] = nil }
         let fresh = try await task.value
+        try Task.checkCancellation()
+        guard credentialVersions[key] == version, isSignedIn(email) else { throw Failure.signedOut(email) }
         tokens[key] = fresh
         return fresh
     }
 
     // ── Google's endpoints ───────────────────────────────────────────────────
 
-    fileprivate struct TokenResponse: Decodable {
-        var access_token: String?
-        var expires_in: Double?
-        var refresh_token: String?
-        var id_token: String?
-        var error: String?
-    }
-
-    private static func tokenRequest(_ params: [String: String]) async throws -> TokenResponse {
-        var request = URLRequest(url: URL(string: "https://oauth2.googleapis.com/token")!)
-        request.httpMethod = "POST"
-        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-        request.httpBody = form(params.merging(["client_id": clientID]) { a, _ in a })
-        let (data, _) = try await URLSession.shared.data(for: request)
-        let response = try JSONDecoder().decode(TokenResponse.self, from: data)
-        if let error = response.error { throw Failure.google(error) }
-        guard response.access_token != nil else { throw Failure.google("Google didn't return a token.") }
-        return response
+    private static func tokenRequest(_ params: [String: String]) async throws -> GoogleCredentials.Response {
+        do { return try await GoogleCredentials.request(params) }
+        catch GoogleCredentials.Failure.revoked { throw Failure.google("Google sign-in expired. Try again.") }
+        catch { throw Failure.google("Couldn't reach Google to complete sign-in. Try again.") }
     }
 
     private static func profile(accessToken: String) async throws -> Profile {
@@ -215,16 +225,6 @@ final class GoogleAuth {
             let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
             return scenes.flatMap(\.windows).first(where: \.isKeyWindow) ?? ASPresentationAnchor(windowScene: scenes[0])
         }
-    }
-}
-
-private extension GoogleAuth.Tokens {
-    init(_ response: GoogleAuth.TokenResponse) {
-        self.init(
-            accessToken: response.access_token ?? "",
-            idToken: response.id_token,
-            expiresAt: .now.addingTimeInterval((response.expires_in ?? 3600) - 60)
-        )
     }
 }
 

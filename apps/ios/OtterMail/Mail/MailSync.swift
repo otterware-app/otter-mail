@@ -24,6 +24,8 @@ final class MailSync {
     @ObservationIgnored private var cacheLoad: Task<Void, Never>?
     @ObservationIgnored private var forgotten: Set<String> = []
     private(set) var loadingCache = false
+    /** Successfully registered Gmail mailboxes use APNs as the sole alert source. */
+    var pushMailboxes: Set<String> = []
     @ObservationIgnored private var stopped = false
     /** Mailboxes with a provider call under way, and the calls waiting their turn. */
     private var busy: Set<String> = []
@@ -182,6 +184,17 @@ final class MailSync {
         do {
             let before = Dictionary(store.allThreads(of: email).map { ($0.id, $0) }) { a, _ in a }
             let delta = try await run(email) { provider, state, known in try await provider.sync(&state, known: known) }
+            if store.mailbox(email)?.imap == nil, let historyID = states[email]?.historyID,
+               let config = PushState.configuration(), config.mailboxes.contains(email.lowercased()) {
+                try? await PushState.locked("notification:" + email) {
+                    guard PushState.configuration()?.userId == config.userId else { return }
+                    let cursor = PushState.cursor(email)
+                    // APNs owns its cursor once registered: a WebSocket/background sync must not consume its pending additions.
+                    if cursor?.userId != config.userId || (!pushMailboxes.contains(email.lowercased()) && GmailNotification.newer(historyID, than: cursor?.historyId ?? "0")) {
+                        try PushState.save(.init(userId: config.userId, historyId: historyID), email: email)
+                    }
+                }
+            }
             if notify { await announce(delta.threads, before: before) }
             let provider = provider(email)
             let labels = try await provider.labels()
@@ -212,8 +225,8 @@ final class MailSync {
     // ── Live ─────────────────────────────────────────────────────────────────
 
     /** Keeps new mail coming while the app is open (Gmail's pushes through the relay, IMAP's IDLE). */
-    func watch(pushTopic: String?) async {
-        for mailbox in store.shownMailboxes where !mailbox.signedOut && watching[mailbox.email] == nil {
+    func watch(pushTopic: String?, gmailOnly: Bool = false) async {
+        for mailbox in store.shownMailboxes where !mailbox.signedOut && watching[mailbox.email] == nil && (!gmailOnly || mailbox.imap == nil) {
             let email = mailbox.email
             var task: Task<Void, Never>?
             _ = try? await run(email) { provider, state, _ in
@@ -385,8 +398,11 @@ final class MailSync {
     /** New mail found by sync, as Settings › Notifications says (core's notifier.ts). */
     private func announce(_ threads: [MailThread], before: [String: MailThread]) async {
         let mode = store.preferences.notifications
-        guard mode != .off else { return }
+        guard mode != .off, !stopped, !Task.isCancelled else { return }
         for thread in threads {
+            guard !stopped, !Task.isCancelled, store.preferences.notifications != .off else { return }
+            guard !forgotten.contains(thread.mailbox), store.mailbox(thread.mailbox) != nil else { continue }
+            if pushMailboxes.contains(thread.mailbox.lowercased()) { continue }
             let known = Set(before[thread.id]?.messages.map(\.id) ?? [])
             let arrived = thread.messages.filter { !known.contains($0.id) && $0.unread && !$0.draft }
             guard let message = arrived.last else { continue }
@@ -397,7 +413,7 @@ final class MailSync {
             content.body = message.snippet
             content.sound = .default
             content.threadIdentifier = thread.id
-            content.userInfo = ["thread": thread.id]
+            content.userInfo = ["thread": thread.id, "mailbox": thread.mailbox]
             try? await UNUserNotificationCenter.current().add(
                 UNNotificationRequest(identifier: message.id, content: content, trigger: nil)
             )

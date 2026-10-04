@@ -52,6 +52,28 @@ export interface MeResponse {
   pushTopic: string;
 }
 
+/** `PUT /v1/push/device`: replaces this authenticated session's iPhone registration.
+ * Only already-linked Gmail mailboxes are accepted. No Gmail credentials or mail content.
+ * `DELETE /v1/push/device` removes it. A token can belong to only one session per topic/environment.
+ */
+export interface PutPushDeviceRequest {
+  token: string;
+  topic: string;
+  environment: "sandbox" | "production";
+  mode: "off" | "inbox" | "all";
+  mailboxes: string[];
+}
+
+/** APNs custom payload; the extension adds mail content and thread/message IDs only on-device. */
+export interface MailPushMetadata {
+  version: 1;
+  userId: string;
+  email: string;
+  historyId: string;
+  /** The more restrictive registered/account mode; no mail-dependent filtering on the server. */
+  mode: "inbox" | "all";
+}
+
 /**
  * `GET /v1/accounts?providers=gmail,imap`: the linked mailboxes of the
  * providers named. Without `providers` it lists Gmail accounts only: builds

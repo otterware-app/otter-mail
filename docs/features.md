@@ -176,13 +176,20 @@ These are Otter Mail actions, separate from Gmail's own scheduled and snoozed fo
 
 ## Notifications & live mail
 
-| Feature                                                    | Mac                          | Web                     | iPhone                              |
-| ---------------------------------------------------------- | ---------------------------- | ----------------------- | ----------------------------------- |
-| New-mail notifications (Off / Inbox / All), click opens it | ✓                            | ✓ (browser)             | ✓ (local, from syncs; no APNs push) |
-| Gmail push via relay                                       | ✓ (with an Otter account)    | ✓                       | while open                          |
-| IMAP IDLE                                                  | ✓ (while running)            | ✓ (while a tab is open) | while open                          |
-| Background sync                                            | ✓ (15 s – 15 min, or manual) | ✓ (while a tab is open) | BGAppRefresh, ≥ 15 min              |
-| Unread badge                                               | Dock                         | tab title, app badge    | app icon                            |
+| Feature                                                    | Mac                          | Web                     | iPhone                             |
+| ---------------------------------------------------------- | ---------------------------- | ----------------------- | ---------------------------------- |
+| New-mail notifications (Off / Inbox / All), click opens it | ✓                            | ✓ (browser)             | ✓ (private Gmail APNs; local IMAP) |
+| Gmail push via relay                                       | ✓ (with an Otter account)    | ✓                       | ✓ (WebSocket + private APNs)       |
+| IMAP IDLE                                                  | ✓ (while running)            | ✓ (while a tab is open) | while open                         |
+| Background sync                                            | ✓ (15 s – 15 min, or manual) | ✓ (while a tab is open) | BGAppRefresh, ≥ 15 min             |
+| Unread badge                                               | Dock                         | tab title, app badge    | app icon                           |
+
+iPhone Gmail push sends only mailbox-change markers through Otter/APNs. Sender, subject and
+preview are fetched directly from Gmail and filled in on the phone. Inbox/All filter enriched
+content; ordinary notification extensions cannot suppress submitted alerts, so read/label
+changes, offline/timeout or filter misses can show “Mailbox updated”. Off stops future server
+submissions once synced. Watches need renewal within seven days; an unopened app can lose push
+until its next open. See [iPhone push behavior and setup](../apps/ios/README.md#private-gmail-push).
 
 ## Offline & sync
 

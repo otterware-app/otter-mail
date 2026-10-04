@@ -64,6 +64,8 @@
     "PUSH_TOPIC": "projects/otter-mail/topics/gmail-push",
     "PUSH_AUDIENCE": "https://relay.mail.otterware.app/push/gmail",
     "PUSH_SERVICE_ACCOUNT": "gmail-push-relay@otter-mail.iam.gserviceaccount.com",
+    "APNS_SANDBOX_TOPIC": "dev.otterware.mail.dev",
+    "APNS_PRODUCTION_TOPIC": "dev.otterware.mail",
   },
   "observability": { "enabled": true },
 }

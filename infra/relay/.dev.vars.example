@@ -1,0 +1,12 @@
+# Copy to .dev.vars (ignored). These are names/placeholders, never live credentials.
+BETTER_AUTH_SECRET=
+GOOGLE_WEB_CLIENT_SECRET=
+
+# Optional iPhone push. Without these, registration returns 503 and the phone keeps local alerts.
+APNS_TEAM_ID=
+APNS_KEY_ID=
+# PKCS#8 .p8 contents; wrangler secret put APNS_PRIVATE_KEY < /path/to/AuthKey.p8 for deployed environments.
+APNS_PRIVATE_KEY=
+# Fixed allowed application topics; not the extension bundle ID.
+APNS_SANDBOX_TOPIC=dev.otterware.mail.dev
+APNS_PRODUCTION_TOPIC=dev.otterware.mail

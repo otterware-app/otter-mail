@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import UserNotifications
+import UIKit
 
 /**
  * Who's using the app and with which mail: the demo, or an Otter account
@@ -22,7 +23,13 @@ final class Session {
     /** Set while a sign-in sheet or first sync is running, with what it's doing. */
     private(set) var busy: String?
     /** A thread to open (from a notification). */
-    var opening: String?
+    var opening: NotificationDestination?
+
+    struct NotificationDestination: Equatable {
+        var userId: String?
+        var email: String?
+        var thread: String?
+    }
 
     let preferences: Preferences
     let agent = Agent()
@@ -34,6 +41,9 @@ final class Session {
     /** The account's `ui` and `settings` sections as last seen, so writes keep the keys only other apps have. */
     @ObservationIgnored private var remoteSections: [String: [String: Any]] = [:]
     @ObservationIgnored private var pushingPreferences: Task<Void, Never>?
+    @ObservationIgnored private var pushingRegistration: Task<Void, Never>?
+    @ObservationIgnored private var registeringPush = false
+    @ObservationIgnored private var apnsToken: String? = UserDefaults.standard.string(forKey: "apns:token")
 
     private static let userKey = "otter:user"
     private static let demoKey = "otter:demo"
@@ -57,7 +67,7 @@ final class Session {
         agent.relay = relay
         agent.mailStore = { [weak self] in self?.store }
         Task { [agent] in await agent.check() }
-        if case .signedIn = state { startLive() }
+        if case .signedIn = state { startLive() } else { PushState.configure(nil) }
     }
 
     var user: Relay.User? {
@@ -67,6 +77,7 @@ final class Session {
     // ── Starting ─────────────────────────────────────────────────────────────
 
     func tryDemo() {
+        PushState.configure(nil)
         UserDefaults.standard.set(true, forKey: Self.demoKey)
         store = .demo(preferences: preferences)
         state = .demo
@@ -97,6 +108,8 @@ final class Session {
         let cached = (try? JSONDecoder().decode([Mailbox].self, from: UserDefaults.standard.data(forKey: "otter:mailboxes") ?? Data())) ?? []
         for mailbox in cached { store.upsert(mailbox: mailbox) }
         sync.loadCache(for: cached.map(\.email))
+        if let user { sync.pushMailboxes = Set(UserDefaults.standard.stringArray(forKey: "push:mailboxes:" + user.id) ?? []) }
+        configurePush()
         Task { await refreshAccount() }
     }
 
@@ -117,6 +130,8 @@ final class Session {
             await currentSync.syncAll()
             guard !Task.isCancelled, sync === currentSync else { return }
             await currentSync.watch(pushTopic: pushTopic)
+            await updatePushRegistration()
+            await requestNotifications()
             await updateBadge()
         }
         refreshing = task
@@ -153,7 +168,14 @@ final class Session {
     /** A background refresh: catch up and say what's new. */
     func backgroundRefresh() async {
         guard case .signedIn = state else { return }
+        if let account = try? await relay.me() { pushTopic = account.pushTopic }
+        guard case .signedIn = state else { return }
+        await pullAccounts()
+        await pullPreferences()
+        guard case .signedIn = state else { return }
         await sync?.syncAll(notify: true)
+        await sync?.watch(pushTopic: pushTopic, gmailOnly: true)
+        await updatePushRegistration()
         await updateBadge()
     }
 
@@ -287,15 +309,22 @@ final class Session {
 
     /** Forgets the mailbox's sign-in here: Google's (and asks Google to end it), or the IMAP password. */
     private func signOut(_ mailbox: Mailbox) async {
-        if mailbox.imap != nil {
-            ImapProvider.setPassword(nil, for: mailbox.email)
-        } else {
-            await google.signOut(mailbox.email)
+        let userId = user?.id
+        let revocation = mailbox.imap == nil ? google.forget(mailbox.email) : nil
+        if mailbox.imap != nil { ImapProvider.setPassword(nil, for: mailbox.email) }
+        configurePush()
+        if let userId {
+            try? await PushState.locked("notification:" + mailbox.email) {
+                if PushState.cursor(mailbox.email)?.userId == userId { try PushState.save(nil, email: mailbox.email) }
+            }
         }
+        if let revocation { await google.revoke(await revocation.value) }
     }
 
     private func pullAccounts() async {
+        guard let userId = user?.id else { return }
         guard let accounts = try? await relay.accounts() else { return }
+        guard user?.id == userId else { return }
         let linked = Set(accounts.map { $0.email.lowercased() })
         for account in accounts {
             let existing = store.mailbox(account.email)
@@ -323,6 +352,7 @@ final class Session {
             store.remove(mailbox: mailbox.email)
             sync?.forget(mailbox.email)
             await signOut(mailbox)
+            guard user?.id == userId else { return }
         }
         saveMailboxes()
     }
@@ -334,6 +364,7 @@ final class Session {
     private func saveMailboxes() {
         guard !store.isDemo else { return }
         UserDefaults.standard.set(try? JSONEncoder().encode(store.mailboxes), forKey: "otter:mailboxes")
+        configurePush()
     }
 
     /** The desktop's fallback color for a mailbox without one (account-style.ts). */
@@ -347,12 +378,24 @@ final class Session {
     // ── Preferences ──────────────────────────────────────────────────────────
 
     private func pullPreferences() async {
+        guard let userId = user?.id else { return }
         guard let (sections, hermesKey) = try? await relay.preferences() else { return }
+        guard user?.id == userId else { return }
         let ui = sections["ui"] as? [String: Any]
         let settings = sections["settings"] as? [String: Any]
         remoteSections["ui"] = ui ?? [:]
         remoteSections["settings"] = settings ?? [:]
-        preferences.apply(ui: ui ?? [:], settings: settings ?? [:])
+        let pendingMode = UserDefaults.standard.string(forKey: "push:pending-mode:" + userId)
+        var appliedSettings = settings ?? [:]
+        if let pendingMode { appliedSettings["notificationsMode"] = pendingMode }
+        preferences.apply(ui: ui ?? [:], settings: appliedSettings)
+        configurePush()
+        if let pendingMode {
+            let remoteMode = settings?["notificationsMode"] as? String
+            if remoteMode == pendingMode {
+                UserDefaults.standard.removeObject(forKey: "push:pending-mode:" + userId)
+            } else { preferenceChanged("settings") }
+        }
         agent.apply(section: sections["assistant"] as? [String: Any], key: hermesKey)
         let signatures = sections["signatures"] as? [String: String]
         remoteSections["signatures"] = signatures ?? [:]
@@ -386,7 +429,12 @@ final class Session {
     }
 
     private func preferenceChanged(_ section: String) {
-        guard case .signedIn = state else { return }
+        guard let userId = user?.id else { return }
+        if section == "settings" {
+            UserDefaults.standard.set(preferences.notifications.rawValue, forKey: "push:pending-mode:" + userId)
+        }
+        configurePush()
+        if preferences.notifications == .off { Task { try? await UNUserNotificationCenter.current().setBadgeCount(0) } }
         if section == "hermesKey" {
             let key = agent.key
             Task { try? await relay.putPreferences(["assistant": agent.syncedSection], hermesKey: .some(key)) }
@@ -408,16 +456,24 @@ final class Session {
         pushingPreferences?.cancel()
         pushingPreferences = Task {
             try? await Task.sleep(for: .milliseconds(400))
-            guard !Task.isCancelled else { return }
-            try? await relay.putPreferences(remoteSections.mapValues { $0 })
+            guard !Task.isCancelled, user?.id == userId else { return }
+            let sections = remoteSections.mapValues { $0 }
+            do {
+                try await relay.putPreferences(sections)
+                let key = "push:pending-mode:" + userId
+                let sentMode = sections["settings"]?["notificationsMode"] as? String
+                if user?.id == userId, UserDefaults.standard.string(forKey: key) == sentMode {
+                    UserDefaults.standard.removeObject(forKey: key)
+                }
+            } catch { /* Keep a pending notification mode until the next account refresh. */ }
         }
     }
 
     // ── Devices and signing out ──────────────────────────────────────────────
 
     func signOut() async {
-        await relay.signOut()
         endSession()
+        await relay.signOut()
     }
 
     func deleteAccount() async throws {
@@ -427,6 +483,16 @@ final class Session {
 
     /** Back to the welcome screen, with nothing of the account left here. */
     private func endSession() {
+        let previousUser = user
+        PushState.configure(nil)
+        pushingRegistration?.cancel()
+        pushingRegistration = nil
+        pushingPreferences?.cancel()
+        pushingPreferences = nil
+        remoteSections = [:]
+        pushTopic = nil
+        UNUserNotificationCenter.current().removeAllDeliveredNotifications()
+        UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
         refreshing?.cancel()
         refreshing = nil
         store.commitPendingAction()
@@ -435,7 +501,20 @@ final class Session {
         relay.disconnect()
         sync?.forgetAll()
         sync = nil
-        Task { for mailbox in mailboxes { await signOut(mailbox) } }
+        let revocations = mailboxes.filter { $0.imap == nil }.map { google.forget($0.email) }
+        for mailbox in mailboxes where mailbox.imap != nil { ImapProvider.setPassword(nil, for: mailbox.email) }
+        Task {
+            for mailbox in mailboxes {
+                try? await PushState.locked("notification:" + mailbox.email) {
+                    if PushState.cursor(mailbox.email)?.userId == previousUser?.id { try PushState.save(nil, email: mailbox.email) }
+                }
+            }
+            for revocation in revocations { await google.revoke(await revocation.value) }
+        }
+        if let previousUser {
+            UserDefaults.standard.removeObject(forKey: "push:mailboxes:" + previousUser.id)
+            UserDefaults.standard.removeObject(forKey: "push:pending-mode:" + previousUser.id)
+        }
         UserDefaults.standard.removeObject(forKey: Self.userKey)
         UserDefaults.standard.removeObject(forKey: "otter:mailboxes")
         UserDefaults.standard.set(false, forKey: Self.demoKey)
@@ -467,5 +546,60 @@ final class Session {
     func requestNotifications() async {
         guard preferences.notifications != .off else { return }
         _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound])
+        guard user != nil else { return }
+        UIApplication.shared.registerForRemoteNotifications()
+    }
+
+    func registeredForPush(_ token: String) {
+        apnsToken = token
+        UserDefaults.standard.set(token, forKey: "apns:token")
+        configurePush()
+    }
+
+    /** Local preference/access changes take effect immediately, even when the relay is offline. */
+    private func configurePush() {
+        guard let user else { PushState.configure(nil); return }
+        let emails = store.shownMailboxes.filter { $0.imap == nil && !$0.signedOut && google.isSignedIn($0.email) }.map { $0.email.lowercased() }
+        PushState.configure(.init(userId: user.id, mode: preferences.notifications.rawValue, mailboxes: emails))
+        if pushingRegistration == nil {
+            pushingRegistration = Task {
+                await updatePushRegistration()
+                pushingRegistration = nil
+            }
+        }
+    }
+
+    private func updatePushRegistration() async {
+        guard !registeringPush else { return }
+        registeringPush = true
+        defer { registeringPush = false }
+        while !Task.isCancelled, let token = apnsToken, let config = PushState.configuration(), user?.id == config.userId {
+            let settings = await UNUserNotificationCenter.current().notificationSettings()
+            let enabled = settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional || settings.authorizationStatus == .ephemeral
+            do {
+                try await relay.registerPush(token: token, mode: enabled ? config.mode : "off", mailboxes: config.mailboxes)
+                guard !Task.isCancelled, user?.id == config.userId else { return }
+                if PushState.configuration() != config || apnsToken != token { continue }
+                let emails = enabled && config.mode != "off" ? config.mailboxes : []
+                sync?.pushMailboxes = Set(emails)
+                UserDefaults.standard.set(emails, forKey: "push:mailboxes:" + config.userId)
+            } catch { /* Retry on the next lifecycle/preference/token change. */ }
+            return
+        }
+    }
+
+    /** A generic tap opens the mailbox; an enriched tap can fetch a thread absent from the cache. */
+    func prepareNotification(_ destination: NotificationDestination) async {
+        let originalUser = user?.id
+        guard destination.userId == nil || destination.userId == user?.id else { opening = nil; return }
+        await refreshAccount()
+        guard let email = destination.email ?? destination.thread.flatMap({ store.thread($0)?.mailbox }),
+              let mailbox = store.mailboxes.first(where: { $0.email.lowercased() == email.lowercased() }), !mailbox.signedOut else { return }
+        await sync?.sync(mailbox.email)
+        if let thread = destination.thread, mailbox.imap == nil, store.thread(thread)?.mailbox.lowercased() != mailbox.email.lowercased() {
+            let api = GmailAPI(email: mailbox.email) { [google] force in try await google.accessToken(mailbox.email, force: force) }
+            if let loaded = try? await api.thread(thread), loaded.mailbox == mailbox.email,
+               user?.id == originalUser, store.mailbox(mailbox.email) != nil { store.upsert(threads: [loaded]) }
+        }
     }
 }

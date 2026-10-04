@@ -77,6 +77,7 @@ nonisolated struct MailboxState: Codable {
     /** Folder key → the next page's token; "" once the folder has no more. */
     var pages: [String: String] = [:]
     var watchedAt: Date?
+    var watchExpiresAt: Date?
     /** IMAP: each synced folder's cursor, by path. */
     var folders: [String: ImapFolderState]? = nil
     /** IMAP: where trashed mail came from (its id in Trash → folder path), for Restore. */

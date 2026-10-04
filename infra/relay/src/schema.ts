@@ -7,7 +7,15 @@
  * the others are the relay's own.
  */
 
-import { index, integer, primaryKey, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import {
+  foreignKey,
+  index,
+  integer,
+  primaryKey,
+  sqliteTable,
+  text,
+  uniqueIndex,
+} from "drizzle-orm/sqlite-core";
 import type { ImapSettings, MailProviderKind } from "@otter-mail/contracts/mail";
 import type { ProjectStatus } from "@otter-mail/contracts/projects";
 
@@ -110,6 +118,58 @@ export const linkedAccounts = sqliteTable(
     // Gmail push notifications look accounts up by address.
     index("linked_accounts_email").on(t.email),
   ],
+);
+
+/** APNs routing only. Session IDs also come from Accounts, whose lifecycle RPC removes these rows. */
+export const pushDevices = sqliteTable(
+  "push_devices",
+  {
+    sessionId: text().primaryKey(),
+    userId: text()
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    token: text().notNull(),
+    topic: text().notNull(),
+    environment: text().$type<"sandbox" | "production">().notNull(),
+    mode: text().$type<"off" | "inbox" | "all">().notNull(),
+    expiresAt: integer().notNull(),
+    updatedAt: integer().notNull(),
+  },
+  (t) => [
+    uniqueIndex("push_device_token").on(t.token, t.topic, t.environment),
+    index("push_device_user").on(t.userId),
+  ],
+);
+
+export const pushMailboxes = sqliteTable(
+  "push_mailboxes",
+  {
+    sessionId: text()
+      .notNull()
+      .references(() => pushDevices.sessionId, { onDelete: "cascade" }),
+    userId: text().notNull(),
+    email: text().notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.sessionId, t.email] }),
+    foreignKey({
+      columns: [t.userId, t.email],
+      foreignColumns: [linkedAccounts.userId, linkedAccounts.email],
+    }).onDelete("cascade"),
+  ],
+);
+
+/** Stops registration requests already in flight when a session is revoked. Empty session = all older sessions. */
+export const pushRevocations = sqliteTable(
+  "push_revocations",
+  {
+    userId: text()
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    sessionId: text().notNull(),
+    revokedAt: integer().notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.sessionId] })],
 );
 
 /** Each Otter account's preferences (contracts' `Preferences`), synced to its devices. */

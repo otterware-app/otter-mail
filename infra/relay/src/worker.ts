@@ -36,6 +36,8 @@ import * as mcp from "./mcp.ts";
 import * as preferences from "./preferences.ts";
 import * as projects from "./projects.ts";
 import * as store from "./store.ts";
+import * as push from "./push.ts";
+import * as apns from "./apns.ts";
 import * as tunnel from "./tunnel.ts";
 import type { AgentHub } from "./agent-hub.ts";
 import { SESSION_HEADER, type UserHub } from "./user-hub.ts";
@@ -74,6 +76,14 @@ export interface Env {
   PUSH_AUDIENCE: string;
   /** Service account Pub/Sub signs push requests as. */
   PUSH_SERVICE_ACCOUNT: string;
+  APNS_TEAM_ID?: string;
+  APNS_KEY_ID?: string;
+  /** PKCS#8 .p8 contents, a Worker secret. */
+  APNS_PRIVATE_KEY?: string;
+  APNS_SANDBOX_TOPIC?: string;
+  APNS_PRODUCTION_TOPIC?: string;
+  /** Local mock APNs server; only tests set it. Production uses Apple's fixed hosts. */
+  APNS_TEST_ORIGIN?: string;
   /** This Worker's public URL, for better-auth. */
   BETTER_AUTH_URL: string;
   /** Signs better-auth's tokens (a Worker secret). */
@@ -95,7 +105,7 @@ export interface Env {
   TUNNEL_ALLOW_PRIVATE?: string;
 }
 
-type Session = { id: string; user: RelayUser };
+type Session = { id: string; user: RelayUser; expiresAt: number; createdAt: number };
 
 export type App = { Bindings: Env; Variables: { db: store.Db; auth: Auth; session: Session } };
 
@@ -203,6 +213,8 @@ authed.use(async (c, next) => {
   if (central) await store.ensureUser(c.env.DB, user);
   c.set("session", {
     id: session.id,
+    expiresAt: session.expiresAt.getTime(),
+    createdAt: session.createdAt.getTime(),
     user: { id: user.id, email: user.email, name: user.name || null, picture: user.image ?? null },
   });
   await next();
@@ -267,6 +279,37 @@ authed.post(
 authed.get("/me", (c) =>
   c.json({ user: c.var.session.user, pushTopic: c.env.PUSH_TOPIC } satisfies MeResponse),
 );
+
+authed.put(
+  "/push/device",
+  zValidator(
+    "json",
+    z
+      .object({
+        token: z
+          .string()
+          .regex(/^(?:[a-fA-F0-9]{2}){1,256}$/)
+          .transform((value) => value.toLowerCase()),
+        topic: z.string().min(1).max(255),
+        environment: z.enum(["sandbox", "production"]),
+        mode: z.enum(["off", "inbox", "all"]),
+        mailboxes: z.array(mailbox).max(32),
+      })
+      .strict(),
+    rejectInvalid,
+  ),
+  async (c) => {
+    if (!apns.configured(c.env))
+      throw new HTTPException(503, { message: "iPhone push is not configured." });
+    await push.register(c.env, c.var.session, c.req.valid("json"));
+    return c.body(null, 204);
+  },
+);
+
+authed.delete("/push/device", async (c) => {
+  await push.remove(c.env, c.var.session.user.id, c.var.session.id);
+  return c.body(null, 204);
+});
 
 /**
  * `?providers=gmail,imap`: the providers the client knows. Builds from before
@@ -353,6 +396,7 @@ authed.delete(
     const userId = c.var.session.user.id;
     const { email } = c.req.valid("param");
     if (await store.deleteAccount(c.var.db, userId, email, c.req.valid("query").providers)) {
+      await hub(c.env, userId).forgetPush(email);
       await hub(c.env, userId).publish({ type: "accounts" });
     }
     return c.body(null, 204);
@@ -619,8 +663,11 @@ app.all("/mcp", async (c) => {
 // ── Gmail push ──────────────────────────────────────────────────────────────
 
 const gmailNotification = z.object({
-  emailAddress: z.string(),
-  historyId: z.union([z.string(), z.number()]).transform(String),
+  emailAddress: mailbox,
+  historyId: z
+    .union([z.string(), z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER)])
+    .transform(String)
+    .pipe(z.string().regex(/^\d{1,20}$/)),
 });
 
 /**
@@ -646,7 +693,9 @@ app.post(
     const body = (await c.req.json().catch(() => null)) as { message?: { data?: string } } | null;
     let data: unknown = null;
     try {
-      data = JSON.parse(atob(body?.message?.data ?? ""));
+      data = JSON.parse(
+        atob((body?.message?.data ?? "").replaceAll("-", "+").replaceAll("_", "/")),
+      );
     } catch {
       // not a Gmail notification
     }
@@ -656,7 +705,13 @@ app.post(
     const email = parsed.data.emailAddress.toLowerCase();
     const event: RelayEvent = { type: "mail", email, historyId: parsed.data.historyId };
     const users = await store.usersWithGmail(c.var.db, email);
-    await Promise.all(users.map((userId) => hub(c.env, userId).publish(event)));
+    await Promise.all(
+      users.map(async (userId) => {
+        const target = hub(c.env, userId);
+        await target.publish(event);
+        await target.queuePush(userId, email, parsed.data.historyId);
+      }),
+    );
     return c.body(null, 204);
   },
 );
@@ -664,6 +719,7 @@ app.post(
 /** Account lifecycle calls are private Worker RPC, never public HTTP routes. */
 export class IdentityLifecycle extends WorkerEntrypoint<Env> {
   async disconnect(userId: string, sessionId?: string): Promise<void> {
+    await push.remove(this.env, userId, sessionId, true);
     await hub(this.env, userId).disconnect(sessionId);
     await this.env.AGENT_HUB?.get(this.env.AGENT_HUB.idFromName(userId)).disconnect(sessionId);
   }

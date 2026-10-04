@@ -96,7 +96,10 @@ NodeFS.writeFileSync(
   <key>signingStyle</key><string>manual</string>
   <key>signingCertificate</key><string>Apple Distribution</string>
   <key>provisioningProfiles</key>
-  <dict><key>dev.otterware.mail</key><string>Otter Mail App Store</string></dict>
+  <dict>
+    <key>dev.otterware.mail</key><string>Otter Mail App Store</string>
+    <key>dev.otterware.mail.notifications</key><string>Otter Mail Notifications App Store</string>
+  </dict>
   <key>manageAppVersionAndBuildNumber</key><false/>
 </dict>
 </plist>

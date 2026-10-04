@@ -157,3 +157,76 @@ permissions, sealed refresh tokens, profiles and application data remain here. S
 
 `pnpm dev` generates a standalone local config without the production service binding; its
 local database and fake/developer identities remain independent of production Accounts.
+
+## iPhone APNs
+
+`PUT /v1/push/device` replaces the authenticated session's token/topic/environment, Off/Inbox/All
+mode and list of already-linked Gmail mailboxes; `DELETE` removes that session's registration.
+The API rejects IMAP/unlinked/other-user mailboxes, unsupported topic/environment combinations,
+and extra fields (including mail content or credentials). D1 holds routing only in
+`push_devices`, `push_mailboxes`, and revocation markers in `push_revocations`. There is no mail
+cache, phone Gmail proxy, notification enrichment endpoint or server-side Gmail watch renewal.
+
+The existing Pub/Sub OIDC check and WebSocket fan-out remain. UserHub durably coalesces each
+mailbox for five seconds, limits bursts to one submission per 30 seconds, and drops repeated or
+older decimal history markers. Its alarm rechecks registrations, linked Gmail ownership,
+expiration and the account's Off preference at delivery/retry. Token transfer/rotation is atomic.
+Unlink/account deletion cascades routes; legacy auth hooks and the central Accounts private
+`IdentityLifecycle.disconnect` RPC remove registrations on sign-out/remote revocation. A
+revocation marker prevents an already-authenticated in-flight registration from restoring them.
+Expired sessions are removed when routing. Account deletion clears the user hub's markers.
+
+APNs payloads use an explicit allowlist: generic “Mailbox updated” text and
+`otter: {version:1,userId,email,historyId,mode}`. `mode` is the more restrictive registered/account
+Inbox/All preference, allowing remote restrictions to reach a closed phone. No badge, sound or
+claim of new mail; the phone adds sound for confirmed eligible arrivals. The topic is the
+**application** bundle ID. The alert has `mutable-content: 1`, `apns-push-type: alert`, priority
+10, a hashed per-user/mailbox collapse ID, and expiration 0 (do not queue stale offline alerts).
+Inbox/All filtering and enrichment happen on the phone using direct Gmail access. Without
+Apple's restricted notification-filtering entitlement, an extension cannot suppress a
+submitted alert: read/archive/label changes and enrichment failures may remain generic.
+Off stops future submissions; a push already accepted by APNs cannot be recalled. See the
+[iPhone README](../../apps/ios/README.md#private-gmail-push) for phone behavior and watch limits.
+
+Configure Apple without committing keys:
+
+```sh
+# From infra/relay, for the intended environment; do not run as part of a code-only task.
+pnpm exec wrangler secret put APNS_TEAM_ID
+pnpm exec wrangler secret put APNS_KEY_ID
+pnpm exec wrangler secret put APNS_PRIVATE_KEY < /secure/path/to/AuthKey_KEYID.p8
+```
+
+Use an Apple APNs ES256 signing key for team `838JVGY7W4` authorized for both allowed topics
+(or separate configured deployments/keys for a restricted topic key). `APNS_PRIVATE_KEY` is the
+PKCS#8 `.p8` contents; this is **not** the App Store Connect upload key. Keep key ID/team ID in
+Worker secrets too. Allowed topics are `APNS_SANDBOX_TOPIC=dev.otterware.mail.dev` and
+`APNS_PRODUCTION_TOPIC=dev.otterware.mail` in `wrangler.jsonc`. Do not substitute the extension
+bundle ID. Local optional variables are listed in `.dev.vars.example`; missing signing
+credentials return 503 on registration, leaving the phone's local notification behavior.
+
+Provider JWTs are reused for 50 minutes. APNs 410/BadDeviceToken/DeviceTokenNotForTopic removes
+only the failing registration, without deleting a newer rotation (or a registration newer than
+Apple's 410 timestamp). Network/429/5xx and an expired provider JWT retry with durable delays,
+at most three attempts, with per-session receipts avoiding resending to successful recipients.
+5xx retries wait at least 15 minutes; excessive provider-token updates wait 20 minutes.
+Other rejections are not retried; only HTTP status is logged, never a token, key, response text
+or payload. Receipt/marker dedup is best effort: an ambiguous transport failure or crash after
+Apple accepted a request can still duplicate an alert. Collapse IDs coalesce pending pushes;
+they cannot provide transactional exactly-once presentation.
+
+The Workers HTTPS `fetch` transport is used; `node:http2` is a nonfunctional Workers stub.
+Local workerd/Node mocks do not prove Apple's HTTP/2 connection or live delivery. Verify real
+sandbox and TestFlight production delivery after provisioning. Never configure
+`APNS_TEST_ORIGIN` in a deployed Worker: it exists only for the local mock test server.
+
+`pnpm test` tests actual workerd/D1 routing, user isolation, token transfer, sign-out/revocation/
+delete/unlink cleanup, burst dedup and Off changes before an alarm fires, plus SQLite lifecycle
+races, APNs payload privacy, signed headers, response classification and invalid-token safety.
+No Apple/Google credentials are needed. Apply D1 migrations before enabling this build; deploy
+and release are separate operator actions.
+
+Official references: [Apple APNs requests](https://developer.apple.com/documentation/usernotifications/sending-notification-requests-to-apns),
+[token authentication](https://developer.apple.com/documentation/usernotifications/establishing-a-token-based-connection-to-apns),
+[APNs errors](https://developer.apple.com/documentation/usernotifications/handling-notification-responses-from-apns),
+[Workers stub modules](https://developers.cloudflare.com/workers/runtime-apis/nodejs/#non-functional-stub-modules).

@@ -115,10 +115,21 @@ struct HomeView: View {
     }
 
     private func openNotification() {
-        guard let thread = session.opening, store.thread(thread) != nil else { return }
-        session.opening = nil
-        setDrawer(open: false)
-        path = [thread]
+        guard let destination = session.opening else { return }
+        Task {
+            await session.prepareNotification(destination)
+            guard session.opening == destination else { return }
+            session.opening = nil
+            guard destination.userId == nil || destination.userId == session.user?.id else { return }
+            if let email = destination.email, let mailbox = store.mailboxes.first(where: { $0.email.lowercased() == email.lowercased() }) {
+                place = Place(scope: mailbox.email)
+            }
+            setDrawer(open: false)
+            if let thread = destination.thread, let loaded = store.thread(thread),
+               destination.email == nil || loaded.mailbox.lowercased() == destination.email?.lowercased() {
+                path = [thread]
+            } else { path = [] }
+        }
     }
 
     private func setDrawer(open: Bool) {

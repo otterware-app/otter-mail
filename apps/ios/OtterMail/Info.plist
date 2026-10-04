@@ -8,6 +8,12 @@
 	</array>
 	<key>GoogleClientID</key>
 	<string>$(GOOGLE_IOS_CLIENT_ID)</string>
+	<key>NotificationAppGroup</key>
+	<string>$(NOTIFICATION_APP_GROUP)</string>
+	<key>LegacyKeychainGroup</key>
+	<string>$(AppIdentifierPrefix)$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>APNsEnvironment</key>
+	<string>$(APNS_ENVIRONMENT)</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>NSAppTransportSecurity</key>

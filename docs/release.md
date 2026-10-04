@@ -113,6 +113,11 @@ from a Mac with Xcode 27, if GitHub can't) sign with:
 - The "Otter Mail App Store" provisioning profile for `dev.otterware.mail`: the
   `IOS_PROVISIONING_PROFILE` secret (base64 of the `.mobileprovision`); on the Mac, Xcode ›
   Settings › Accounts, or downloaded from the developer portal.
+- The extension's “Otter Mail Notifications App Store” profile for
+  `dev.otterware.mail.notifications`: `IOS_NOTIFICATION_PROVISIONING_PROFILE` (base64).
+  Regenerate the main profile with Push Notifications, App Groups and Keychain Sharing;
+  enable the shared group `group.dev.otterware.mail.notifications` on both App IDs/profiles.
+  The extension and app must be signed by the same team. The release script exports both.
 - An App Store Connect API key: the `APPLE_API_KEY`, `APPLE_API_KEY_ID` and `APPLE_API_ISSUER`
   secrets the Mac release notarizes with; on the Mac, `~/.otter-mail/signing/AuthKey_<id>.p8` or
   `OTTER_MAIL_ASC_KEY`, `OTTER_MAIL_ASC_KEY_ID` and `OTTER_MAIL_ASC_ISSUER`.

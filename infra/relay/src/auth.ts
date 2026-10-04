@@ -18,6 +18,7 @@ import { GOOGLE_JWKS_URL, remoteKeys, verifyGoogleJwt } from "./google-jwt.ts";
 import * as schema from "./schema.ts";
 import type { Db } from "./store.ts";
 import type { Env } from "./worker.ts";
+import * as push from "./push.ts";
 
 const DAY_S = 24 * 60 * 60;
 
@@ -112,6 +113,7 @@ export function createAuth(env: Env, db: Db) {
         delete: {
           // Signed out or revoked: close that device's event stream.
           after: async (session) => {
+            await push.remove(env, session.userId, session.id, true);
             await hub(env, session.userId).disconnect(session.id);
           },
         },

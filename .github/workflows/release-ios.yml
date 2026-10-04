@@ -94,14 +94,15 @@ jobs:
           DISTRIBUTION_P12: ${{ secrets.IOS_DISTRIBUTION_P12 }}
           DISTRIBUTION_P12_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_P12_PASSWORD }}
           PROVISIONING_PROFILE: ${{ secrets.IOS_PROVISIONING_PROFILE }}
+          NOTIFICATION_PROVISIONING_PROFILE: ${{ secrets.IOS_NOTIFICATION_PROVISIONING_PROFILE }}
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
         run: |
           set -euo pipefail
-          for name in DISTRIBUTION_P12 DISTRIBUTION_P12_PASSWORD PROVISIONING_PROFILE APPLE_API_KEY APPLE_API_KEY_ID APPLE_API_ISSUER; do
+          for name in DISTRIBUTION_P12 DISTRIBUTION_P12_PASSWORD PROVISIONING_PROFILE NOTIFICATION_PROVISIONING_PROFILE APPLE_API_KEY APPLE_API_KEY_ID APPLE_API_ISSUER; do
             if [[ -z "${!name}" ]]; then
-              echo "::error::Missing $name. Set the IOS_DISTRIBUTION_P12, IOS_DISTRIBUTION_P12_PASSWORD, IOS_PROVISIONING_PROFILE and APPLE_API_KEY* secrets (docs/release.md)."
+              echo "::error::Missing $name. Set the IOS_DISTRIBUTION_P12, IOS_DISTRIBUTION_P12_PASSWORD, IOS_PROVISIONING_PROFILE, IOS_NOTIFICATION_PROVISIONING_PROFILE and APPLE_API_KEY* secrets (docs/release.md)."
               exit 1
             fi
           done
@@ -125,6 +126,9 @@ jobs:
           profiles="$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"
           mkdir -p "$profiles"
           mv "$RUNNER_TEMP/profile.mobileprovision" "$profiles/$uuid.mobileprovision"
+          printf '%s' "$NOTIFICATION_PROVISIONING_PROFILE" | base64 --decode > "$RUNNER_TEMP/notifications.mobileprovision"
+          uuid="$(security cms -D -i "$RUNNER_TEMP/notifications.mobileprovision" | plutil -extract UUID raw -)"
+          mv "$RUNNER_TEMP/notifications.mobileprovision" "$profiles/$uuid.mobileprovision"
 
           # The App Store Connect API key the upload signs in with.
           key_path="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY_ID}.p8"

@@ -212,8 +212,10 @@ nonisolated struct GmailAPI {
     }
 
     /** Asks Gmail to publish the mailbox's changes to the relay's topic (renew daily; it lapses after a week). */
-    func watch(topic: String) async throws {
-        try await post("watch", ["topicName": topic])
+    struct Watch: Decodable { var historyId: String; var expiration: String }
+
+    func watch(topic: String) async throws -> Watch {
+        try decode(try await post("watch", ["topicName": topic]))
     }
 
     // ── Requests ─────────────────────────────────────────────────────────────

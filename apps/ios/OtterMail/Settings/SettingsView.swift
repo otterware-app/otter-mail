@@ -32,7 +32,7 @@ struct SettingsView: View {
                     .listRowBackground(Color.clear)
                 }
 
-                Section("Mail") {
+                Section {
                     NavigationLink {
                         MailboxesSettings()
                     } label: {
@@ -51,6 +51,12 @@ struct SettingsView: View {
                         ForEach(Preferences.Advance.allCases) { Text($0.title).tag($0) }
                     } label: {
                         Label("After archive", systemImage: "arrow.turn.down.right")
+                    }
+                } header: {
+                    Text("Mail")
+                } footer: {
+                    if !store.isDemo {
+                        Text("Gmail alerts may say “Mailbox updated” for changes that aren't new mail. Sender and preview are filled in on this iPhone when available.")
                     }
                 }
 

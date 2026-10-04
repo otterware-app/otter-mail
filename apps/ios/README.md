@@ -94,3 +94,114 @@ the Xcode project, apart from the Mac app's.
 `Resources/Themes.json` and `Resources/DemoMailboxes.json` are exported from `packages/shared` by
 `pnpm ios:resources` (`dev:ios` and releases run it); rerun it after changing the palettes or the
 demo mailbox.
+
+## Private Gmail push
+
+`OtterMailNotificationService` is embedded in the app. Gmail → Pub/Sub → relay carries only
+`emailAddress` and `historyId`. The relay submits an APNs alert titled “Otter Mail”, with
+“Mailbox updated. Open Otter Mail to check your mail.” and version/user/mailbox/history/filter metadata.
+The generic fallback is silent; confirmed eligible mail gains the normal sound locally.
+No sender, subject, preview, body, attachment, Gmail access token or refresh token goes through
+this push path to Otter or Apple. APNs has no unread badge. The extension fetches only added
+messages' headers/preview **directly from Gmail**, then changes the notification on this phone.
+Enriched taps open that mailbox/thread, fetching it directly if it isn't cached; generic taps open
+the mailbox and sync. The demo needs neither Google nor Apple configuration.
+
+`NotificationShared/` contains the direct reader, shared OAuth refresh, Keychain access and
+App Group markers. The app moves existing Google refresh tokens from its original private
+Keychain group by copying/verifying before deletion. Google credentials and cached access tokens
+use `AfterFirstUnlockThisDeviceOnly`, so enrichment can work while locked **after the first
+unlock since reboot**; before that it falls back. Otter sessions and IMAP passwords stay in the
+app's private Keychain. A nonblocking cross-process file lock serializes OAuth refresh, with
+cancellation and replacement checks before saving; account/mailbox removal clears credentials
+and markers. Debug and release have different groups and tokens.
+
+The extension uses its own persisted pre-change history cursor, seeded after a successful app
+sync. Once push is registered, app/WebSocket/background syncs leave that cursor to the extension
+so they cannot consume its pending additions. It walks `messageAdded` history from that cursor, then checks the message's current unread
+and label state. Off prevents registration delivery; Inbox enriches unread inbox mail; All also
+enriches unread mail outside the inbox, excluding sent/drafts/spam/trash. Each alert also carries
+the more restrictive account/device filter, so changing All to Inbox on another device limits
+enrichment without sending any mail to the server. Relaxing that filter takes effect when this
+phone refreshes its preferences and registration. Multiple eligible
+messages produce one alert for the newest message among the last eight additions, with a count
+of the eligible messages fetched. Each mailbox has its own cursor. A completed history walk
+advances to Gmail's returned cursor, **never using the Pub/Sub ending marker as a starting
+cursor**. Missing/404 history rebases from Gmail's profile without announcing existing mail.
+An incomplete walk (over five pages), revoked credentials, offline state or the 22-second
+local deadline preserves the original generic alert. Completion is guarded against expiry races.
+
+Apple requires an alert and `mutable-content: 1` to run this extension, and allows about
+30 seconds. Ordinary extensions cannot discard a submitted alert. This build does **not**
+request Apple's restricted filtering entitlement. Read/archive/label changes, watch renewal,
+duplicate delivery, or a filter mismatch can therefore show a generic alert even in Inbox mode.
+Off and access removal stop future server submissions once received by the relay; already
+submitted alerts cannot be recalled, and offline local sign-out/preferences cannot notify the
+server until connectivity returns. The phone refuses enrichment for a removed/wrong account.
+Foreground generic alerts are suppressed using the supported presentation delegate. Gmail local
+alerts are disabled for successfully registered mailboxes (remembered across launches); IMAP
+keeps its existing local behavior. If APNs accepts a push but delivery fails later, there is no
+local-alert guarantee. Apple/Gmail push are best effort, not an exact new-mail counter.
+
+The app renews Gmail watches daily when it runs and retains the returned expiration. Background
+refresh also attempts renewal, but iOS decides whether it runs. Gmail watches expire in at most
+seven days; an unopened phone may stop receiving pushes until it opens again (another signed-in
+device can renew the same mailbox's watch). The extension does not renew watches, and the relay
+has no phone Gmail tokens with which to do so. Gmail can also drop events; opening always syncs.
+
+### Apple setup and verification
+
+Register App IDs for `dev.otterware.mail.dev` / `dev.otterware.mail` and their `.notifications`
+extensions. Enable Push Notifications on the **app**, and App Groups/Keychain Sharing on both
+app and extension. Provision both targets for their matching group:
+`group.dev.otterware.mail.dev.notifications` (Debug),
+`group.dev.otterware.mail.notifications` (Release). The app-private Keychain group stays first
+for migration. The `APNS_ENVIRONMENT` build setting and signed `aps-environment` must match:
+Debug `development` → sandbox; Release/TestFlight `production` → production. If signing with a
+custom development profile, keep the plist environment consistent with that profile.
+
+Regenerate the main App Store profile with the new capabilities, and add the extension's
+“Otter Mail Notifications App Store” profile. The release workflow also needs
+`IOS_NOTIFICATION_PROVISIONING_PROFILE` (base64); see `docs/release.md`. Configure the relay's
+APNs signing key and allowed topics as described in `infra/relay/README.md`. The APNs key is
+separate from the App Store Connect upload key; never put either in this checkout.
+
+Run the normal Xcode build and `OtterMailTests`, including `NotificationTests` (history paging,
+labels, rebase, failures, cancellation and the completion race). Check the demo in light/dark.
+For a signed-in test account, permit notifications and test Inbox/All/Off, locked-device
+arrival, multiple mailboxes, a generic tap and a thread absent from the local cache.
+
+A simulator payload can exercise display/tap wiring:
+
+```json
+{
+  "aps": {
+    "alert": {
+      "title": "Otter Mail",
+      "body": "Mailbox updated. Open Otter Mail to check your mail."
+    },
+    "mutable-content": 1
+  },
+  "otter": {
+    "version": 1,
+    "userId": "<test-account-id>",
+    "email": "<test-mailbox>",
+    "historyId": "<new-change-marker>",
+    "mode": "inbox"
+  }
+}
+```
+
+Save it outside the repository and run `xcrun simctl push booted dev.otterware.mail.dev <payload>`.
+Payload injection does **not** prove live APNs, or that the service extension ran/fetched Gmail
+on that simulator. Verify live sandbox delivery on a provisioned iPhone and production delivery
+in TestFlight. Use a test Gmail, with a baseline established by opening/syncing before sending
+new mail. Validate timeout/offline fallback, token rotation, remote revocation/unlink and the
+first unlock after reboot. This worktree was implemented on Linux: no Xcode, Swift compiler or
+iOS Simulator was available, so those native build/network/visual checks remain required.
+
+Sources: [Apple extension requirements](https://developer.apple.com/documentation/usernotifications/modifying-content-in-newly-delivered-notifications),
+[Apple filtering entitlement](https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.developer.usernotifications.filtering),
+[Keychain sharing](https://developer.apple.com/documentation/security/sharing-access-to-keychain-items-among-a-collection-of-apps),
+[Gmail push/watch renewal](https://developers.google.com/workspace/gmail/api/guides/push),
+[Gmail history](https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.history/list).

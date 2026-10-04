@@ -85,7 +85,7 @@ jobs:
   iphone:
     name: iPhone (Swift)
     runs-on: xcode-27
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -99,8 +99,50 @@ jobs:
       - name: Export shared resources
         run: node scripts/export-ios-resources.ts
 
-      - name: Build iPhone app for the simulator
-        run: >-
-          xcodebuild -project apps/ios/OtterMail.xcodeproj -scheme OtterMail
-          -destination 'generic/platform=iOS Simulator'
-          -derivedDataPath apps/ios/.build CODE_SIGNING_ALLOWED=NO build
+      - name: Select simulator
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          xcrun simctl list devices available --json > "$RUNNER_TEMP/devices.json"
+          simulator="$(node --input-type=module -e '
+            import { readFileSync } from "node:fs";
+            const devices = JSON.parse(readFileSync(process.argv[1], "utf8"));
+            const device = Object.values(devices.devices).flat().find(d => d.name.startsWith("iPhone"));
+            if (!device) throw new Error("No available iPhone simulator on the Xcode runner.");
+            console.log(device.udid);
+          ' "$RUNNER_TEMP/devices.json")"
+          echo "IPHONE_SIMULATOR=$simulator" >> "$GITHUB_ENV"
+          xcrun simctl boot "$simulator" || true
+          xcrun simctl bootstatus "$simulator" -b
+
+      - name: Build app and extension, and run native tests
+        run: |
+          xcodebuild -project apps/ios/OtterMail.xcodeproj -scheme OtterMail \
+            -destination "platform=iOS Simulator,id=$IPHONE_SIMULATOR" \
+            -derivedDataPath "$RUNNER_TEMP/otter-ios-build" \
+            -resultBundlePath "$RUNNER_TEMP/otter-ios-tests.xcresult" \
+            CODE_SIGNING_ALLOWED=NO test
+
+      - name: Capture demo in light and dark
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/otter-ios-preview"
+          xcrun simctl ui "$IPHONE_SIMULATOR" appearance light
+          xcrun simctl launch --terminate-running-process "$IPHONE_SIMULATOR" \
+            dev.otterware.mail.dev -otter:demo YES
+          sleep 3
+          xcrun simctl io "$IPHONE_SIMULATOR" screenshot "$RUNNER_TEMP/otter-ios-preview/light.png"
+          xcrun simctl ui "$IPHONE_SIMULATOR" appearance dark
+          sleep 2
+          xcrun simctl io "$IPHONE_SIMULATOR" screenshot "$RUNNER_TEMP/otter-ios-preview/dark.png"
+
+      - name: Upload native results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: iphone-verification
+          path: |
+            ${{ runner.temp }}/otter-ios-tests.xcresult
+            ${{ runner.temp }}/otter-ios-preview
+          if-no-files-found: ignore
+          retention-days: 7

@@ -27,7 +27,7 @@ final class GmailProvider: MailProvider {
                 if !changed.isEmpty { state.draftIDs = try await api.draftIDs() }
                 state.historyID = cursor
             } catch is GmailAPI.HistoryExpired {
-                state = MailboxState(watchedAt: state.watchedAt)
+                state = MailboxState(watchedAt: state.watchedAt, watchExpiresAt: state.watchExpiresAt)
                 delta.removed = Set(known.map(\.id))
             }
         }
@@ -135,8 +135,14 @@ final class GmailProvider: MailProvider {
 
     /** Asks Gmail to push this mailbox's changes to the relay, once a day; the relay's events do the rest. */
     func watch(pushTopic: String?, _ state: inout MailboxState, onChange: @escaping () -> Void) async -> Task<Void, Never>? {
-        guard let pushTopic, (state.watchedAt ?? .distantPast) < .now.addingTimeInterval(-86_400) else { return nil }
-        if (try? await api.watch(topic: pushTopic)) != nil { state.watchedAt = .now }
+        guard let pushTopic else { return nil }
+        guard (state.watchedAt ?? .distantPast) < .now.addingTimeInterval(-86_400)
+            || (state.watchExpiresAt ?? .distantPast) < .now.addingTimeInterval(86_400) else { return nil }
+        if let watch = try? await api.watch(topic: pushTopic) {
+            state.watchedAt = .now
+            state.watchExpiresAt = Double(watch.expiration).map { Date(timeIntervalSince1970: $0 / 1000) }
+            // watch.historyId is the end marker; never replace a pending history baseline with it.
+        }
         return nil
     }
 }

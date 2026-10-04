@@ -37,7 +37,7 @@ struct OtterMailApp: App {
         }
         .onChange(of: scenePhase) { _, phase in
             switch phase {
-            case .active: Task { await session.refreshAccount() }
+            case .active: Task { await session.relay.retrySignOuts(); await session.refreshAccount() }
             case .background:
                 session.disconnect()
                 Task { await Self.scheduleRefresh() }
@@ -68,26 +68,50 @@ struct OtterMailApp: App {
 /** Opens the thread a notification is about. */
 final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     var session: Session? {
-        didSet { if let tapped { session?.opening = tapped; self.tapped = nil } }
+        didSet {
+            if let tapped { session?.opening = tapped; self.tapped = nil }
+            if let token { session?.registeredForPush(token) }
+        }
     }
     /** A tap that launched the app, held until the window hands over the session. */
-    private var tapped: String?
+    private var tapped: Session.NotificationDestination?
+    private var token: String?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         UNUserNotificationCenter.current().delegate = self
         return true
     }
 
+    func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        let token = deviceToken.map { String(format: "%02x", $0) }.joined()
+        self.token = token
+        session?.registeredForPush(token)
+    }
+
     // The completion-handler forms, called on the main thread: the async forms' thunks
     // call UIKit's completion handler from a background thread, which crashes on a tap.
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
-        let thread = response.notification.request.content.userInfo["thread"] as? String
-        if let session { session.opening = thread } else { tapped = thread }
+        let info = response.notification.request.content.userInfo
+        let metadata = info["otter"] as? [String: Any]
+        let destination = Session.NotificationDestination(userId: metadata?["userId"] as? String,
+            email: (info["mailbox"] as? String) ?? (metadata?["email"] as? String), thread: info["thread"] as? String)
+        if let session { session.opening = destination } else { tapped = destination }
         completionHandler()
     }
 
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
-        completionHandler([.banner, .sound])
+        let info = notification.request.content.userInfo
+        if let metadata = info["otter"] as? [String: Any] {
+            let userId = metadata["userId"] as? String
+            let email = metadata["email"] as? String ?? ""
+            // Foreground suppression is supported. A change marker alone doesn't merit a new-mail banner.
+            let show = session?.user?.id == userId && info["message"] != nil && session?.preferences.notifications != .off
+                && PushState.permits(userId: userId ?? "", email: email)
+            completionHandler(show ? [.banner, .sound] : [])
+            Task { await session?.backgroundRefresh() }
+        } else {
+            completionHandler(session?.preferences.notifications == .off ? [] : [.banner, .sound])
+        }
     }
 }
 
