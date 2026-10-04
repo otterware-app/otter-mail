@@ -370,7 +370,7 @@ final class Agent {
         var body: [String: Any] = ["requestId": requestID, "input": MailContext.handoff(question, context, reader: "get_thread"),
                                    "title": String(question.prefix(60)), "model": model.slug, "tools": AgentMailTools.definitions]
         if let session { body["sessionId"] = session }
-        streaming = Task {
+        streaming = Task { [self] in
             let tools = AgentMailTools(store: store, confirm: { [weak self] name, detail in
                 guard let self, self.run == requestID, !Task.isCancelled else { return false }
                 if self.openrouter.runtimeMode == "full-access" || self.allowedTools.contains(name) { return true }
