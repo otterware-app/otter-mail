@@ -197,8 +197,10 @@ Payload injection does **not** prove live APNs, or that the service extension ra
 on that simulator. Verify live sandbox delivery on a provisioned iPhone and production delivery
 in TestFlight. Use a test Gmail, with a baseline established by opening/syncing before sending
 new mail. Validate timeout/offline fallback, token rotation, remote revocation/unlink and the
-first unlock after reboot. This worktree was implemented on Linux: no Xcode, Swift compiler or
-iOS Simulator was available, so those native build/network/visual checks remain required.
+first unlock after reboot. CI's iPhone job builds the app and extension on the Xcode 27 runner,
+runs the native tests and captures the demo in light/dark. Linux development cannot run these
+checks locally. Live APNs, extension Gmail access and signed-in notification/tap/preference
+checks still require a provisioned iPhone; CI's demo screenshots do not cover them.
 
 Sources: [Apple extension requirements](https://developer.apple.com/documentation/usernotifications/modifying-content-in-newly-delivered-notifications),
 [Apple filtering entitlement](https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.developer.usernotifications.filtering),

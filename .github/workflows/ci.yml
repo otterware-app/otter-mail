@@ -130,7 +130,9 @@ jobs:
           xcrun simctl ui "$IPHONE_SIMULATOR" appearance light
           xcrun simctl launch --terminate-running-process "$IPHONE_SIMULATOR" \
             dev.otterware.mail.dev -otter:demo YES
-          sleep 3
+          # The simulator can return from launch before the first SwiftUI frame.
+          # Allow cold-start resource loading before taking the demo screenshots.
+          sleep 15
           xcrun simctl io "$IPHONE_SIMULATOR" screenshot "$RUNNER_TEMP/otter-ios-preview/light.png"
           xcrun simctl ui "$IPHONE_SIMULATOR" appearance dark
           sleep 2
