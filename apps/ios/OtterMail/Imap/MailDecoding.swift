@@ -6,6 +6,21 @@ import Foundation
  * IMAP's own modified UTF-7 for folder names (RFC 3501 §5.1.3).
  */
 nonisolated enum MailDecoding {
+    /** Plain display text for snippets: keep link labels and words, not Markdown destinations or styling. */
+    static func preview(_ value: String, limit: Int = 240) -> String {
+        var text = String(value.prefix(4096))
+        // Some text alternatives put whitespace between a link label and its URL.
+        text = text.replacingOccurrences(of: #"(\[[^\]\n]+\])\s+\(\s*(?=https?://|mailto:)"#,
+            with: "$1(", options: .regularExpression)
+        // Gmail can cut its snippet in the middle of the last link destination.
+        text = text.replacingOccurrences(of: #"\[([^\]\n]+)\]\(\s*(?:https?://|mailto:)[^\s)]*$"#,
+            with: "$1", options: .regularExpression)
+        if let rendered = try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) {
+            text = String(rendered.characters)
+        }
+        return String(text.split(whereSeparator: \.isWhitespace).joined(separator: " ").prefix(limit))
+    }
+
     // ── Bodies ───────────────────────────────────────────────────────────────
 
     /** A part's bytes, undoing its Content-Transfer-Encoding. */

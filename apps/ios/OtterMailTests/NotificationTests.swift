@@ -5,6 +5,24 @@ import Testing
 nonisolated struct NotificationTests: Sendable {
     private func data(_ json: String) -> Data { Data(json.utf8) }
 
+    @Test func previewKeepsLinkLabelsAndFormattedWords() throws {
+        let snippet = "[Rasur Shop](https://example.com/pages/products) [Besuchen Sie uns]\n(https://example.com/track?id=123) Lieber Laurin, **something big** is coming &amp; it’s exciting."
+        let message = try JSONDecoder().decode(GmailNotification.Message.self, from: JSONSerialization.data(withJSONObject: ["id": "a", "threadId": "t", "snippet": snippet]))
+        #expect(message.preview == "Rasur Shop Besuchen Sie uns Lieber Laurin, something big is coming & it’s exciting.")
+    }
+
+    @Test func previewHandlesNestedAndTruncatedDestinations() {
+        #expect(MailDecoding.preview("See [the guide](https://example.com/guide_(new)) for **details**.") == "See the guide for details.")
+        #expect(MailDecoding.preview("Hello [visit our shop](https://example.com/tracking?long=123") == "Hello visit our shop")
+        #expect(MailDecoding.preview("Call [support](mailto:help@example.com)") == "Call support")
+    }
+
+    @Test func previewPreservesOrdinaryTextAndUnicode() {
+        #expect(MailDecoding.preview("Café 🦦\n\t email first_last@example.com. 2 * 3 = 6. [pending]") == "Café 🦦 email first_last@example.com. 2 * 3 = 6. [pending]")
+        #expect(MailDecoding.preview("   ").isEmpty)
+        #expect(MailDecoding.preview(String(repeating: "🦦", count: 100_000), limit: 500) == String(repeating: "🦦", count: 500))
+    }
+
     @Test func usesSavedStartCursorAndPaginatesAddedMessages() async throws {
         let api = GmailNotification { path, query in
             if path == "history" {

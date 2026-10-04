@@ -121,10 +121,10 @@ nonisolated struct Message: Identifiable, Hashable, Codable {
     var snippet: String {
         // A one-line preview must not scan megabytes of newsletter or quoted history while scrolling.
         let body = Quote.split(String(text.prefix(4096))).body
-        return String(body.split(whereSeparator: \.isNewline)
+        return MailDecoding.preview(body.split(whereSeparator: \.isNewline)
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty && !$0.hasPrefix(">") }
-            .joined(separator: " ").prefix(240))
+            .joined(separator: " "))
     }
 }
 
@@ -190,4 +190,3 @@ nonisolated enum Quote {
         return body.isEmpty ? (text, nil) : (body, String(text[match.range.lowerBound...]))
     }
 }
-

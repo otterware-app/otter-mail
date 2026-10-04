@@ -36,7 +36,7 @@ final class NotificationService: UNNotificationServiceExtension, @unchecked Send
                         content.title = String(message.sender.prefix(200))
                         if content.title.isEmpty { content.title = "New mail" }
                         content.subtitle = String(message.header("Subject").prefix(300))
-                        content.body = String((message.snippet ?? "").prefix(500))
+                        content.body = message.preview
                         if result.count > 1 { content.body += "\n\(result.count) new messages" }
                         content.threadIdentifier = email + ":" + message.threadId
                         // These IDs and content exist only on the phone, never in an APNs request.

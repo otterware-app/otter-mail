@@ -18,6 +18,7 @@ struct PerformanceTests {
 
     @Test func previewsAreBoundedAndKeepReplyText() {
         #expect(thread(0, text: " Hello \n\n world \n> quoted text").latest.snippet == "Hello world")
+        #expect(thread(0, text: "[Visit the shop](https://example.com/tracking) **Hello** there!\n> quoted text").latest.snippet == "Visit the shop Hello there!")
         #expect(thread(0, text: "Thanks!\n\nOn Tuesday, Sam wrote:\n> original message").latest.snippet == "Thanks!")
         #expect(thread(0, text: String(repeating: "🦦", count: 100_000)).latest.snippet == String(repeating: "🦦", count: 240))
         #expect(thread(0, text: "").latest.snippet.isEmpty)

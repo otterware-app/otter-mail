@@ -106,6 +106,9 @@ this push path to Otter or Apple. APNs has no unread badge. The extension fetche
 messages' headers/preview **directly from Gmail**, then changes the notification on this phone.
 Enriched taps open that mailbox/thread, fetching it directly if it isn't cached; generic taps open
 the mailbox and sync. The demo needs neither Google nor Apple configuration.
+Notification and mailbox-list previews render Markdown as plain text on-device, keeping link
+labels and words without their URL destinations or formatting markers. Input and display length
+are bounded, including truncated Gmail link snippets; the message body is left intact.
 
 `NotificationShared/` contains the direct reader, shared OAuth refresh, Keychain access and
 App Group markers. The app moves existing Google refresh tokens from its original private

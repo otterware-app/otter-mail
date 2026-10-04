@@ -14,6 +14,8 @@ nonisolated struct GmailNotification {
         var internalDate: String?
         var payload: Payload?
 
+        var preview: String { MailDecoding.preview(snippet ?? "", limit: 500) }
+
         func eligible(_ mode: String) -> Bool {
             let labels = Set(labelIds ?? [])
             return mode != "off" && labels.contains("UNREAD") && labels.isDisjoint(with: ["DRAFT", "SENT", "SPAM", "TRASH"])
