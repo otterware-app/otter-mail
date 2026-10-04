@@ -192,10 +192,30 @@ Configure Apple without committing keys:
 
 ```sh
 # From infra/relay, for the intended environment; do not run as part of a code-only task.
-pnpm exec wrangler secret put APNS_TEAM_ID
-pnpm exec wrangler secret put APNS_KEY_ID
-pnpm exec wrangler secret put APNS_PRIVATE_KEY < /secure/path/to/AuthKey_KEYID.p8
+pnpm dlx cf@latest auth whoami
+CLOUDFLARE_ACCOUNT_ID='<account-id>' pnpm dlx cf@latest workers secrets bulk \
+  --worker otter-mail-relay --file /secure/path/to/apns-secrets.json
 ```
+
+`cf` and Wrangler have separate login state. Create the input file outside the checkout,
+restrict it to the owner (`chmod 600`), and delete it after uploading. Its format is:
+
+```json
+{
+  "secrets": {
+    "APNS_TEAM_ID": { "name": "APNS_TEAM_ID", "type": "secret_text", "text": "<team-id>" },
+    "APNS_KEY_ID": { "name": "APNS_KEY_ID", "type": "secret_text", "text": "<key-id>" },
+    "APNS_PRIVATE_KEY": {
+      "name": "APNS_PRIVATE_KEY",
+      "type": "secret_text",
+      "text": "<complete PKCS#8 .p8 contents with JSON-escaped newlines>"
+    }
+  }
+}
+```
+
+The bulk patch preserves secrets not named in the input. Pass the file path, never secret
+values in command arguments or logs. Retain the original `.p8` in secure signing storage.
 
 Use an Apple APNs ES256 signing key for team `838JVGY7W4` authorized for both allowed topics
 (or separate configured deployments/keys for a restricted topic key). `APNS_PRIVATE_KEY` is the

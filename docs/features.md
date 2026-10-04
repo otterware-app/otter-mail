@@ -386,7 +386,6 @@ profile`).
 - iPhone: sender photos (contacts, Gravatar, logos) instead of initials only.
 - iPhone: create, rename and delete labels; Empty Trash / Junk.
 - iPhone: views.
-- iPhone: push notifications (APNs) when the app is closed.
 - Mac and web: Mark all as read (iPhone has it).
 - Web: translation outside Chrome.
 - Web: offline bodies (the Mac downloads them).
