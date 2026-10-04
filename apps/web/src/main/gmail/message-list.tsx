@@ -1,7 +1,8 @@
+import { useLatest } from "../use-latest";
 import { addEmailToTodoist } from "../integrations/todoist";
 import type React from "react";
 import type { ReactNode } from "react";
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useLayoutEffect, useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   DIM_READ_MESSAGES,
   OPEN_MESSAGES_WITH_ARROWS,
@@ -916,12 +917,14 @@ export function MessageList({
     isCombined || allMailRules.length > 0,
   );
   const activeLabel = resolveLabel(accountId, labelId);
-  if (viewQueryRef && !search) {
-    const nameOf = (owner: string, id: string) => resolveLabel(owner, id)?.name ?? null;
-    viewQueryRef.current = isCombined
-      ? viewSearchQuery(combined.rules, nameOf)
-      : (labelSearchToken(labelId, nameOf(accountId, labelId)) ?? "");
-  }
+  useLayoutEffect(() => {
+    if (viewQueryRef && !search) {
+      const nameOf = (owner: string, id: string) => resolveLabel(owner, id)?.name ?? null;
+      viewQueryRef.current = isCombined
+        ? viewSearchQuery(combined.rules, nameOf)
+        : (labelSearchToken(labelId, nameOf(accountId, labelId)) ?? "");
+    }
+  });
   const projectRows = projectThreads.data?.pages[0]?.messages;
   const { mailboxTotal, mailboxUnread } = project
     ? {
@@ -1002,7 +1005,7 @@ export function MessageList({
   );
   /** An expanded row's messages, newest first (like the list); [] when collapsed. */
   const threadMessagesOf = (m: GmailMessageSummary): GmailMessageSummary[] =>
-    expanded.has(threadKey(m)) ? [...(threadsByKey.get(threadKey(m)) ?? [])].reverse() : [];
+    expanded.has(threadKey(m)) ? (threadsByKey.get(threadKey(m)) ?? []).toReversed() : [];
   // What ↑/↓ walk through: every row, and the messages of expanded ones.
   type NavItem = { row: GmailMessageSummary; focus: GmailMessageSummary | null };
   const navItems: NavItem[] = visibleMessages.flatMap((row) => [
@@ -1085,15 +1088,27 @@ export function MessageList({
       if (anchorRef.current && hiddenIds.has(anchorRef.current)) anchorRef.current = null;
     }
   };
+  const clearCheckedForEffect = useLatest(clearChecked);
+  /* oxlint-disable react/exhaustive-effect-dependencies -- Explicit DOM and reset triggers must re-run this lifecycle. */
   useEffect(() => {
-    clearChecked();
+    clearCheckedForEffect.current();
+    // oxlint-disable-next-line react/set-state-in-effect -- A new mailbox, view or search clears the previous selection.
     setExpanded(new Set());
     setCollapsedDays(new Set());
     setCursor(null);
-  }, [accountId, labelId, combined?.viewId, searching, search?.id, searchQuery, unreadOnly]);
+  }, [
+    accountId,
+    labelId,
+    combined?.viewId,
+    searching,
+    search?.id,
+    searchQuery,
+    unreadOnly,
+    clearCheckedForEffect,
+  ]);
+  /* oxlint-enable react/exhaustive-effect-dependencies */
 
-  const checkedRef = useRef(checked);
-  checkedRef.current = checked;
+  const checkedRef = useLatest(checked);
   // Capture phase: Escape clears the multi-selection before home-view's
   // Escape closes the reader.
   useEffect(() => {
@@ -1107,7 +1122,7 @@ export function MessageList({
     };
     window.addEventListener("keydown", down, true);
     return () => window.removeEventListener("keydown", down, true);
-  }, []);
+  }, [checkedRef]);
 
   const toggleChecked = (id: string) => {
     setChecked((prev) => {
@@ -1192,13 +1207,12 @@ export function MessageList({
   // so it only fires when the set actually changes (checkedRows is a fresh
   // array every render).
   const selectionSig = checkedRows.map((m) => `${m.accountId ?? accountId}:${m.id}`).join(",");
-  const selectionRef = useRef(onSelectionChange);
-  selectionRef.current = onSelectionChange;
-  const checkedRowsRef = useRef(checkedRows);
-  checkedRowsRef.current = checkedRows;
+  const selectionRef = useLatest(onSelectionChange);
+  const checkedRowsRef = useLatest(checkedRows);
   useEffect(() => {
     selectionRef.current?.(checkedRowsRef.current);
-  }, [selectionSig]);
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- Re-run this DOM/reset lifecycle when its explicit trigger changes, even when the callback reads refs.
+  }, [selectionSig, checkedRowsRef, selectionRef]);
   /** Runs an action on every checked row. `undoable` actions register one
       undo per row; grouped, a single z restores the whole selection. */
   const bulk = (
@@ -1304,8 +1318,7 @@ export function MessageList({
 
   // Delete acts on the multi-selection when there is one; read through a ref so
   // the window listener (mounted once) sees the current rows.
-  const trashCheckedRef = useRef(bulkTrash);
-  trashCheckedRef.current = allTrashed ? bulkUntrash : bulkTrash;
+  const trashCheckedRef = useLatest(allTrashed ? bulkUntrash : bulkTrash);
 
   const bulkMarkUnread = () => {
     // Gmail-style: marking the open conversation unread returns to the list
@@ -1328,19 +1341,21 @@ export function MessageList({
     if (next) selectForNavigation(next);
     else onDeselect();
   };
-  advanceRef.current = (fromMessageId: string) => {
-    // A single message open from an expanded conversation moves on within it.
-    if (focusedMessage && selectedRow && fromMessageId === selectedRow.id) {
-      advanceFocusIn(selectedRow, focusedMessage);
+  useLayoutEffect(() => {
+    advanceRef.current = (fromMessageId: string) => {
+      // A single message open from an expanded conversation moves on within it.
+      if (focusedMessage && selectedRow && fromMessageId === selectedRow.id) {
+        advanceFocusIn(selectedRow, focusedMessage);
+        return true;
+      }
+      const idx = visibleMessages.findIndex((m) => m.id === fromMessageId);
+      if (idx === -1) return false;
+      const next = pickAdvanceTarget(visibleMessages, idx);
+      if (!next) return false;
+      selectForNavigation(next);
       return true;
-    }
-    const idx = visibleMessages.findIndex((m) => m.id === fromMessageId);
-    if (idx === -1) return false;
-    const next = pickAdvanceTarget(visibleMessages, idx);
-    if (!next) return false;
-    selectForNavigation(next);
-    return true;
-  };
+    };
+  });
 
   const handleOverlayPick = (pickedId: string, wasApplied: boolean) => {
     const row = selectedRow;
@@ -1393,16 +1408,18 @@ export function MessageList({
     focusedMessage,
     allLabels,
   });
-  shortcutState.current = {
-    visibleMessages,
-    selectedRow,
-    selectedMessageId,
-    accountId,
-    moveContextLabelId,
-    navItems,
-    focusedMessage,
-    allLabels,
-  };
+  useLayoutEffect(() => {
+    shortcutState.current = {
+      visibleMessages,
+      selectedRow,
+      selectedMessageId,
+      accountId,
+      moveContextLabelId,
+      navItems,
+      focusedMessage,
+      allLabels,
+    };
+  });
   // Keyboard commands on the open/selected row (Settings › Keybindings).
   // Each handler returns false when it doesn't apply, so the key passes on.
   const rowCommand =
@@ -1521,6 +1538,7 @@ export function MessageList({
     }),
     // With rows multi-selected, triage keys act on the whole selection; with
     // one message of a conversation open, on that message alone.
+    // oxlint-disable-next-line react/refs -- rowCommand builds an event handler; its ref reads happen when the command runs.
     "message.archive": rowCommand(({ row, owner, threadId, advance, focus, advanceFocus }) => {
       if (checkedRef.current.size > 0) return bulkArchive();
       if (!row) return false;
@@ -1546,6 +1564,7 @@ export function MessageList({
         removeLabelIds: rowInInbox ? ["INBOX"] : undefined,
       });
     }),
+    // oxlint-disable-next-line react/refs -- rowCommand builds an event handler; its ref reads happen when the command runs.
     "message.trash": rowCommand(({ row, owner, threadId, advance, focus, advanceFocus }) => {
       if (checkedRef.current.size > 0) {
         trashCheckedRef.current();
@@ -1569,6 +1588,7 @@ export function MessageList({
         void listTrashThread.mutateAsync({ accountId: owner, threadId });
       }
     }),
+    // oxlint-disable-next-line react/refs -- rowCommand builds an event handler; its ref reads happen when the command runs.
     "message.junk": rowCommand(({ row, owner, threadId, advance, focus, advanceFocus }) => {
       if (checkedRef.current.size > 0) return allJunk ? bulkNotJunk() : bulkJunk();
       if (!row) return false;
@@ -1603,6 +1623,7 @@ export function MessageList({
         removeLabelIds: target.starred ? ["STARRED"] : undefined,
       });
     }),
+    // oxlint-disable-next-line react/refs -- rowCommand builds an event handler; its ref reads happen when the command runs.
     "message.markUnread": rowCommand(({ row, owner, focus }) => {
       if (checkedRef.current.size > 0) return bulkMarkUnread();
       if (!row) return false;
@@ -1615,6 +1636,7 @@ export function MessageList({
       // reader from immediately re-marking it read.
       onDeselect();
     }),
+    // oxlint-disable-next-line react/refs -- rowCommand builds an event handler; its ref reads happen when the command runs.
     "message.markRead": rowCommand(({ row, owner, threadId, focus }) => {
       if (checkedRef.current.size > 0) return bulkMarkRead();
       if (!row) return false;
@@ -1632,6 +1654,7 @@ export function MessageList({
       if (!row) return false;
       setLabelOverlay("label");
     }),
+    // oxlint-disable-next-line react/refs -- rowCommand builds an event handler; its ref reads happen when the command runs.
     "message.move": rowCommand(({ row }) => {
       if (!row || !shortcutState.current.moveContextLabelId) return false;
       setLabelOverlay("move");
@@ -1939,8 +1962,8 @@ export function MessageList({
           <SignedOutMailbox account={signedOutAccount} />
         ) : isLoading ? (
           <div className="flex flex-col gap-0">
-            {Array.from({ length: 8 }).map((_, i) => (
-              <div key={i} className="message-list-group">
+            {["row-1", "row-2", "row-3", "row-4", "row-5", "row-6", "row-7", "row-8"].map((key) => (
+              <div key={key} className="message-list-group">
                 <div className="message-list-row px-3">
                   <div className="message-list-skeleton flex min-w-0 flex-1 flex-col gap-2">
                     <div className="h-3.5 w-32 animate-skeleton rounded-full bg-secondary" />

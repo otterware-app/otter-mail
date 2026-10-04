@@ -21,11 +21,19 @@
       "migrations_dir": "migrations",
     },
   ],
-  "durable_objects": { "bindings": [{ "name": "USER_HUB", "class_name": "UserHub" }] },
+  "durable_objects": {
+    "bindings": [
+      { "name": "USER_HUB", "class_name": "UserHub" },
+      { "name": "AGENT_HUB", "class_name": "AgentHub" },
+    ],
+  },
   "services": [
     { "binding": "ACCOUNTS", "service": "otter-accounts", "entrypoint": "MailIdentity" },
   ],
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["UserHub"] }],
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["UserHub"] },
+    { "tag": "v2", "new_sqlite_classes": ["AgentHub"] },
+  ],
   // The web app's tunnel, per user and minute (periods are 10 or 60 seconds):
   // to the servers of their IMAP mailboxes, and to any other host (checking a
   // password before linking a mailbox). Counted per Cloudflare location, in

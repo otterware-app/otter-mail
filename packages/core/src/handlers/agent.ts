@@ -6,6 +6,11 @@
 
 import { handle } from "../ipc.js";
 import { ATTACHMENTS_DIR, stageAttachment } from "../services/agent/attachments.js";
+import {
+  connectOpenRouter,
+  disconnectOpenRouter,
+  openRouterConnection,
+} from "../services/agent/openrouter.js";
 import * as agent from "../services/agent/service.js";
 import { preferenceChanged } from "../services/preferences.js";
 import {
@@ -68,6 +73,8 @@ function settingsPatch(p: Params): agent.SettingsPatch {
   if (codex) patch.codex = agentPatch(codex, ["binaryPath", "homePath", "launchArgs"]);
   const claude = p?.claude as Params;
   if (claude) patch.claude = agentPatch(claude, ["binaryPath", "homePath"]);
+  const openrouter = p?.openrouter as Params;
+  if (openrouter) patch.openrouter = agentPatch(openrouter, []);
   return patch;
 }
 
@@ -98,6 +105,7 @@ function attachmentsOf(raw: unknown): ChatAttachment[] {
 }
 
 export function registerAgentHandlers(): void {
+  agent.watchAgentAccount();
   handle("agent:providers", async () => agent.providersState());
 
   handle("agent:refreshProviders", async () => {
@@ -109,6 +117,21 @@ export function registerAgentHandlers(): void {
     const state = await agent.updateProviderSettings(settingsPatch(params as Params));
     preferenceChanged("assistant");
     return state;
+  });
+
+  handle("agent:openrouterConnection", () => openRouterConnection());
+  handle("agent:connectOpenRouter", async (params: unknown) => {
+    const key = str((params as Params)?.apiKey);
+    await connectOpenRouter(key);
+    await agent.updateProviderSettings({ selected: "openrouter", openrouter: { enabled: true } });
+    await agent.refreshProvider("openrouter");
+    preferenceChanged("assistant");
+    return agent.providersState();
+  });
+  handle("agent:disconnectOpenRouter", async () => {
+    await disconnectOpenRouter();
+    await agent.refreshProvider("openrouter");
+    return agent.providersState();
   });
 
   handle("agent:connectHermes", async (params: unknown) => {

@@ -48,6 +48,33 @@ function formatByteSize(bytes: number): string {
 }
 
 /** Returns the error to show for a file too large to be a theme, else null. */
+function versionedCopy(theme: ThemeDefinition, preferredName?: string | null): ThemeDefinition {
+  if (preferredName && preferredName.toLowerCase() !== theme.label.toLowerCase()) {
+    const candidate = parseThemeFile({
+      version: THEME_FILE_VERSION,
+      name: preferredName.slice(0, 48),
+      appearance: theme.appearance,
+      colors: theme.colors,
+      ...(theme.variants ? { variants: theme.variants } : {}),
+      ...(theme.managed ? { managed: true } : {}),
+    });
+    if (!getCustomThemes().some((existing) => existing.id === candidate.id)) return candidate;
+  }
+  for (let copy = 1; copy < 100; copy += 1) {
+    const candidate = parseThemeFile({
+      version: THEME_FILE_VERSION,
+      name: `${theme.label.slice(0, 48 - ` (${copy})`.length)} (${copy})`,
+      appearance: theme.appearance,
+      colors: theme.colors,
+      ...(theme.variants ? { variants: theme.variants } : {}),
+      ...(theme.managed ? { managed: true } : {}),
+    });
+    if (getCustomThemes().some((existing) => existing.id === candidate.id)) continue;
+    return candidate;
+  }
+  throw new Error(`Too many copies of "${theme.label}".`);
+}
+
 export function describeOversizedThemeFile(bytes: number): string | null {
   if (bytes <= MAX_THEME_FILE_BYTES) return null;
   return `That file is ${formatByteSize(bytes)}. Theme files are only a few KB, so this one was not read (limit ${formatByteSize(MAX_THEME_FILE_BYTES)}).`;
@@ -176,6 +203,7 @@ export function ThemeImportDialog({
     importRequestRef.current += 1;
     // Reset on close too: a dialog dismissed mid-drag would otherwise reopen
     // still wearing the drop highlight.
+    // oxlint-disable-next-line react/set-state-in-effect -- Discard the previous import session when the dialog closes.
     setIsDropTarget(false);
     if (!open) return;
     setJson("");
@@ -213,61 +241,58 @@ export function ThemeImportDialog({
   // Several files at once import as a batch: VS Code families pair their
   // light and dark variants, everything installs without activating, and the
   // single-file flow keeps filling the editor for review.
-  const readThemeBatch = useCallback(
-    async (files: ReadonlyArray<ImportableThemeFile>) => {
-      const requestId = ++importRequestRef.current;
-      setIsReading(true);
-      const failures: string[] = [];
-      const parsed: Array<{ theme: ThemeDefinition; sourceName: string }> = [];
-      try {
-        for (const file of files) {
-          const oversized = describeOversizedThemeFile(file.size);
-          if (oversized) {
-            failures.push(`${file.name}: too large`);
-            continue;
-          }
-          try {
-            const value: unknown = JSON.parse(await file.text());
-            parsed.push({
-              sourceName: file.name,
-              theme: isVsCodeThemeFile(value) ? parseVsCodeThemeFile(value) : parseThemeFile(value),
-            });
-          } catch (cause) {
-            failures.push(
-              `${file.name}: ${cause instanceof Error ? cause.message : "not a theme file"}`,
-            );
-          }
+  const readThemeBatch = useCallback(async (files: ReadonlyArray<ImportableThemeFile>) => {
+    const requestId = ++importRequestRef.current;
+    setIsReading(true);
+    const failures: string[] = [];
+    const parsed: Array<{ theme: ThemeDefinition; sourceName: string }> = [];
+    try {
+      for (const file of files) {
+        const oversized = describeOversizedThemeFile(file.size);
+        if (oversized) {
+          failures.push(`${file.name}: too large`);
+          continue;
         }
-        if (requestId !== importRequestRef.current) return;
-        const installed: ThemeDefinition[] = [];
-        const conflicting: ThemeDefinition[] = [];
-        for (const theme of pairVsCodeThemes(resolveThemeLabelCollisions(parsed))) {
-          if (getCustomThemes().some((existing) => existing.id === theme.id)) {
-            conflicting.push(theme);
-            continue;
-          }
-          try {
-            installed.push(installCustomTheme(theme));
-          } catch (cause) {
-            failures.push(
-              `${theme.label}: ${cause instanceof Error ? cause.message : "could not install"}`,
-            );
-          }
+        try {
+          const value: unknown = JSON.parse(await file.text());
+          parsed.push({
+            sourceName: file.name,
+            theme: isVsCodeThemeFile(value) ? parseVsCodeThemeFile(value) : parseThemeFile(value),
+          });
+        } catch (cause) {
+          failures.push(
+            `${file.name}: ${cause instanceof Error ? cause.message : "not a theme file"}`,
+          );
         }
-        if (installed.length > 0) onImportedMany(installed, { updated: false });
-        if (failures.length > 0) {
-          setError(failures.join(" — "));
-        } else if (conflicting.length > 0) {
-          setConflicts(conflicting);
-        } else if (installed.length > 0) {
-          onOpenChange(false);
-        }
-      } finally {
-        if (requestId === importRequestRef.current) setIsReading(false);
       }
-    },
-    [onImportedMany, onOpenChange],
-  );
+      if (requestId !== importRequestRef.current) return;
+      const installed: ThemeDefinition[] = [];
+      const conflicting: ThemeDefinition[] = [];
+      for (const theme of pairVsCodeThemes(resolveThemeLabelCollisions(parsed))) {
+        if (getCustomThemes().some((existing) => existing.id === theme.id)) {
+          conflicting.push(theme);
+          continue;
+        }
+        try {
+          installed.push(installCustomTheme(theme));
+        } catch (cause) {
+          failures.push(
+            `${theme.label}: ${cause instanceof Error ? cause.message : "could not install"}`,
+          );
+        }
+      }
+      if (installed.length > 0) onImportedMany(installed, { updated: false });
+      if (failures.length > 0) {
+        setError(failures.join(" — "));
+      } else if (conflicting.length > 0) {
+        setConflicts(conflicting);
+      } else if (installed.length > 0) {
+        onOpenChange(false);
+      }
+    } finally {
+      if (requestId === importRequestRef.current) setIsReading(false);
+    }
+  }, []);
 
   const readThemeFiles = useCallback(
     (files: ReadonlyArray<ImportableThemeFile>) => {
@@ -304,35 +329,6 @@ export function ThemeImportDialog({
 
   /** Copy of an already-installed theme under the source file's name when
    *  that differs (Dracula Soft), else the next free "Name (1)". */
-  const versionedCopy = (
-    theme: ThemeDefinition,
-    preferredName?: string | null,
-  ): ThemeDefinition => {
-    if (preferredName && preferredName.toLowerCase() !== theme.label.toLowerCase()) {
-      const candidate = parseThemeFile({
-        version: THEME_FILE_VERSION,
-        name: preferredName.slice(0, 48),
-        appearance: theme.appearance,
-        colors: theme.colors,
-        ...(theme.variants ? { variants: theme.variants } : {}),
-        ...(theme.managed ? { managed: true } : {}),
-      });
-      if (!getCustomThemes().some((existing) => existing.id === candidate.id)) return candidate;
-    }
-    for (let copy = 1; copy < 100; copy += 1) {
-      const candidate = parseThemeFile({
-        version: THEME_FILE_VERSION,
-        name: `${theme.label.slice(0, 48 - ` (${copy})`.length)} (${copy})`,
-        appearance: theme.appearance,
-        colors: theme.colors,
-        ...(theme.variants ? { variants: theme.variants } : {}),
-        ...(theme.managed ? { managed: true } : {}),
-      });
-      if (getCustomThemes().some((existing) => existing.id === candidate.id)) continue;
-      return candidate;
-    }
-    throw new Error(`Too many copies of "${theme.label}".`);
-  };
 
   const resolveConflicts = useCallback(
     (mode: "update" | "copy") => {

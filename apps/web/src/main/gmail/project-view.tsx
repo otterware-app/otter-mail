@@ -118,6 +118,7 @@ function Notes({ project }: { project: Project }) {
     if (!el) return;
     el.style.height = "auto";
     el.style.height = `${el.scrollHeight}px`;
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- Re-run this DOM/reset lifecycle when its explicit trigger changes, even when the callback reads refs.
   }, [value]);
   const save = (notes: string) => {
     window.clearTimeout(timer.current);

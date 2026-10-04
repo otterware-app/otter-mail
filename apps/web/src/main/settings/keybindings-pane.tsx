@@ -105,6 +105,7 @@ function warningFor(rows: Row[], id: string, key: string, when: string | undefin
 // ── Pieces ───────────────────────────────────────────────────────────────────
 
 /** A key string as plain glyphs: ⇧⌘K, and "then" between sequence strokes. */
+/* oxlint-disable react/no-array-index-key -- Shortcut strokes have fixed positions and can repeat the same key. */
 function KeyChips({ value }: { value: string }) {
   const shortcut = parseShortcut(value);
   if (!shortcut) return <span className="font-mono text-xs text-muted-foreground">{value}</span>;
@@ -119,6 +120,7 @@ function KeyChips({ value }: { value: string }) {
     </span>
   );
 }
+/* oxlint-enable react/no-array-index-key */
 
 const SEQUENCE_WINDOW_MS = 1000;
 
@@ -139,6 +141,7 @@ function KeyControl({
   const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (recording) inputRef.current?.focus();
+    // oxlint-disable-next-line react/set-state-in-effect -- Reset the local recording/editing session when its binding or dialog changes.
     else setPartial(null);
   }, [recording]);
   useEffect(() => () => void (timer.current && clearTimeout(timer.current)), []);
@@ -208,6 +211,7 @@ function WhenControl({ value, onChange }: { value: string; onChange: (when: stri
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(value);
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- Reset the local recording/editing session when its binding or dialog changes.
     if (open) setDraft(value);
   }, [open, value]);
   const valid = !draft.trim() || parseWhen(draft) !== null;
@@ -369,6 +373,7 @@ function KeybindingRow({ row, rows, searchId }: { row: Row; rows: Row[]; searchI
   const [whenDraft, setWhenDraft] = useState(rule.when ?? "");
   const [recording, setRecording] = useState(false);
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- Reset the local recording/editing session when its binding or dialog changes.
     setKeyDraft(rule.key);
     setWhenDraft(rule.when ?? "");
   }, [rule.key, rule.when]);
@@ -503,11 +508,12 @@ export function LabelShortcutDialog({
   const [key, setKey] = useState("");
   const [recording, setRecording] = useState(false);
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- Reset the local recording/editing session when its binding or dialog changes.
     setKey(existing?.key ?? "");
     // A new binding starts recording right away.
     setRecording(labelName !== null && !existing);
     // Only when the dialog opens for a label.
-  }, [labelName]);
+  }, [labelName, existing]);
   const rows = useMemo<Row[]>(
     () => rules.map((rule, i) => ({ id: `${i}`, rule, source: "Custom" as const })),
     [rules],

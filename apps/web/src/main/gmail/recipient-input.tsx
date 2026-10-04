@@ -1,3 +1,4 @@
+import { withOccurrenceKeys } from "./list-keys";
 import {
   forwardRef,
   useRef,
@@ -157,11 +158,11 @@ export const RecipientInput = forwardRef<
       className="relative flex min-w-0 flex-1 flex-wrap items-center gap-1 py-0.5"
       data-ac-open={open ? "true" : "false"}
     >
-      {chips.map((entry, i) => {
+      {withOccurrenceKeys(chips, (entry) => entry).map(({ item: entry, index: i, key }) => {
         const { name, email } = parseAddressEntry(entry);
         const valid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
         return (
-          <ContextMenu key={`${entry}:${i}`}>
+          <ContextMenu key={key}>
             <ContextMenuTrigger asChild>
               <span
                 tabIndex={0}

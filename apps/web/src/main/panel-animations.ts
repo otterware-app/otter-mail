@@ -96,15 +96,11 @@ export function usePanelAnimationSettings(navigationKey: string): {
 export function usePanelPresence(open: boolean, animated: boolean, durationMs: number): boolean {
   const [present, setPresent] = useState(open);
 
+  if (open && !present) setPresent(true);
+  if (!open && !animated && present) setPresent(false);
+
   useEffect(() => {
-    if (open) {
-      setPresent(true);
-      return;
-    }
-    if (!animated) {
-      setPresent(false);
-      return;
-    }
+    if (open || !animated) return;
     const timeout = window.setTimeout(() => setPresent(false), durationMs);
     return () => window.clearTimeout(timeout);
   }, [animated, durationMs, open]);

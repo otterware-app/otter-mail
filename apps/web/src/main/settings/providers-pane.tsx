@@ -43,6 +43,7 @@ import {
 } from "./settings-ui";
 import { searchableSetting } from "./settings-search";
 import { AgentTokensSection } from "./agent-tokens-section";
+import { OpenRouterConnection } from "./openrouter-connection";
 import { features } from "../features";
 import { RUNTIME_MODE_OPTIONS } from "../gmail/model-picker";
 import {
@@ -749,10 +750,10 @@ export function ProvidersPane() {
       <SettingsSection
         {...searchableSetting("agent-providers")}
         headerAction={
-          state.selected !== "hermes" ? (
+          state.selected !== "openrouter" ? (
             <SettingResetButton
               label="default agent"
-              onClick={() => update({ selected: "hermes" })}
+              onClick={() => update({ selected: "openrouter" })}
             />
           ) : null
         }
@@ -775,6 +776,40 @@ export function ProvidersPane() {
       />
       {current.kind === "hermes" ? (
         <HermesEditor state={state} provider={current} update={update} />
+      ) : current.kind === "openrouter" ? (
+        <>
+          <OpenRouterConnection provider={current} />
+          <SettingsSection title="Access">
+            <SettingsRow
+              title="Tool approval"
+              description="Choose how much the agent may do without asking. You can also change this in the composer."
+              control={
+                <Select
+                  value={state.settings.openrouter.runtimeMode}
+                  onValueChange={(value) =>
+                    update({ openrouter: { runtimeMode: value as RuntimeMode } })
+                  }
+                >
+                  <SelectTrigger variant="pill" aria-label="OpenRouter access">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {RUNTIME_MODE_OPTIONS.map((mode) => (
+                      <SelectItem key={mode.value} value={mode.value}>
+                        {mode.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              }
+            />
+          </SettingsSection>
+          <ModelsSection
+            provider={current}
+            selectedModel={state.settings.openrouter.model}
+            onPick={(model) => update({ openrouter: { model } })}
+          />
+        </>
       ) : (
         <AgentEditor kind={current.kind} state={state} provider={current} update={update} />
       )}

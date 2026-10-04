@@ -5,7 +5,7 @@
  */
 
 import { setSyncedPreference } from "../synced-preferences";
-import { useId, useRef, useState, useSyncExternalStore } from "react";
+import { useId, useState, useSyncExternalStore } from "react";
 import {
   ChevronDownIcon,
   CornerUpRightIcon,
@@ -73,7 +73,7 @@ export function QueuedRunsControl({
 }) {
   const [expanded, setExpanded] = useState(true);
   const [drag, setDrag] = useState<{ id: string; insertIndex: number } | null>(null);
-  const armed = useRef<string | null>(null);
+  const [armed, setArmed] = useState<string | null>(null);
   const steerShortcut = useShortcutLabel("agent.sendQueuedNow");
   const editShortcut = useShortcutLabel("agent.editQueued");
   const listId = useId();
@@ -125,9 +125,9 @@ export function QueuedRunsControl({
             <li
               key={item.id}
               aria-current={isEditing ? "true" : undefined}
-              draggable={drag?.id === item.id || armed.current === item.id}
+              draggable={drag?.id === item.id || armed === item.id}
               onDragStart={(event) => {
-                if (armed.current !== item.id) return event.preventDefault();
+                if (armed !== item.id) return event.preventDefault();
                 event.dataTransfer.effectAllowed = "move";
                 setDrag({ id: item.id, insertIndex: index });
               }}
@@ -143,7 +143,7 @@ export function QueuedRunsControl({
                 drop();
               }}
               onDragEnd={() => {
-                armed.current = null;
+                setArmed(null);
                 setDrag(null);
               }}
               className={cn(
@@ -168,7 +168,7 @@ export function QueuedRunsControl({
                 label="Reorder queued message (drag, or press the arrow keys)"
                 className="size-6 cursor-grab active:cursor-grabbing"
                 onPointerDown={() => {
-                  armed.current = item.id;
+                  setArmed(item.id);
                 }}
                 onKeyDown={(event) => {
                   if (event.key === "ArrowUp" && index > 0) {

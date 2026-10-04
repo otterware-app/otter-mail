@@ -165,6 +165,8 @@ export interface Platform {
   translator?: Translator;
   /** Agents beyond Hermes that run on this device (Codex and Claude, on the Mac). */
   agentProviders?: ChatProvider[];
+  /** Local demo agent endpoint; production uses the signed-in relay. */
+  agentServerUrl?: string;
 }
 
 let current: Platform | null = null;

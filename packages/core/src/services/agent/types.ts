@@ -5,15 +5,15 @@
  * turns, and every provider streams the same canonical {@link ChatEvent}s.
  */
 
-export type ProviderKind = "hermes" | "codex" | "claude";
+export type ProviderKind = "hermes" | "openrouter" | "codex" | "claude";
 
-export const PROVIDER_KINDS: readonly ProviderKind[] = ["hermes", "codex", "claude"];
+export const PROVIDER_KINDS: readonly ProviderKind[] = ["openrouter", "hermes", "codex", "claude"];
 
 export type ProviderState = "ready" | "warning" | "error" | "disabled";
 
 export type ProviderAuth = {
   status: "authenticated" | "unauthenticated" | "unknown";
-  /** e.g. "ChatGPT Pro" or the Hermes model id. */
+  /** e.g. the connected provider or the Hermes model id. */
   label?: string;
   email?: string;
 };
@@ -140,11 +140,20 @@ export type ClaudeSettings = {
   runtimeMode: RuntimeMode;
 };
 
+export type OpenRouterSettings = {
+  enabled: boolean;
+  model: string;
+  reasoningEffort: string;
+  serviceTier: string;
+  runtimeMode: RuntimeMode;
+};
+
 export type ProviderSettings = {
   selected: ProviderKind;
   hermes: HermesSettings;
   codex: CodexSettings;
   claude: ClaudeSettings;
+  openrouter: OpenRouterSettings;
 };
 
 /** Settings as the renderer sees them: Hermes' API key never leaves the backend. */

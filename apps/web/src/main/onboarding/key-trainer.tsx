@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useLatest } from "../use-latest";
+import { useEffect, useState } from "react";
 import { CheckIcon, StarIcon } from "lucide-react";
 import type { KeybindingCommand } from "../keybindings/commands";
 import { isModifierOnly, matchesStroke } from "../keybindings/keys";
@@ -71,8 +72,7 @@ export function KeyTrainer({ onProgress }: { onProgress?: (done: number) => void
   const [done, setDone] = useState<ReadonlySet<KeybindingCommand>>(new Set());
   const [caption, setCaption] = useState<{ text: string; seq: number } | null>(null);
 
-  const state = useRef({ rows, index, undos });
-  state.current = { rows, index, undos };
+  const state = useLatest({ rows, index, undos });
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -125,11 +125,10 @@ export function KeyTrainer({ onProgress }: { onProgress?: (done: number) => void
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [state]);
 
-  const onProgressRef = useRef(onProgress);
-  onProgressRef.current = onProgress;
-  useEffect(() => onProgressRef.current?.(done.size), [done]);
+  const onProgressRef = useLatest(onProgress);
+  useEffect(() => onProgressRef.current?.(done.size), [done, onProgressRef]);
 
   return (
     <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-6">

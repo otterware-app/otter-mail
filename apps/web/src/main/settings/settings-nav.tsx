@@ -1,3 +1,4 @@
+import { useLatest } from "../use-latest";
 import {
   useCallback,
   useEffect,
@@ -314,9 +315,10 @@ function DefaultMailRow() {
       console.log("[SettingsNav:defaultMailStatus] failed", { error: String(err) });
     }
   };
+  const refreshForEffect = useLatest(refresh);
   useEffect(() => {
-    void refresh();
-  }, []);
+    void refreshForEffect.current();
+  }, [refreshForEffect]);
   if (isDefault !== false) return null;
   return (
     <HintTooltip label="Use Otter Mail for email links">

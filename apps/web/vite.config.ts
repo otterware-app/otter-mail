@@ -5,6 +5,8 @@ import * as NodeURL from "node:url";
 import "vite-plus/test/config";
 import { defineConfig } from "vite-plus";
 
+import { demoAgentServer } from "./dev-agent-server";
+
 import pkg from "./package.json" with { type: "json" };
 
 const port = Number(process.env.PORT ?? 5833);
@@ -14,7 +16,7 @@ export default defineConfig({
   // at mail.otterware.app by the site Worker, both from the root. Absolute
   // paths, so a page loaded at a deep route (/you@gmail.com/INBOX/…) finds them.
   base: "/",
-  plugins: [react(), babel({ presets: [reactCompilerPreset()] }), tailwindcss()],
+  plugins: [demoAgentServer(), react(), babel({ presets: [reactCompilerPreset()] }), tailwindcss()],
   define: {
     __APP_DISPLAY_NAME__: JSON.stringify("Otter Mail"),
     __APP_VERSION__: JSON.stringify(pkg.version),

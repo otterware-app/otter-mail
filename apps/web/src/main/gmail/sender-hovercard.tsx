@@ -59,25 +59,6 @@ export function SenderHoverCard({
     setOpen(false);
   };
 
-  const Action = ({
-    icon,
-    label,
-    onClick,
-  }: {
-    icon: ReactNode;
-    label: string;
-    onClick: () => void;
-  }) => (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-sm text-foreground hover:bg-accent-surface"
-    >
-      <span className="shrink-0 text-muted-foreground">{icon}</span>
-      {label}
-    </button>
-  );
-
   return (
     <>
       <span
@@ -105,7 +86,7 @@ export function SenderHoverCard({
               </div>
               <div className="-mx-1 mt-3 flex flex-col gap-0.5">
                 {onCompose ? (
-                  <Action
+                  <SenderAction
                     icon={<SquarePenIcon className="size-4" />}
                     label="New message"
                     onClick={() => {
@@ -115,7 +96,7 @@ export function SenderHoverCard({
                   />
                 ) : null}
                 {onSearch ? (
-                  <Action
+                  <SenderAction
                     icon={<SearchIcon className="size-4" />}
                     label="Find emails"
                     onClick={() => {
@@ -125,7 +106,7 @@ export function SenderHoverCard({
                   />
                 ) : null}
                 {onAsk ? (
-                  <Action
+                  <SenderAction
                     icon={<MousePointer2Icon className="size-4" />}
                     label="Ask the agent about them"
                     onClick={() => {
@@ -134,7 +115,7 @@ export function SenderHoverCard({
                     }}
                   />
                 ) : null}
-                <Action
+                <SenderAction
                   icon={<CopyIcon className="size-4" />}
                   label="Copy address"
                   onClick={copyEmail}
@@ -145,5 +126,26 @@ export function SenderHoverCard({
           )
         : null}
     </>
+  );
+}
+
+function SenderAction({
+  icon,
+  label,
+  onClick,
+}: {
+  icon: ReactNode;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-sm text-foreground hover:bg-accent-surface"
+    >
+      <span className="shrink-0 text-muted-foreground">{icon}</span>
+      {label}
+    </button>
   );
 }

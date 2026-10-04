@@ -416,6 +416,7 @@ function AccountEditor({ account }: { account: GmailAccount }) {
   const loadedRef = useRef<string | null>(null);
   useEffect(() => {
     loadedRef.current = signatureRef.current ? editedSignature(signatureRef.current) : null;
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- Re-run this DOM/reset lifecycle when its explicit trigger changes, even when the callback reads refs.
   }, [shown]);
   useEffect(() => {
     const next = account.signature ?? "";

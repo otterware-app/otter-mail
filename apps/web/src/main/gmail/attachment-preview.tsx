@@ -233,6 +233,7 @@ function PreviewSurface({
   useEffect(() => {
     let cancelled = false;
     let url: string | null = null;
+    // oxlint-disable-next-line react/set-state-in-effect -- Start an external attachment load with its loading state before the async result arrives.
     setLoaded(null);
     setError(null);
     void (async () => {
@@ -255,7 +256,8 @@ function PreviewSurface({
       cancelled = true;
       if (url) URL.revokeObjectURL(url);
     };
-  }, [attempt]);
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- Re-run this DOM/reset lifecycle when its explicit trigger changes, even when the callback reads refs.
+  }, [attempt, file, kind, mimeType]);
 
   const media = (message: string) => () => setError(message);
   const body = error ? (

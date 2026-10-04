@@ -19,6 +19,8 @@ import {
   normalizeHermesBaseUrl,
   probeHermesSessions,
 } from "./hermes.js";
+import { openRouterProvider } from "./openrouter.js";
+import { onOtterAccountChange } from "../otter-account.js";
 import { answerToolApproval } from "./tools/index.js";
 import {
   getHermesKey,
@@ -47,7 +49,10 @@ let providers: Partial<Record<ProviderKind, ChatProvider>> | null = null;
 /** The providers this platform runs. */
 function available(): Partial<Record<ProviderKind, ChatProvider>> {
   providers ??= Object.fromEntries(
-    [hermesProvider, ...(platform().agentProviders ?? [])].map((p) => [p.kind, p]),
+    [openRouterProvider, hermesProvider, ...(platform().agentProviders ?? [])].map((p) => [
+      p.kind,
+      p,
+    ]),
   );
   return providers;
 }
@@ -62,6 +67,7 @@ const DISPLAY_NAMES: Record<ProviderKind, string> = {
   hermes: "Hermes",
   codex: "Codex",
   claude: "Claude",
+  openrouter: "OpenRouter",
 };
 
 /** Re-check health when a snapshot is older than this (T3's default interval). */
@@ -69,6 +75,7 @@ const STALE_AFTER_MS = 5 * 60_000;
 
 const checked = new Map<ProviderKind, ProviderSnapshot>();
 const checking = new Map<ProviderKind, Promise<void>>();
+let accountGeneration = 0;
 
 function pendingSnapshot(kind: ProviderKind, settings: ProviderSettings): ProviderSnapshot {
   return {
@@ -97,17 +104,21 @@ async function getState(): Promise<ProvidersState> {
       ...snapshot,
       enabled,
       status: enabled ? snapshot.status : "disabled",
-      model: chosen || fallback || null,
+      model:
+        chosen && (kind !== "openrouter" || snapshot.models.some((m) => m.slug === chosen))
+          ? chosen
+          : fallback || null,
     } as ProviderSnapshot;
   });
-  const { hermes, codex, claude, selected } = settings;
+  const { hermes, codex, claude, openrouter, selected } = settings;
   return {
     providers: snapshots,
-    selected: available()[selected] ? selected : "hermes",
+    selected: available()[selected] ? selected : "openrouter",
     settings: {
       hermes,
       codex,
       claude,
+      openrouter,
       selected,
       hermesHasKey: (await getHermesKey()).length > 0,
     },
@@ -122,11 +133,13 @@ async function broadcastState(): Promise<void> {
 function check(kind: ProviderKind): Promise<void> {
   const inFlight = checking.get(kind);
   if (inFlight) return inFlight;
+  const generation = accountGeneration;
   const run = (async () => {
     const settings = await getProviderSettings();
     const found = available()[kind];
     if (!found || !settings[kind].enabled) return;
     const result = await found.checkStatus(settings);
+    if (kind === "openrouter" && generation !== accountGeneration) return;
     checked.set(kind, { ...result, enabled: true, checkedAt: Date.now() });
     logger.info("agent", "provider checked", {
       kind,
@@ -162,6 +175,13 @@ export async function refreshProviders(): Promise<void> {
   await Promise.all(PROVIDER_KINDS.filter((kind) => available()[kind]).map(check));
 }
 
+/** A connection changed while a probe may still have been using its old credentials. */
+export async function refreshProvider(kind: ProviderKind): Promise<void> {
+  await checking.get(kind);
+  checked.delete(kind);
+  await check(kind);
+}
+
 export type SettingsPatch = {
   selected?: ProviderKind;
   hermes?: Partial<
@@ -169,6 +189,7 @@ export type SettingsPatch = {
   >;
   codex?: Partial<ProviderSettings["codex"]>;
   claude?: Partial<ProviderSettings["claude"]>;
+  openrouter?: Partial<ProviderSettings["openrouter"]>;
 };
 
 /** Settings that change how a provider's process is launched. */
@@ -182,6 +203,7 @@ export async function updateProviderSettings(patch: SettingsPatch): Promise<Prov
     hermes: { ...current.hermes, ...patch.hermes },
     codex: { ...current.codex, ...patch.codex },
     claude: { ...current.claude, ...patch.claude },
+    openrouter: { ...current.openrouter, ...patch.openrouter },
   };
   await saveProviderSettings(next);
   for (const kind of PROVIDER_KINDS) {
@@ -192,7 +214,10 @@ export async function updateProviderSettings(patch: SettingsPatch): Promise<Prov
       provider(kind).shutdown();
       checked.delete(kind);
       void check(kind);
-    } else if ("enabled" in changed && next[kind].enabled) void check(kind);
+    } else if ("enabled" in changed) {
+      if (next[kind].enabled) void check(kind);
+      else provider(kind).shutdown();
+    }
   }
   const state = await getState();
   broadcast("agent:providersChanged", state);
@@ -324,6 +349,7 @@ export type SyncedProviderSettings = {
   hermes: ProviderSettings["hermes"];
   codex: Synced<ProviderSettings["codex"]>;
   claude: Synced<ProviderSettings["claude"]>;
+  openrouter: ProviderSettings["openrouter"];
 };
 
 const withoutDeviceKeys = <T extends object>(settings: T) =>
@@ -332,8 +358,14 @@ const withoutDeviceKeys = <T extends object>(settings: T) =>
   ) as Synced<T>;
 
 export async function syncedProviderSettings(): Promise<SyncedProviderSettings> {
-  const { selected, hermes, codex, claude } = await getProviderSettings();
-  return { selected, hermes, codex: withoutDeviceKeys(codex), claude: withoutDeviceKeys(claude) };
+  const { selected, hermes, codex, claude, openrouter } = await getProviderSettings();
+  return {
+    selected,
+    hermes,
+    codex: withoutDeviceKeys(codex),
+    claude: withoutDeviceKeys(claude),
+    openrouter,
+  };
 }
 
 /** Takes the account's provider settings, keeping this device's CLI paths. */
@@ -349,6 +381,7 @@ export async function applySyncedProviderSettings(
     hermes: { ...current.hermes, ...synced.hermes },
     codex: { ...current.codex, ...(synced.codex && withoutDeviceKeys(synced.codex)) },
     claude: { ...current.claude, ...(synced.claude && withoutDeviceKeys(synced.claude)) },
+    openrouter: { ...current.openrouter, ...synced.openrouter },
   };
   await saveProviderSettings(next);
   if (next.hermes.baseUrl !== current.hermes.baseUrl) {
@@ -356,6 +389,7 @@ export async function applySyncedProviderSettings(
     checked.delete("hermes");
   }
   void check("hermes");
+  void check("openrouter");
   await broadcastState();
 }
 
@@ -372,4 +406,14 @@ export async function applySyncedHermesKey(key: string): Promise<void> {
   await setHermesKey(key);
   checked.delete("hermes");
   void check("hermes");
+}
+
+/** Install account listeners when the backend starts, after the platform is ready. */
+export function watchAgentAccount(): void {
+  onOtterAccountChange(() => {
+    accountGeneration++;
+    openRouterProvider.shutdown();
+    checked.delete("openrouter");
+    void refreshProvider("openrouter");
+  });
 }

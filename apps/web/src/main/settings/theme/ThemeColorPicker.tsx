@@ -1,3 +1,4 @@
+import { useLatest } from "../../use-latest";
 /**
  * Ported from Otter Code (github.com/otterware-app/otter-code) at a944cac52:
  * apps/web/src/components/settings/ThemeColorPicker.tsx, unchanged but for
@@ -105,6 +106,7 @@ function ThemeColorPickerPanel({
     }
     // Keep the current hue/saturation when the incoming value is just our own
     // change echoed back; hex → HSV is lossy for greys, white, and black.
+    // oxlint-disable-next-line react/set-state-in-effect -- Reconcile the incoming color while preserving focused text edits and the current hue.
     setHsv((current) =>
       hsvToHex(current.h, current.s, current.v) === normalizedValue
         ? current
@@ -115,8 +117,7 @@ function ThemeColorPickerPanel({
   // Local state updates immediately for a smooth thumb; the parent commit
   // (which can regenerate a whole guided palette) is batched to one call per
   // animation frame.
-  const onChangeRef = useRef(onChange);
-  onChangeRef.current = onChange;
+  const onChangeRef = useLatest(onChange);
   const pendingCommitRef = useRef<string | null>(null);
   const commitFrameRef = useRef<number | null>(null);
   // The final drag frame must not be lost when the popover closes or the
@@ -129,7 +130,7 @@ function ThemeColorPickerPanel({
     const pending = pendingCommitRef.current;
     pendingCommitRef.current = null;
     if (pending !== null) onChangeRef.current(pending);
-  }, []);
+  }, [onChangeRef]);
   useEffect(() => () => flushPendingCommit(), [flushPendingCommit]);
   const scheduleCommit = useCallback((color: string) => {
     pendingCommitRef.current = color;

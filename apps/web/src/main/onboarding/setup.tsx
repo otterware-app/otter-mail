@@ -1,3 +1,4 @@
+import { useLatest } from "../use-latest";
 import { useEffect, useState, type ReactNode } from "react";
 import {
   ArrowDownIcon,
@@ -117,7 +118,7 @@ export function SetupFlow() {
   // Stays up once started, so adding the first mailbox doesn't end it.
   useEffect(() => {
     if (getSetupStage() !== "setup") startSetup(step);
-  }, []);
+  }, [step]);
 
   const go = (next: Step) => {
     console.log("[Setup:step]", { step: next });
@@ -611,14 +612,15 @@ function HabitsStep() {
       () => {},
     );
   };
+  const refreshDefaultMailForEffect = useLatest(refreshDefaultMail);
   useEffect(() => {
     gmailApi
       .getSyncSettings()
       .then(setSettings, (error: unknown) =>
         toast.error(`Failed to load settings: ${String(error)}`),
       );
-    refreshDefaultMail();
-  }, []);
+    refreshDefaultMailForEffect.current();
+  }, [refreshDefaultMailForEffect]);
 
   const update = async (patch: Partial<SyncSettings>) => {
     console.log("[Setup:setSyncSettings]", patch);
@@ -789,13 +791,14 @@ function AgentStep({ firstRun }: { firstRun: boolean }) {
   };
   // First run: the default (Hermes) can't answer yet but another can, so
   // that one, once every check is in. Run again, a choice stays as it was.
+  const pickForEffect = useLatest(pick);
   useEffect(() => {
     if (!firstRun) return;
     if (!state || state.providers.some((p) => p.checkedAt === null)) return;
     const current = state.providers.find((p) => p.kind === state.selected);
     const ready = state.providers.find(isProviderUsable);
-    if (ready && !(current && isProviderUsable(current))) pick(ready.kind);
-  }, [state]);
+    if (ready && !(current && isProviderUsable(current))) pickForEffect.current(ready.kind);
+  }, [state, firstRun, pickForEffect]);
 
   return (
     <>

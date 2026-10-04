@@ -954,7 +954,7 @@ export const codexProvider: ChatProvider = {
   },
 
   shutdown() {
-    for (const session of [...sessions.values()]) stopSession(session);
+    for (const session of sessions.values()) stopSession(session);
     const current = utility;
     utility = null;
     if (current) {

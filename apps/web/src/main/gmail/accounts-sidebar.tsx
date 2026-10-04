@@ -3,6 +3,7 @@ import {
   Fragment,
   createContext,
   useContext,
+  useCallback,
   useState,
   type ComponentProps,
   type ReactNode,
@@ -634,18 +635,21 @@ export function MailboxSidebarPage({
       : accounts.map((a) => a.id),
   });
 
-  const renderSearchRows = (parent: string, depth: number) =>
-    searches
-      .filter((sr) => sr.parent === parent)
-      .map((sr) => (
-        <SearchRow
-          key={sr.id}
-          search={sr}
-          depth={depth}
-          onSelect={() => onSelectSearch(sr.id)}
-          onClose={() => onCloseSearch(sr.id)}
-        />
-      ));
+  const renderSearchRows = useCallback(
+    (parent: string, depth: number) =>
+      searches
+        .filter((sr) => sr.parent === parent)
+        .map((sr) => (
+          <SearchRow
+            key={sr.id}
+            search={sr}
+            depth={depth}
+            onSelect={() => onSelectSearch(sr.id)}
+            onClose={() => onCloseSearch(sr.id)}
+          />
+        )),
+    [searches, onSelectSearch, onCloseSearch],
+  );
 
   return (
     <SearchRowsContext.Provider value={renderSearchRows}>

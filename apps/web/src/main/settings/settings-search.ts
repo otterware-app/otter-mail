@@ -329,7 +329,9 @@ export const SETTINGS_SEARCH_ITEMS = [
     id: "agent-providers",
     title: "Providers",
     pane: "agents",
-    searchTerms: ["agents claude codex hermes enable turn on off default new chats"],
+    searchTerms: [
+      "agents openrouter api key server model claude codex hermes enable turn on off default new chats",
+    ],
   },
   {
     id: "agent-binary-path",

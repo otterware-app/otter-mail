@@ -28,7 +28,13 @@ export async function loadMessageAttachments(
   const out: ComposeAttachment[] = [];
   for (const att of attachments) {
     const data = await gmailApi.getAttachmentData({ accountId, messageId, attachmentId: att.id });
-    out.push({ name: att.filename, mimeType: att.mimeType, size: data.size, base64: data.base64 });
+    out.push({
+      key: att.id,
+      name: att.filename,
+      mimeType: att.mimeType,
+      size: data.size,
+      base64: data.base64,
+    });
   }
   return out;
 }
@@ -41,7 +47,10 @@ export async function pickComposeAttachments(
   try {
     const res = await gmailApi.pickAttachments(existingBytes);
     if (res.error) toast.error(res.error);
-    return res.attachments ?? [];
+    return (res.attachments ?? []).map((attachment) => ({
+      ...attachment,
+      key: crypto.randomUUID(),
+    }));
   } catch {
     toast.error("Could not attach files");
     return [];
@@ -51,18 +60,25 @@ export async function pickComposeAttachments(
 function readFileAsAttachment(file: File): Promise<ComposeAttachment> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onerror = () => reject(reader.error ?? new Error("read failed"));
-    reader.onload = () => {
-      // FileReader gives a `data:<mime>;base64,<payload>` URL — keep the payload.
-      const result = String(reader.result ?? "");
-      const comma = result.indexOf(",");
-      resolve({
-        name: file.name || "attachment",
-        mimeType: file.type || "application/octet-stream",
-        size: file.size,
-        base64: comma >= 0 ? result.slice(comma + 1) : "",
-      });
-    };
+    reader.addEventListener("error", () => reject(reader.error ?? new Error("read failed")), {
+      once: true,
+    });
+    reader.addEventListener(
+      "load",
+      () => {
+        // FileReader gives a `data:<mime>;base64,<payload>` URL — keep the payload.
+        const result = String(reader.result ?? "");
+        const comma = result.indexOf(",");
+        resolve({
+          key: crypto.randomUUID(),
+          name: file.name || "attachment",
+          mimeType: file.type || "application/octet-stream",
+          size: file.size,
+          base64: comma >= 0 ? result.slice(comma + 1) : "",
+        });
+      },
+      { once: true },
+    );
     reader.readAsDataURL(file);
   });
 }
@@ -186,7 +202,7 @@ export function AttachmentChips({
     <div className="flex flex-wrap items-center gap-1.5 px-5 pb-1 pt-2">
       {attachments.map((att, i) => (
         <span
-          key={`${att.name}:${i}`}
+          key={att.key ?? `${att.name}:${att.mimeType}:${att.size}`}
           className="flex h-8 max-w-64 items-center gap-1.5 rounded-xl border border-border/40 bg-accent-surface/60 pl-2.5 pr-1 text-sm text-foreground"
         >
           <button

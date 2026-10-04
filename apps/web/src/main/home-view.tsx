@@ -1,5 +1,7 @@
+import { useLatest } from "./use-latest";
 import { TodoistDialogs } from "./integrations/todoist";
 import {
+  useLayoutEffect,
   useCallback,
   useEffect,
   useMemo,
@@ -212,8 +214,7 @@ function useStoredWidth(
     const saved = Number(localStorage.getItem(key));
     return Number.isFinite(saved) && saved >= min && saved <= max ? saved : def;
   });
-  const widthRef = useRef(width);
-  widthRef.current = width;
+  const widthRef = useLatest(width);
   // The pane element itself, resized imperatively during a drag.
   const paneRef = useRef<HTMLDivElement>(null);
   // The animated frame around a collapsible pane: follows the drag with its
@@ -370,7 +371,9 @@ function MailHome() {
   // The pane Settings was last on: opening it again without asking for one
   // (the menu, ⌘,) returns there.
   const lastPaneRef = useRef<SettingsPane>("general");
-  if (settingsRoute) lastPaneRef.current = settingsRoute.pane;
+  useLayoutEffect(() => {
+    if (settingsRoute) lastPaneRef.current = settingsRoute.pane;
+  });
   // In-app settings page; null = mail. Opened from the sidebar footer, ⌘,
   // (menu accelerator → backend broadcast), or any window's deep link.
   const openSettings = useCallback(
@@ -386,8 +389,7 @@ function MailHome() {
     },
     [navigate, settingsRoute],
   );
-  const openSettingsRef = useRef(openSettings);
-  openSettingsRef.current = openSettings;
+  const openSettingsRef = useLatest(openSettings);
   useEffect(() => {
     const pull = async () => {
       try {
@@ -402,7 +404,7 @@ function MailHome() {
     };
     void pull();
     return window.desktopBridge.on("settings:open", () => void pull());
-  }, []);
+  }, [openSettingsRef]);
 
   // ⌘W (File ▸ Close): the agent's active chat tab closes first; with no
   // tab left to close, the window does (Otter Code).
@@ -454,10 +456,8 @@ function MailHome() {
     if (mailLoc) go({});
     else void navigate({ to: "/" });
   };
-  const settingsRouteRef = useRef(settingsRoute);
-  settingsRouteRef.current = settingsRoute;
-  const leaveSettingsRef = useRef(leaveSettings);
-  leaveSettingsRef.current = leaveSettings;
+  const settingsRouteRef = useLatest(settingsRoute);
+  const leaveSettingsRef = useLatest(leaveSettings);
   // Escape leaves settings (blurring a focused field first, like a dialog).
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -471,7 +471,7 @@ function MailHome() {
     };
     window.addEventListener("keydown", down, true);
     return () => window.removeEventListener("keydown", down, true);
-  }, []);
+  }, [leaveSettingsRef, settingsRouteRef]);
 
   // The space showing (spaces.ts); none until the mailboxes are known.
   const space = selectedAccountId
@@ -497,10 +497,24 @@ function MailHome() {
   useExternalMailChanges();
   useBrowserEvents();
 
-  const sidebarPane = useStoredWidth("gmail:pane:sidebar", 200, 180, 400);
-  const listPane = useStoredWidth("gmail:pane:list", 340, 280, 640);
+  const {
+    width: sidebarWidth,
+    start: sidebarStart,
+    paneRef: sidebarPaneRef,
+    frameRef: sidebarFrameRef,
+  } = useStoredWidth("gmail:pane:sidebar", 200, 180, 400);
+  const {
+    width: listWidth,
+    start: listStart,
+    paneRef: listPaneRef,
+  } = useStoredWidth("gmail:pane:list", 340, 280, 640);
   // The chat can grow wide, as long as the reader keeps READER_MIN_WIDTH.
-  const chatPane = useStoredWidth(
+  const {
+    width: chatWidth,
+    start: chatStart,
+    paneRef: chatPaneRef,
+    frameRef: chatFrameRef,
+  } = useStoredWidth(
     "gmail:pane:chat",
     340,
     280,
@@ -509,8 +523,8 @@ function MailHome() {
     () =>
       window.innerWidth -
       RAIL_WIDTH -
-      (sidebarOpen ? sidebarPane.width : 0) -
-      (wideInbox ? 0 : listPane.width) -
+      (sidebarOpen ? sidebarWidth : 0) -
+      (wideInbox ? 0 : listWidth) -
       READER_MIN_WIDTH,
   );
   const [chatOpen, setChatOpen] = useState(() => localStorage.getItem("gmail:chat-open") === "1");
@@ -568,16 +582,18 @@ function MailHome() {
   // asks for the window: a new message, a conversation opened from elsewhere.
   const [chatExpanded, setChatExpanded] = useState(false);
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- Synchronize pane and composer state with route, tray and navigation events.
     if (!chatOpen || composeOpen || selectedMessageId) setChatExpanded(false);
   }, [chatOpen, composeOpen, selectedMessageId]);
   const panelExpanded = chatExpanded && chatVisible;
   // A page opening in the browser (a link, ⌘T) shows in the panel, out of Settings.
   const browserRevealed = useBrowser((s) => s.revealed);
+  const openChatForEffect = useLatest(openChat);
   useEffect(() => {
     if (!browserRevealed) return;
     if (settingsRouteRef.current) leaveSettingsRef.current();
-    openChat();
-  }, [browserRevealed]);
+    openChatForEffect.current();
+  }, [browserRevealed, leaveSettingsRef, openChatForEffect, settingsRouteRef]);
   // Getting started. A device whose mail was already here skips the setup,
   // and is offered the tour, once.
   useEffect(() => {
@@ -590,10 +606,11 @@ function MailHome() {
   useEffect(() => {
     if (!tourRequested) return;
     if (settingsRouteRef.current) leaveSettingsRef.current();
+    // oxlint-disable-next-line react/set-state-in-effect -- Synchronize pane and composer state with route, tray and navigation events.
     setComposeOpen(false);
     localStorage.setItem("gmail:sidebar-open", "1");
     setMailSidebarOpen(true);
-  }, [tourRequested]);
+  }, [tourRequested, leaveSettingsRef, settingsRouteRef]);
 
   // A highlighted excerpt handed from the reader to the chat panel (one-shot).
   const [pendingQuote, setPendingQuote] = useState<QuoteContext | null>(null);
@@ -678,33 +695,37 @@ function MailHome() {
   }, []);
   // Each action's toast, stacked; undoing an action (z or its Undo) closes it.
   const actionToasts = useRef(new Map<UndoAction, ToastId>());
-  undoRunner.current = (action) => {
-    console.log("[HomeView:undo]", {
-      kind: action.kind,
-      count: action.kind === "batch" ? action.actions.length : 1,
-    });
-    const toastId = actionToasts.current.get(action);
-    if (toastId) toast.close(toastId);
-    actionToasts.current.delete(action);
-    runAction(action, true).then(
-      () => {
-        registerRedo(action);
-        // Callbacks (e.g. holding back a send) say what happened themselves.
-        if (action.kind !== "callback") toast.success("Undone");
-      },
-      () => toast.error("Could not undo"),
-    );
-  };
-  redoRunner.current = () => {
-    const action = takeRedo();
-    if (!action) return false;
-    console.log("[HomeView:redo]", {
-      kind: action.kind,
-      count: action.kind === "batch" ? action.actions.length : 1,
-    });
-    runAction(action, false).catch(() => toast.error("Could not redo"));
-    return true;
-  };
+  useLayoutEffect(() => {
+    undoRunner.current = (action) => {
+      console.log("[HomeView:undo]", {
+        kind: action.kind,
+        count: action.kind === "batch" ? action.actions.length : 1,
+      });
+      const toastId = actionToasts.current.get(action);
+      if (toastId) toast.close(toastId);
+      actionToasts.current.delete(action);
+      runAction(action, true).then(
+        () => {
+          registerRedo(action);
+          // Callbacks (e.g. holding back a send) say what happened themselves.
+          if (action.kind !== "callback") toast.success("Undone");
+        },
+        () => toast.error("Could not undo"),
+      );
+    };
+  });
+  useLayoutEffect(() => {
+    redoRunner.current = () => {
+      const action = takeRedo();
+      if (!action) return false;
+      console.log("[HomeView:redo]", {
+        kind: action.kind,
+        count: action.kind === "batch" ? action.actions.length : 1,
+      });
+      runAction(action, false).catch(() => toast.error("Could not redo"));
+      return true;
+    };
+  });
   useEffect(
     () =>
       onUndoableAction((title, action) => {
@@ -783,9 +804,10 @@ function MailHome() {
   // last one, once accounts are known.
   const onIndex = !routeLoc && !settingsRoute;
   const hasMail = mailLoc !== null;
+  const goForEffect = useLatest(go);
   useEffect(() => {
-    if (onIndex && hasMail) go({}, true);
-  }, [onIndex, hasMail]);
+    if (onIndex && hasMail) goForEffect.current({}, true);
+  }, [onIndex, hasMail, goForEffect]);
 
   // Persist where the user is so we can reopen here next launch.
   useEffect(() => {
@@ -868,25 +890,27 @@ function MailHome() {
 
   // If the selected view disappears (deleted, or it has no rules for the
   // active account), fall back to Inbox.
+  const correctForEffect = useLatest(correct);
+  /* oxlint-disable react/exhaustive-effect-dependencies -- Explicit DOM and reset triggers must re-run this lifecycle. */
   useEffect(() => {
     if (!initialized || !viewsLoaded || selectedLabelId === SEARCH_MAILBOX) return;
     // A project deleted (here or elsewhere): all of them.
     if (isProjects) {
       if (projectsLoaded && selectedLabelId !== ALL_PROJECTS && !selectedProject)
-        correct({ label: ALL_PROJECTS, messageId: null });
+        correctForEffect.current({ label: ALL_PROJECTS, messageId: null });
       return;
     }
     if (viewSpace) {
-      if (selectedLabelId !== VIEW_LIST) correct({ label: VIEW_LIST });
+      if (selectedLabelId !== VIEW_LIST) correctForEffect.current({ label: VIEW_LIST });
       return;
     }
     // A view as a label (views were once in each mailbox): its own space.
     const view = views.find((v) => v.id === selectedLabelId);
     if (view?.kind === "custom") {
-      correct({ mailbox: view.id, label: VIEW_LIST });
+      correctForEffect.current({ mailbox: view.id, label: VIEW_LIST });
       return;
     }
-    if (isCombined && !view) correct({ label: INBOX_VIEW_ID });
+    if (isCombined && !view) correctForEffect.current({ label: INBOX_VIEW_ID });
   }, [
     initialized,
     viewsLoaded,
@@ -898,7 +922,9 @@ function MailHome() {
     projectsLoaded,
     selectedProject,
     viewSpace,
+    correctForEffect,
   ]);
+  /* oxlint-enable react/exhaustive-effect-dependencies */
 
   // Local-first: keep the on-disk cache synced in the background. Combined mode
   // refreshes all accounts via its own list handler (sentinel isn't a real account).
@@ -963,20 +989,24 @@ function MailHome() {
     setComposeOpen(false);
     go({ mailbox: accountId, label: firstLabelOf(accountId), messageId: null });
   };
-  accountSwitchRef.current = {
-    ids: accountIds,
-    combined: mailboxes.combined,
-    select: handleSelectAccount,
-  };
+  useLayoutEffect(() => {
+    accountSwitchRef.current = {
+      ids: accountIds,
+      combined: mailboxes.combined,
+      select: handleSelectAccount,
+    };
+  });
 
   // The route's mailbox was turned off (or "All mailboxes" was), or isn't
   // there: the route catches up with what shows instead.
   const misplaced = ready && !!routeLoc && routeLoc.mailbox !== mailLoc?.mailbox;
+  const goForAccountEffect = useLatest(go);
   useEffect(() => {
     if (!misplaced) return;
+    // oxlint-disable-next-line react/set-state-in-effect -- Synchronize pane and composer state with route, tray and navigation events.
     setComposeOpen(false);
-    go({}, true);
-  }, [misplaced]);
+    goForAccountEffect.current({}, true);
+  }, [misplaced, goForAccountEffect]);
 
   const handleSelectLabel = (labelId: string) => {
     console.log("[HomeView:selectLabel]", { labelId });
@@ -1062,8 +1092,7 @@ function MailHome() {
     }
   };
   // A send taken back with Undo reopens its draft here (the reader edits drafts).
-  const selectMessageRef = useRef(handleSelectMessage);
-  selectMessageRef.current = handleSelectMessage;
+  const selectMessageRef = useLatest(handleSelectMessage);
   useEffect(
     () =>
       setDraftOpener(({ accountId, messageId }) => {
@@ -1071,7 +1100,7 @@ function MailHome() {
         void queryClient.invalidateQueries({ queryKey: ["gmail:combinedMessages"] });
         selectMessageRef.current(messageId, accountId);
       }),
-    [],
+    [queryClient, selectMessageRef],
   );
 
   // ── Search mailbox ───────────────────────────────────────────────────────
@@ -1191,9 +1220,10 @@ function MailHome() {
   const handleSearchChange = (q: string) => openSearch(q);
   // Back/forward (or a reload) into a search that was since closed: the top
   // Search row. Only on arriving: closing the open search leaves it at once.
+  const openSearchForEffect = useLatest(openSearch);
   useEffect(() => {
-    if (searchActive && !activeSearch) openSearch();
-  }, [searchActive]);
+    if (searchActive && !activeSearch) openSearchForEffect.current();
+  }, [searchActive, activeSearch, openSearchForEffect]);
 
   // Palette mail result: jump to the owning account (Combined stays put) and open.
   const handlePaletteOpenMessage = (message: GmailMessageSummary) => {
@@ -1217,12 +1247,14 @@ function MailHome() {
       focusId: null,
     });
   };
+  const openMessageForEffect = useLatest(openMessage);
   useEffect(() => {
     if (!openFromTray || !hasMail) return;
+    // oxlint-disable-next-line react/set-state-in-effect -- Synchronize pane and composer state with route, tray and navigation events.
     setOpenFromTray(null);
     setComposeOpen(false);
-    openMessage(openFromTray.accountId, openFromTray.messageId);
-  }, [openFromTray, hasMail]);
+    openMessageForEffect.current(openFromTray.accountId, openFromTray.messageId);
+  }, [openFromTray, hasMail, openMessageForEffect]);
 
   const handlePaletteGoToView = (viewId: string) => {
     console.log("[HomeView:paletteGoToView]", { viewId });
@@ -1256,9 +1288,11 @@ function MailHome() {
     })();
   };
   // ⌘R (Mailbox › Sync Now in the app menu) is the same manual refresh.
-  const syncNowRef = useRef(syncNow);
-  syncNowRef.current = syncNow;
-  useEffect(() => window.desktopBridge.on("mail:syncNow", () => syncNowRef.current()), []);
+  const syncNowRef = useLatest(syncNow);
+  useEffect(
+    () => window.desktopBridge.on("mail:syncNow", () => syncNowRef.current()),
+    [syncNowRef],
+  );
 
   // From a view, the first of the mailboxes it draws on.
   const composeAccountId = viewSpace
@@ -1398,7 +1432,7 @@ function MailHome() {
               {peekSpace ? (
                 <SpacePeekCard
                   key={peekSpace}
-                  width={sidebarPane.width}
+                  width={sidebarWidth}
                   onHover={(inside) => spacePeek.hover(inside ? peekSpace : null)}
                 >
                   {peekSpace === PROJECTS_SPACE ? (
@@ -1433,8 +1467,8 @@ function MailHome() {
               {sidebarPresent ? (
                 <>
                   <div
-                    ref={sidebarPane.frameRef}
-                    style={{ width: sidebarOpen ? sidebarPane.width : 0 }}
+                    ref={sidebarFrameRef}
+                    style={{ width: sidebarOpen ? sidebarWidth : 0 }}
                     className={cn(
                       PANE_FRAME,
                       // Anchored left: the sidebar stays put while the columns
@@ -1444,8 +1478,8 @@ function MailHome() {
                     )}
                   >
                     <div
-                      ref={sidebarPane.paneRef}
-                      style={{ width: sidebarPane.width }}
+                      ref={sidebarPaneRef}
+                      style={{ width: sidebarWidth }}
                       className={`${PANE_SIDEBAR} flex shrink-0 flex-col`}
                       data-app-sidebar=""
                     >
@@ -1502,7 +1536,7 @@ function MailHome() {
                       )}
                     </div>
                   </div>
-                  {sidebarOpen ? <PaneResizer onPointerDown={sidebarPane.start} /> : null}
+                  {sidebarOpen ? <PaneResizer onPointerDown={sidebarStart} /> : null}
                 </>
               ) : null}
               <div className="relative flex min-h-0 min-w-0 flex-1">
@@ -1511,8 +1545,8 @@ function MailHome() {
                     {/* Keep the list mounted while reading in Full inbox: its
                     scroll position, selection and next-message shortcuts stay. */}
                     <div
-                      ref={listPane.paneRef}
-                      style={{ width: wideInbox ? undefined : listPane.width }}
+                      ref={listPaneRef}
+                      style={{ width: wideInbox ? undefined : listWidth }}
                       className={cn(
                         wideInbox ? `${PANE} min-w-0 flex-1` : `${PANE_LIST} shrink-0`,
                         !listVisible && "invisible absolute inset-0",
@@ -1588,7 +1622,7 @@ function MailHome() {
                         }
                       />
                     </div>
-                    {wideInbox ? null : <PaneResizer onPointerDown={listPane.start} />}
+                    {wideInbox ? null : <PaneResizer onPointerDown={listStart} />}
                   </>
                 ) : null}
                 <div
@@ -1644,13 +1678,11 @@ function MailHome() {
             </div>
             {chatPresent ? (
               <>
-                {chatVisible && !panelExpanded ? (
-                  <PaneResizer onPointerDown={chatPane.start} />
-                ) : null}
+                {chatVisible && !panelExpanded ? <PaneResizer onPointerDown={chatStart} /> : null}
                 <div
-                  ref={chatPane.frameRef}
+                  ref={chatFrameRef}
                   data-tour="agent"
-                  style={{ width: panelExpanded ? undefined : chatVisible ? chatPane.width : 0 }}
+                  style={{ width: panelExpanded ? undefined : chatVisible ? chatWidth : 0 }}
                   className={cn(
                     PANE_FRAME,
                     panelExpanded && "flex-1",
@@ -1659,8 +1691,8 @@ function MailHome() {
                   )}
                 >
                   <div
-                    ref={chatPane.paneRef}
-                    style={{ width: panelExpanded ? undefined : chatPane.width }}
+                    ref={chatPaneRef}
+                    style={{ width: panelExpanded ? undefined : chatWidth }}
                     className={cn(PANE_CHAT, panelExpanded ? "flex-1 before:hidden" : "shrink-0")}
                   >
                     <AgentChatPanel

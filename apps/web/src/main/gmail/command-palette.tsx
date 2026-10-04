@@ -231,6 +231,7 @@ export function CommandPalette({
 
   useLayoutEffect(() => {
     if (open) inputRef.current?.focus();
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- Re-run this DOM/reset lifecycle when its explicit trigger changes, even when the callback reads refs.
   }, [open, page]);
 
   const debouncedQuery = useDebouncedValue(query.trim(), 150);
@@ -534,6 +535,7 @@ export function CommandPalette({
       : [...strong, searchGroup, ...mailGroup, ...weak];
   }, [
     keybindings,
+    themes,
     page,
     query,
     scheme,

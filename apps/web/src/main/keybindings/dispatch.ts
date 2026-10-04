@@ -1,4 +1,5 @@
-import { useEffect, useRef } from "react";
+import { useLatest } from "../use-latest";
+import { useEffect } from "react";
 import { labelMoveName, type CommandHandlerKey, type KeybindingCommand } from "./commands";
 import { evaluateWhen, isModifierOnly, matchesStroke, type WhenContext } from "./keys";
 import { getKeybindings, type ResolvedKeybinding } from "./store";
@@ -125,8 +126,7 @@ export function useKeybindingDispatcher(): void {
 
 /** Registers what commands do while the calling component is mounted. */
 export function useCommandHandlers(map: Partial<Record<CommandHandlerKey, CommandHandler>>): void {
-  const ref = useRef(map);
-  ref.current = map;
+  const ref = useLatest(map);
   const commands = (Object.keys(map) as CommandHandlerKey[]).sort().join(",");
   useEffect(() => {
     const entries = (commands ? commands.split(",") : []).map((c) => {
@@ -143,7 +143,7 @@ export function useCommandHandlers(map: Partial<Record<CommandHandlerKey, Comman
         );
       }
     };
-  }, [commands]);
+  }, [commands, ref]);
 }
 
 /** Publishes a `when` context key (e.g. messageOpen) while mounted. */

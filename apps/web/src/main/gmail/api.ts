@@ -2,6 +2,7 @@ import { ipc, task } from "~/lib/ipc";
 import type { ImapSettings } from "@otter-mail/contracts";
 export type { ChatChange } from "@otter-mail/contracts";
 import type { AgentAccess, AgentTokens, ConnectedAgent } from "@otter-mail/contracts/agent-tokens";
+import type { OpenRouterConnection } from "@otter-mail/contracts/openrouter";
 import type {
   ComposeAttachment,
   ContactSuggestion,
@@ -94,7 +95,7 @@ export type MailAppsResult = { apps: MailApp[]; defaultBundleId: string | null }
  * Agent providers (mirrors main/services/agent/types.ts). A snapshot
  * is one provider's health; every provider streams the same ChatEvents.
  */
-export type ProviderKind = "hermes" | "codex" | "claude";
+export type ProviderKind = "hermes" | "openrouter" | "codex" | "claude";
 export type ProviderState = "ready" | "warning" | "error" | "disabled";
 export type ProviderOptionChoice = {
   id: string;
@@ -152,6 +153,13 @@ export type ApprovalRequest = {
 };
 export type ProviderSettingsView = {
   selected: ProviderKind;
+  openrouter: {
+    enabled: boolean;
+    model: string;
+    reasoningEffort: string;
+    serviceTier: string;
+    runtimeMode: RuntimeMode;
+  };
   hermes: {
     enabled: boolean;
     baseUrl: string;
@@ -193,6 +201,7 @@ export type AgentSettingsPatch = {
   hermes?: { enabled?: boolean; model?: string; reasoningEffort?: string; serviceTier?: string };
   codex?: Partial<ProviderSettingsView["codex"]>;
   claude?: Partial<ProviderSettingsView["claude"]>;
+  openrouter?: Partial<ProviderSettingsView["openrouter"]>;
 };
 
 /** One step an agent took, the same for every agent (core's steps.ts). */
@@ -645,6 +654,11 @@ export const gmailApi = {
 
   /** Cached provider snapshots; stale ones re-check and arrive as `agent:providersChanged`. */
   agentProviders: (): Promise<ProvidersState> => ipc("agent:providers"),
+
+  openrouterConnection: (): Promise<OpenRouterConnection> => ipc("agent:openrouterConnection"),
+  connectOpenRouter: (apiKey: string): Promise<ProvidersState> =>
+    ipc("agent:connectOpenRouter", { apiKey }),
+  disconnectOpenRouter: (): Promise<ProvidersState> => ipc("agent:disconnectOpenRouter"),
 
   refreshAgentProviders: (): Promise<{ ok: boolean }> => ipc("agent:refreshProviders"),
 

@@ -54,7 +54,7 @@ export function MailField() {
       <div className="whitespace-pre text-[13px] leading-[1.65rem] text-foreground opacity-[0.055] dark:opacity-[0.06]">
         {ROWS.map((text, i) => (
           <div
-            key={i}
+            key={text}
             className="w-max motion-safe:animate-[mail-field-slide_1s_linear_infinite]"
             style={{
               animationDuration: `${PACE[i % PACE.length]}s`,

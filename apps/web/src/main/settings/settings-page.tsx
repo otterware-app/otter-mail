@@ -1,3 +1,4 @@
+import { useLatest } from "../use-latest";
 import { DEFAULT_SETTINGS } from "@otter-mail/contracts";
 import { TodoistSettingsPane } from "../integrations/todoist";
 import { useCallback, useEffect, useState } from "react";
@@ -104,18 +105,23 @@ function GeneralPane() {
     }
   };
 
+  const loadMailAppsForEffect = useLatest(loadMailApps);
+  const loadSyncSettingsForEffect = useLatest(loadSyncSettings);
   useEffect(() => {
-    void loadSyncSettings();
-    void loadMailApps();
+    void loadSyncSettingsForEffect.current();
+    void loadMailAppsForEffect.current();
     // Changed on another device.
-    const offSettings = window.desktopBridge.on("settings:changed", () => void loadSyncSettings());
+    const offSettings = window.desktopBridge.on(
+      "settings:changed",
+      () => void loadSyncSettingsForEffect.current(),
+    );
     const onStorage = () => setAdvanceDirectionState(getAdvanceDirection());
     window.addEventListener("storage", onStorage);
     return () => {
       offSettings();
       window.removeEventListener("storage", onStorage);
     };
-  }, []);
+  }, [loadMailAppsForEffect, loadSyncSettingsForEffect]);
 
   const handleSyncIntervalChange = async (value: string) => {
     const seconds = Number(value);

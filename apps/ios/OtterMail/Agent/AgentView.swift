@@ -51,11 +51,11 @@ struct AgentView: View {
         switch agent.status {
         case .notConfigured:
             unavailable(
-                "Connect Hermes",
-                "Hermes, your agent server, runs everywhere: connect it once and it's on every device."
+                "Connect \(agent.providerName)",
+                "Connect your agent in Settings. Its chats live on the server and follow you to every device."
             )
         case .failed(let message):
-            unavailable("Hermes isn't answering", message)
+            unavailable("\(agent.providerName) isn't answering", message)
         case .checking, .ready:
             conversation
         }
@@ -162,13 +162,14 @@ struct AgentView: View {
                 .scrollIndicators(.hidden)
             }
             HStack(alignment: .bottom, spacing: 10) {
-                TextField(agent.running ? "Steer Hermes…" : "Ask Hermes", text: $draft, axis: .vertical)
+                TextField(agent.running ? (agent.selected == "hermes" ? "Steer Hermes…" : "Agent is working…") : "Ask \(agent.providerName)", text: $draft, axis: .vertical)
                     .lineLimit(1...6)
                     .focused($focused)
+                    .disabled(agent.running && agent.selected == "openrouter")
                     .foregroundStyle(palette.text)
                     .padding(.vertical, 8)
                     .onSubmit { send(draft) }
-                if agent.running && draft.isEmpty {
+                if agent.running && (draft.isEmpty || agent.selected == "openrouter") {
                     Button("Stop", systemImage: "stop.fill") { agent.stop() }
                         .labelStyle(.iconOnly)
                         .font(.system(size: 13))
@@ -197,7 +198,7 @@ struct AgentView: View {
 
     private func send(_ text: String) {
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
+        guard !text.isEmpty, !(agent.running && agent.selected == "openrouter") else { return }
         // The context goes with the first question of a chat.
         agent.send(text, context: agent.turns.isEmpty ? context : [])
         if agent.turns.count <= 2 { context = [] }
@@ -211,12 +212,12 @@ struct AgentView: View {
         @Bindable var agent = session.agent
         let model = agent.model
         return Menu {
-            let groups = Dictionary(grouping: agent.models) { $0.subProvider ?? "Hermes" }
+            let groups = Dictionary(grouping: agent.models) { $0.subProvider ?? agent.providerName }
             ForEach(groups.keys.sorted(), id: \.self) { group in
                 Section(group) {
                     ForEach(groups[group] ?? []) { m in
                         Button {
-                            agent.hermes.model = m.slug
+                            agent.chosenModel = m.slug
                         } label: {
                             if m.id == model?.id { Label(m.name, systemImage: "checkmark") } else { Text(m.name) }
                         }
@@ -237,7 +238,7 @@ struct AgentView: View {
             }
         } label: {
             HStack(spacing: 4) {
-                Text("Hermes").foregroundStyle(palette.text)
+                Text(agent.providerName).foregroundStyle(palette.text)
                 if let model { Text(model.shortName).foregroundStyle(palette.muted).lineLimit(1) }
                 Image(systemName: "chevron.down")
                     .font(.caption.weight(.semibold))

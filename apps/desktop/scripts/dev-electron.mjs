@@ -140,7 +140,8 @@ function scheduleRestart() {
       .then(async () => {
         await stopApp();
         // The bundler may be mid-write; wait until both files exist again.
-        while (!shuttingDown && watchedFiles.some((file) => !NodeFS.existsSync(file))) {
+        while (watchedFiles.some((file) => !NodeFS.existsSync(file))) {
+          if (shuttingDown) return;
           await NodeTimers.setTimeout(100);
         }
         startApp();

@@ -1,3 +1,4 @@
+import { useLatest } from "../../use-latest";
 /**
  * Ported from Otter Code (github.com/otterware-app/otter-code) at a944cac52:
  * apps/web/src/components/settings/ThemeEditorPanel.tsx. Kept as close to
@@ -318,6 +319,19 @@ export function ThemeEditorPanel({
     width: number;
     height: number;
   } | null>(null);
+  const clampPosition = (x: number, y: number, widthOverride?: number) => {
+    const panel = panelRef.current;
+    const margin = 8;
+    // The caller passes a width when it has just shrunk the panel: the DOM
+    // still reports the old one until React commits.
+    const width = widthOverride ?? panel?.offsetWidth ?? 0;
+    return {
+      x: Math.min(Math.max(x, margin), Math.max(margin, window.innerWidth - width - margin)),
+      // Keep at least the header on screen even when dragged far down.
+      y: Math.min(Math.max(y, margin), Math.max(margin, window.innerHeight - 48)),
+    };
+  };
+  const clampPositionForEffect = useLatest(clampPosition);
   useEffect(() => {
     if (!open) return;
     // A panel sized wider than the window can no longer be clamped back into
@@ -326,17 +340,17 @@ export function ThemeEditorPanel({
     // is re-clamped against the new size.
     const clamp = () => {
       const margin = 8;
-      let clampedWidth: number | undefined;
-      let clampedHeight: number | undefined;
-      setSize((current) => {
-        if (!current) return current;
-        clampedWidth = Math.max(280, Math.min(current.width, window.innerWidth - margin * 2));
-        clampedHeight = Math.max(220, Math.min(current.height, window.innerHeight - margin * 2));
-        return { width: clampedWidth, height: clampedHeight };
-      });
+      const clampedWidth = size
+        ? Math.max(280, Math.min(size.width, window.innerWidth - margin * 2))
+        : undefined;
+      const clampedHeight = size
+        ? Math.max(220, Math.min(size.height, window.innerHeight - margin * 2))
+        : undefined;
+      if (clampedWidth !== undefined && clampedHeight !== undefined)
+        setSize({ width: clampedWidth, height: clampedHeight });
       setPosition((current) => {
         if (!current) return current;
-        const clamped = clampPosition(current.x, current.y, clampedWidth);
+        const clamped = clampPositionForEffect.current(current.x, current.y, clampedWidth);
         // Dragging may park the panel with only its header showing, but a
         // window resize should pull the whole thing back into view when it
         // fits -- otherwise the grip ends up below the fold. Minimized, the
@@ -351,7 +365,7 @@ export function ThemeEditorPanel({
     };
     window.addEventListener("resize", clamp);
     return () => window.removeEventListener("resize", clamp);
-  }, [isMinimized, open]);
+  }, [isMinimized, open, clampPositionForEffect, size]);
 
   // The draft only reaches the live app once this open has been seeded;
   // previewing in the seeding commit would paint the previous session's
@@ -398,6 +412,7 @@ export function ThemeEditorPanel({
       setError(null);
       setIsDraftSeeded(true);
     }
+    // oxlint-disable-next-line react/set-state-in-effect -- Seed and restore the editing session when the external theme or panel session changes.
     if (!open && isDraftSeeded) setIsDraftSeeded(false);
     previousOpenRef.current = open;
   }, [editingTheme, initialAppearance, isDraftSeeded, open, seedName, seedTheme]);
@@ -444,6 +459,7 @@ export function ThemeEditorPanel({
     if (isEditing || mergeTargetId === null) return;
     const taken = takenAppearancesKey.split(",").filter(Boolean) as ThemeAppearance[];
     if (taken.length !== 1) return;
+    // oxlint-disable-next-line react/set-state-in-effect -- Seed and restore the editing session when the external theme or panel session changes.
     setActiveAppearance((current) => {
       if (!taken.includes(current)) return current;
       return taken[0] === "light" ? "dark" : "light";
@@ -528,6 +544,7 @@ export function ThemeEditorPanel({
   useEffect(() => {
     clearThemeInspectorHighlights();
     if (!open || selectedRole === null) {
+      // oxlint-disable-next-line react/set-state-in-effect -- Seed and restore the editing session when the external theme or panel session changes.
       setUsageCount(null);
       return;
     }
@@ -926,19 +943,6 @@ export function ThemeEditorPanel({
         ))}
       </div>
     );
-  };
-
-  const clampPosition = (x: number, y: number, widthOverride?: number) => {
-    const panel = panelRef.current;
-    const margin = 8;
-    // The caller passes a width when it has just shrunk the panel: the DOM
-    // still reports the old one until React commits.
-    const width = widthOverride ?? panel?.offsetWidth ?? 0;
-    return {
-      x: Math.min(Math.max(x, margin), Math.max(margin, window.innerWidth - width - margin)),
-      // Keep at least the header on screen even when dragged far down.
-      y: Math.min(Math.max(y, margin), Math.max(margin, window.innerHeight - 48)),
-    };
   };
 
   const handleDragPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {

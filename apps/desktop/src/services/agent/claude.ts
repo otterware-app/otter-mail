@@ -918,6 +918,6 @@ export const claudeProvider: ChatProvider = {
   },
 
   shutdown() {
-    for (const session of [...sessions.values()]) closeSession(session);
+    for (const session of sessions.values()) closeSession(session);
   },
 };

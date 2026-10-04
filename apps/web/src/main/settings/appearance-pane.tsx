@@ -1,3 +1,4 @@
+import { useLatest } from "../use-latest";
 import { setSyncedPreference } from "../synced-preferences";
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { toast } from "../gmail/toast";
@@ -968,9 +969,10 @@ export function useColorScheme(): [ColorScheme, (next: ColorScheme) => Promise<v
       toast.error(`Failed to get theme info: ${error}`);
     }
   };
+  const refreshThemeInfoForEffect = useLatest(refreshThemeInfo);
   useEffect(() => {
-    void refreshThemeInfo();
-  }, []);
+    void refreshThemeInfoForEffect.current();
+  }, [refreshThemeInfoForEffect]);
 
   const scheme: ColorScheme = themeInfo?.themeSource ?? "system";
   const setScheme = async (next: ColorScheme) => {

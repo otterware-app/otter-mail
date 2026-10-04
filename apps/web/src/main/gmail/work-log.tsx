@@ -66,6 +66,7 @@ function blocksOf(items: TurnItem[]): Block[] {
   return blocks;
 }
 
+/* oxlint-disable react/no-array-index-key -- Transcript blocks append and update in place; position preserves streaming row state. */
 export function WorkLog({ items }: { items: TurnItem[] }) {
   return (
     <div className="flex flex-col py-1">
@@ -83,6 +84,7 @@ export function WorkLog({ items }: { items: TurnItem[] }) {
     </div>
   );
 }
+/* oxlint-enable react/no-array-index-key */
 
 /** A row's icon, title and chevron; the rest of the log lines up under it. */
 function RowHead({
@@ -141,6 +143,7 @@ function RowHead({
 }
 
 /** "Used Otter Mail integration", open to its steps. */
+/* oxlint-disable react/no-array-index-key -- Transcript blocks append and update in place; position preserves streaming row state. */
 function StepGroup({ source, items }: { source: string; items: Step[] }) {
   const [open, setOpen] = useState(true);
   return (
@@ -153,10 +156,12 @@ function StepGroup({ source, items }: { source: string; items: Step[] }) {
         pending={items.some((i) => i.output === undefined)}
         onToggle={() => setOpen((o) => !o)}
       />
+
       {open ? items.map((item, i) => <StepRow key={i} item={item} />) : null}
     </div>
   );
 }
+/* oxlint-enable react/no-array-index-key */
 
 function StepRow({ item }: { item: Step }) {
   const [open, setOpen] = useState(false);

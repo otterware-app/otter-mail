@@ -37,8 +37,10 @@ import * as preferences from "./preferences.ts";
 import * as projects from "./projects.ts";
 import * as store from "./store.ts";
 import * as tunnel from "./tunnel.ts";
+import type { AgentHub } from "./agent-hub.ts";
 import { SESSION_HEADER, type UserHub } from "./user-hub.ts";
 
+export { AgentHub } from "./agent-hub.ts";
 export { UserHub } from "./user-hub.ts";
 
 export interface Env {
@@ -51,6 +53,7 @@ export interface Env {
   IDENTITY_MODE?: "legacy" | "paused" | "accounts";
   ACCOUNTS_ORIGIN?: string;
   USER_HUB: DurableObjectNamespace<UserHub>;
+  AGENT_HUB?: DurableObjectNamespace<AgentHub>;
   /** The desktop app's Google OAuth client ("Desktop app" type). */
   GOOGLE_CLIENT_ID: string;
   /** The iPhone app's Google OAuth clients ("iOS", no secret), comma-separated: one per bundle ID. */
@@ -203,6 +206,19 @@ authed.use(async (c, next) => {
     user: { id: user.id, email: user.email, name: user.name || null, picture: user.image ?? null },
   });
   await next();
+});
+
+// The AI SDK loop and API key stay in a Durable Object per Otter account.
+authed.all("/agent/*", async (c) => {
+  if (c.req.header("origin") && c.req.header("origin") !== c.env.APP_ORIGIN)
+    throw new HTTPException(403, { message: "Not from the web app." });
+  if (!c.env.AGENT_HUB)
+    throw new HTTPException(503, { message: "The agent server is not configured." });
+  const headers = new Headers(c.req.raw.headers);
+  headers.set(SESSION_HEADER, c.var.session.id);
+  return c.env.AGENT_HUB.get(c.env.AGENT_HUB.idFromName(c.var.session.user.id)).fetch(
+    new Request(c.req.raw, { headers }),
+  );
 });
 
 // ── Gmail sign-in for the web app (gmail.ts) ────────────────────────────────
@@ -649,6 +665,7 @@ app.post(
 export class IdentityLifecycle extends WorkerEntrypoint<Env> {
   async disconnect(userId: string, sessionId?: string): Promise<void> {
     await hub(this.env, userId).disconnect(sessionId);
+    await this.env.AGENT_HUB?.get(this.env.AGENT_HUB.idFromName(userId)).disconnect(sessionId);
   }
   async deleteUser(userId: string): Promise<void> {
     await this.env.DB.batch([
@@ -658,6 +675,7 @@ export class IdentityLifecycle extends WorkerEntrypoint<Env> {
       this.env.DB.prepare("DELETE FROM user WHERE id = ?").bind(userId),
     ]);
     await this.disconnect(userId);
+    await this.env.AGENT_HUB?.get(this.env.AGENT_HUB.idFromName(userId)).deleteUser();
   }
 }
 

@@ -3,11 +3,11 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import worker from "./worker.ts";
 
 /** The site's files: anything else is missing. */
-const FILES = ["/", "/assets/app.js", "/todoist-callback/"];
+const FILES = new Set(["/", "/assets/app.js", "/todoist-callback/"]);
 
 function serve(url: string, accept?: string) {
   const fetch = vi.fn(async (request: Request) => {
-    const file = FILES.includes(new URL(request.url).pathname);
+    const file = FILES.has(new URL(request.url).pathname);
     return new Response(file ? "asset" : "not found", { status: file ? 200 : 404 });
   });
   const env = { ASSETS: { fetch } as unknown as Fetcher };

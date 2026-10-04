@@ -232,7 +232,7 @@ async function sendImipReply(
   const me = account?.email ?? accountId;
   const name = account?.name ?? "";
   const summary = unescapeText(get(event, "SUMMARY")?.value ?? "");
-  const keep = ["UID", "SEQUENCE", "DTSTART", "DTEND", "RECURRENCE-ID", "SUMMARY"];
+  const keep = new Set(["UID", "SEQUENCE", "DTSTART", "DTEND", "RECURRENCE-ID", "SUMMARY"]);
   const lines = [
     "BEGIN:VCALENDAR",
     "PRODID:-//Otter Mail//EN",
@@ -241,7 +241,7 @@ async function sendImipReply(
     "METHOD:REPLY",
     "BEGIN:VEVENT",
     ...event
-      .filter((p) => keep.includes(p.name))
+      .filter((p) => keep.has(p.name))
       .map(
         (p) =>
           `${p.name}${Object.entries(p.params)

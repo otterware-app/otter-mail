@@ -3,7 +3,6 @@ import {
   forwardRef,
   useCallback,
   useContext,
-  useEffect,
   useMemo,
   useState,
   type ComponentProps,
@@ -405,7 +404,11 @@ export function DraftInput({
   onCommit: (value: string) => void;
 }) {
   const [draft, setDraft] = useState(value);
-  useEffect(() => setDraft(value), [value]);
+  const [draftFor, setDraftFor] = useState(value);
+  if (draftFor !== value) {
+    setDraftFor(value);
+    setDraft(value);
+  }
   const commit = () => {
     if (draft.trim() !== value) onCommit(draft.trim());
   };

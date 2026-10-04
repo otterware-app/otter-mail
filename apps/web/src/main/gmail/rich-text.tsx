@@ -1,3 +1,4 @@
+import { useLatest } from "../use-latest";
 import {
   forwardRef,
   useEffect,
@@ -165,6 +166,7 @@ export const RichTextArea = forwardRef<
   // the From account) swaps just that block — never the user's text.
   const seededRef = useRef(false);
   const signatureRef = useRef<string | undefined>(undefined);
+  const emitChangeForEffect = useLatest(emitChange);
   useEffect(() => {
     const el = editorRef.current;
     if (!el) return;
@@ -186,15 +188,15 @@ export const RichTextArea = forwardRef<
         selection?.removeAllRanges();
         selection?.addRange(range);
       }
-      emitChange();
+      emitChangeForEffect.current();
     } else if (seededRef.current && signatureChanged) {
       if (block && signatureHTML) block.innerHTML = signatureHTML;
       else if (block) block.remove();
       else if (signatureHTML) el.insertAdjacentHTML("beforeend", signatureBlock(signatureHTML));
-      emitChange();
+      emitChangeForEffect.current();
     }
     if (autoFocus) el.focus();
-  }, [autoFocus, initialHTML, signatureHTML]);
+  }, [autoFocus, initialHTML, signatureHTML, emitChangeForEffect]);
 
   const refreshToolbar = () => {
     const el = editorRef.current;
@@ -208,10 +210,12 @@ export const RichTextArea = forwardRef<
   };
 
   // Reflect the caret's formatting in the strip while moving around.
+  const refreshToolbarForEffect = useLatest(refreshToolbar);
   useEffect(() => {
-    document.addEventListener("selectionchange", refreshToolbar);
-    return () => document.removeEventListener("selectionchange", refreshToolbar);
-  }, []);
+    const refresh = () => refreshToolbarForEffect.current();
+    document.addEventListener("selectionchange", refresh);
+    return () => document.removeEventListener("selectionchange", refresh);
+  }, [refreshToolbarForEffect]);
 
   const exec = (command: string, value?: string) => {
     editorRef.current?.focus();

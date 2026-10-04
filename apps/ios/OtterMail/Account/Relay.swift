@@ -4,8 +4,8 @@ import Foundation
  * The Otter relay (infra/relay; its API is packages/contracts/src/relay.ts):
  * who's signed in, the mailboxes linked to them (Gmail, and IMAP with its
  * server settings), the preferences that follow them, and a WebSocket that
- * says when mail, accounts or preferences changed. It never sees mail, and
- * this app's Gmail tokens and IMAP passwords never go there.
+ * says when mail, accounts or preferences changed. The agent API also hosts
+ * chats and relevant mail tool results; Gmail tokens and IMAP passwords stay here.
  */
 @MainActor
 final class Relay {

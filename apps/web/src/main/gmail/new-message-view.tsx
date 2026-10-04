@@ -198,7 +198,7 @@ export function NewMessageView({
       cc: normalizeAddressList(cc) || undefined,
       bcc: normalizeAddressList(bcc) || undefined,
       subject: subject.trim() || "(no subject)",
-      body: editorRef.current?.getText() ?? text,
+      body: text,
       bodyHtml: `<div dir="auto">${editorRef.current?.getHTML() ?? textToHtml(text)}</div>`,
       attachments: attachments.length > 0 ? attachments : undefined,
     };
@@ -247,7 +247,7 @@ export function NewMessageView({
             <>
               <DraftRemoteBanner
                 remote={draft.remote}
-                mine={{ to, cc, subject, body: editorRef.current?.getText() ?? text }}
+                mine={{ to, cc, subject, body: text }}
                 onTakeTheirs={draft.takeTheirs}
                 onKeepMine={draft.keepMine}
                 onSaveAsNew={draft.saveAsNew}

@@ -1605,6 +1605,7 @@ export function useSyncAccountLabels(accountIds: string[], enabled: boolean): vo
     if (!enabled) return;
     let anyProgressed = false;
     results.forEach((r, i) => {
+      // oxlint-disable-next-line react/exhaustive-effect-dependencies -- Serialized account and progress keys track meaningful query changes; result-array identities are unstable.
       const accountId = accountIds[i];
       const status = r.data as SyncStatus | undefined;
       if (!status) return;

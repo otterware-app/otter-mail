@@ -283,6 +283,39 @@ async function until(check: () => boolean, what: string) {
 
 // ── Tests ───────────────────────────────────────────────────────────────────
 
+describe("the hosted agent", () => {
+  it("requires an Otter session and reaches the AgentHub on desktop and web", async () => {
+    expect((await call("GET", "/v1/agent/connection")).status).toBe(401);
+    const { token } = await signIn("agent@example.com");
+    const response = await call("GET", "/v1/agent/connection", token);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ connected: false, models: [] });
+    const web = await fetch(`${base}/v1/agent/connection`, {
+      headers: { authorization: `Bearer ${token}`, origin: APP_ORIGIN },
+    });
+    expect(web.status).toBe(200);
+    expect(web.headers.get("access-control-allow-origin")).toBe(APP_ORIGIN);
+  });
+
+  it("rejects a different browser origin and invalid API keys without storing them", async () => {
+    const { token } = await signIn("agent-origin@example.com");
+    const crossOrigin = await fetch(`${base}/v1/agent/connection`, {
+      method: "DELETE",
+      headers: { authorization: `Bearer ${token}`, origin: "https://untrusted.test" },
+    });
+    expect(crossOrigin.status).toBe(403);
+    const badKey = await call("PUT", "/v1/agent/connection", token, { apiKey: "invalid" });
+    expect(badKey.status).toBe(400);
+    expect(await badKey.json()).toMatchObject({
+      error: expect.stringContaining("OpenRouter API key"),
+    });
+    expect(await (await call("GET", "/v1/agent/connection", token)).json()).toEqual({
+      connected: false,
+      models: [],
+    });
+  });
+});
+
 describe("sign-in", () => {
   it("signs in with a Google ID token and reports who is signed in", async () => {
     const { token, user } = await signIn("Owner@Example.com", "owner-sub");

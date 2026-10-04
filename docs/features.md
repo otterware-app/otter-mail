@@ -238,25 +238,44 @@ optional fix PRs. See [support.md](support.md).
 
 ## Agents
 
-| Feature                                                   | Mac                         | Web        | iPhone                     |
-| --------------------------------------------------------- | --------------------------- | ---------- | -------------------------- |
-| Providers                                                 | Claude, Codex, Hermes       | Hermes     | Hermes                     |
-| Chat, models, steer / stop, tool approval, history        | ✓                           | ✓          | ✓                          |
-| Select and copy chat text                                 | ✓                           | ✓          | —                          |
-| Changes after each agent turn, linking to results         | ✓ (Otter Mail tools)        | —          | —                          |
-| Turn an agent off                                         | ✓                           | ✓ (Hermes) | ✓ (Hermes; its buttons go) |
-| Chat about a conversation (pointers, not mail)            | ✓ (also selections, quotes) | ✓          | ✓ (a thread)               |
-| Attach images and files to a chat                         | ✓                           | ✓          | —                          |
-| Queued follow-ups                                         | ✓                           | ✓          | —                          |
-| ⌘⇧B toggles the right panel                               | ✓                           | ✓          | —                          |
-| ⌘T opens a tab while focus is in the panel                | ✓ (start page)              | ✓ (chat)   | —                          |
-| Control + Tab returns to the most recently used panel tab | ✓ (chats and pages)         | ✓ (chats)  | —                          |
-| Mail and calendar tools (Claude, Codex)                   | ✓ (every mailbox)           | —          | —                          |
-| Theme tools: make, change and wear themes                 | ✓                           | —          | —                          |
-| Project tools (Claude, Codex)                             | ✓                           | —          | —                          |
-| View tools: make, change and delete views                 | ✓                           | —          | —                          |
-| Projects for agents elsewhere (relay MCP, token)          | ✓ (Hermes)                  | ✓ (Hermes) | ✓ (Hermes)                 |
-| Tools for other agents on the Mac (MCP, token)            | ✓ (Claude Code, Cursor, …)  | —          | —                          |
+| Feature                                                   | Mac                               | Web                | iPhone                                              |
+| --------------------------------------------------------- | --------------------------------- | ------------------ | --------------------------------------------------- |
+| Providers                                                 | OpenRouter, Claude, Codex, Hermes | OpenRouter, Hermes | OpenRouter, Hermes                                  |
+| Chat, models, steer / stop, tool approval, history        | ✓                                 | ✓                  | ✓                                                   |
+| Select and copy chat text                                 | ✓                                 | ✓                  | —                                                   |
+| Changes after each agent turn, linking to results         | ✓ (Otter Mail tools)              | ✓ (OpenRouter)     | —                                                   |
+| Turn an agent off                                         | ✓                                 | ✓ (both)           | ✓ (both; their buttons go)                          |
+| Chat about a conversation (pointers, not mail)            | ✓ (also selections, quotes)       | ✓                  | ✓ (a thread)                                        |
+| Attach images and files to a chat                         | ✓                                 | ✓                  | —                                                   |
+| Queued follow-ups                                         | ✓                                 | ✓                  | —                                                   |
+| Control + Tab returns to the most recently used panel tab | ✓ (chats and pages)               | ✓ (chats)          | —                                                   |
+| ⌘⇧B toggles the right panel                               | ✓                                 | ✓                  | —                                                   |
+| ⌘T opens a tab while focus is in the panel                | ✓ (start page)                    | ✓ (chat)           | —                                                   |
+| Control + Tab returns to the most recently used panel tab | ✓ (chats and pages)               | ✓ (chats)          | —                                                   |
+| Mail tools (OpenRouter; Claude, Codex on Mac)             | ✓ (every mailbox)                 | ✓ (OpenRouter)     | ✓ (OpenRouter; read, search, draft, send, organize) |
+| Calendar tools (OpenRouter; Claude, Codex on Mac)         | ✓                                 | ✓ (OpenRouter)     | —                                                   |
+| Theme tools: make, change and wear themes                 | ✓                                 | ✓ (OpenRouter)     | —                                                   |
+| Project tools (OpenRouter; Claude, Codex on Mac)          | ✓                                 | ✓ (OpenRouter)     | —                                                   |
+| View tools: make, change and delete views                 | ✓                                 | ✓ (OpenRouter)     | —                                                   |
+| Projects for agents elsewhere (relay MCP, token)          | ✓ (Hermes)                        | ✓ (Hermes)         | ✓ (Hermes)                                          |
+| Tools for other agents on the Mac (MCP, token)            | ✓ (Claude Code, Cursor, …)        | —                  | —                                                   |
+
+OpenRouter runs on Otter Mail's server with the AI SDK on Mac, web and iPhone. Connect an
+OpenRouter API key in Settings › Agents while signed in to your Otter account; the key is
+sealed on the server, never synced into preferences or sent back to the apps. Available models
+come from OpenRouter's account-specific catalog and must support tools. Usage draws from
+OpenRouter credits. Requests exclude providers that collect user data. Chats live on the server
+and can be resumed on another device; they remain until the chat or Otter account is deleted.
+
+The apps answer the server's tool requests through their mail backends, so mailbox credentials
+stay on the device. Keep an app open during a turn. Relevant mail and attachment content goes
+to the agent server and OpenRouter when a tool reads it. Changes ask first in Supervised mode;
+read operations and saving drafts do not. Full access skips those prompts. On iPhone, the mail
+tools read and search, inspect supported attachments, save new plain text drafts, send and
+queue organization changes; calendar, project, theme and view tools are omitted. OpenRouter
+follow-ups queue on Mac/web; steering is available with Hermes. The iPhone waits for the current
+OpenRouter turn to finish before another question. `pnpm dev:demo` runs the same agent runtime
+on the local Vite server, with a private browser session and server-side key storage.
 
 Claude and Codex get Otter Mail's own tools (an MCP server in the Mac app's backend), so they
 need no mail CLI: search, read and sort mail, download attachments, save drafts and send, in

@@ -1,3 +1,4 @@
+import { useLatest } from "../use-latest";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { XIcon } from "lucide-react";
@@ -155,8 +156,7 @@ export function Tour({ actions, onClose }: { actions: TourActions; onClose: () =
   const last = index === STOPS.length - 1;
   const box = useTargetBox(stop.target);
 
-  const actionsRef = useRef(actions);
-  actionsRef.current = actions;
+  const actionsRef = useLatest(actions);
   // The agent panel is put back as it was when the tour ends.
   const agentWasOpen = useRef(actions.agentOpen);
   useEffect(() => {
@@ -164,19 +164,18 @@ export function Tour({ actions, onClose }: { actions: TourActions; onClose: () =
     if (stop.message) openMessage();
     if (stop.agent) setAgentOpen(true);
     else if (!agentWasOpen.current) setAgentOpen(false);
-  }, [stop]);
+  }, [stop, actionsRef]);
   useEffect(
     () => () => {
       if (!agentWasOpen.current) actionsRef.current.setAgentOpen(false);
     },
-    [],
+    [actionsRef],
   );
 
   const move = (by: number) => setIndex((i) => Math.min(STOPS.length - 1, Math.max(0, i + by)));
   const next = () => (last ? onClose() : move(1));
 
-  const nav = useRef({ next, move, onClose });
-  nav.current = { next, move, onClose };
+  const nav = useLatest({ next, move, onClose });
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       // Nothing reaches the app's shortcuts while the tour is up.
@@ -194,14 +193,16 @@ export function Tour({ actions, onClose }: { actions: TourActions; onClose: () =
     };
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, []);
+  }, [nav]);
 
   const card = useRef<HTMLDivElement>(null);
   const [cardHeight, setCardHeight] = useState(220);
   useLayoutEffect(() => {
     if (card.current) setCardHeight(card.current.offsetHeight);
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- Re-run this DOM/reset lifecycle when its explicit trigger changes, even when the callback reads refs.
   }, [index]);
   const nextButton = useRef<HTMLButtonElement>(null);
+  // oxlint-disable-next-line react/exhaustive-effect-dependencies -- Re-run this DOM/reset lifecycle when its explicit trigger changes, even when the callback reads refs.
   useEffect(() => nextButton.current?.focus({ preventScroll: true }), [index]);
 
   const position = cardPosition(box, cardHeight);
@@ -260,9 +261,9 @@ export function Tour({ actions, onClose }: { actions: TourActions; onClose: () =
         </div>
         <div className="mt-1 flex items-center justify-between">
           <span className="flex gap-1" aria-hidden>
-            {STOPS.map((_, i) => (
+            {STOPS.map((stop, i) => (
               <span
-                key={i}
+                key={stop.target}
                 className={cn(
                   "h-1.5 rounded-full transition-[width,background-color]",
                   i === index ? "w-4 bg-foreground" : "w-1.5 bg-foreground/20",

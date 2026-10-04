@@ -72,6 +72,19 @@ function ClaudeIcon({ className }: { className?: string }) {
 }
 
 export function ProviderIcon({ kind, className }: { kind: ProviderKind; className?: string }) {
+  if (kind === "openrouter")
+    return (
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        className={cn("size-4", className)}
+        aria-hidden
+      >
+        <path d="M3 12h5c3 0 3-7 6-7h6M8 12c3 0 3 7 6 7h6M17 2l3 3-3 3M17 16l3 3-3 3" />
+      </svg>
+    );
   if (kind === "codex") return <OpenAIIcon className={cn("size-4", className)} />;
   if (kind === "claude") return <ClaudeIcon className={cn("size-4", className)} />;
   return <HermesIcon className={cn("size-4", className)} />;
@@ -132,5 +145,6 @@ export function providerSummary(p: ProviderSnapshot | undefined): {
 
 /** A provider that can take a turn right now. */
 export function isProviderUsable(p: ProviderSnapshot | undefined): boolean {
+  if (p?.kind === "openrouter" && p.auth.status !== "authenticated") return false;
   return Boolean(p && p.enabled && p.status !== "error" && (p.installed || p.checkedAt === null));
 }

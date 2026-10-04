@@ -1,3 +1,4 @@
+import { useLatest } from "../use-latest";
 import { useEffect, useState, type ReactNode } from "react";
 import {
   CircleUserRoundIcon,
@@ -44,13 +45,14 @@ const UNREAD_DOTS = "gmail:rail-unread-dots";
 export function useRailUnreadDots(): [boolean, (on: boolean) => void] {
   const read = () => localStorage.getItem(UNREAD_DOTS) === "1";
   const [on, setOn] = useState(read);
+  const readForEffect = useLatest(read);
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
-      if (e.key === UNREAD_DOTS) setOn(read());
+      if (e.key === UNREAD_DOTS) setOn(readForEffect.current());
     };
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
-  }, []);
+  }, [readForEffect]);
   const set = (next: boolean) => {
     setSyncedPreference(UNREAD_DOTS, next ? "1" : "0");
     // The rail (another component) follows at once.

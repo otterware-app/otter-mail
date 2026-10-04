@@ -153,6 +153,7 @@ export async function webPlatform(page: Page): Promise<Platform> {
     },
     google: demo ? demo.demoGoogleAuth() : webGoogleAuth({ relayUrl, page, files }),
     relayUrl,
+    agentServerUrl: demo ? `${self.location.origin}/api/agent` : undefined,
     relaySession: "cookie",
 
     broadcast: page.broadcast,

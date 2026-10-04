@@ -61,6 +61,8 @@ export type GmailMessageSummary = {
 
 /** An outgoing attachment for compose/forward — base64 is standard (not url-safe). */
 export type ComposeAttachment = {
+  /** Identity while editing, independent of its position in the attachment list. */
+  key?: string;
   name: string;
   mimeType: string;
   size: number;

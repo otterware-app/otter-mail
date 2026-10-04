@@ -360,17 +360,22 @@ function ModelPickerContent({
   }, [allItems, favoriteSet, lockedKind, query, rail]);
 
   // Highlight the active model when it's in view, else the first row.
-  useLayoutEffect(() => {
-    const index = items.findIndex((i) => i.key === activeKey);
+  const highlightKey = `${activeKey}:${items.map((item) => item.key).join(",")}`;
+  const [highlightFor, setHighlightFor] = useState(highlightKey);
+  if (highlightFor !== highlightKey) {
+    setHighlightFor(highlightKey);
+    const index = items.findIndex((item) => item.key === activeKey);
     setHighlight(index >= 0 ? index : 0);
-  }, [items, activeKey]);
+  }
   useEffect(() => {
     listRef.current
       ?.querySelector<HTMLElement>("[data-highlighted]")
       ?.scrollIntoView({ block: "nearest" });
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- Re-run this DOM/reset lifecycle when its explicit trigger changes, even when the callback reads refs.
   }, [highlight]);
   useLayoutEffect(() => {
     searchRef.current?.focus({ preventScroll: true });
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- Re-run this DOM/reset lifecycle when its explicit trigger changes, even when the callback reads refs.
   }, [rail]);
 
   const pick = (item: PickerItem | undefined) => {

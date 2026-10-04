@@ -145,8 +145,17 @@ function seed(): void {
     docker(
       [
         ...compose,
-        ...["exec", "-T", "dovecot", "doveadm", "save", "-u", USER, "-m", folder],
-        ...["-r", String(Math.floor(date.getTime() / 1000))],
+        "exec",
+        "-T",
+        "dovecot",
+        "doveadm",
+        "save",
+        "-u",
+        USER,
+        "-m",
+        folder,
+        "-r",
+        String(Math.floor(date.getTime() / 1000)),
       ],
       raw,
     );

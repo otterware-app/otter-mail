@@ -1,3 +1,4 @@
+import { useLatest } from "../use-latest";
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { sendWithUndo } from "./undo-send";
@@ -144,11 +145,10 @@ export function DraftEditor({
       toast.error("Could not load the draft's attachments");
     }
   };
-  const loadAttachmentsRef = useRef(loadAttachments);
-  loadAttachmentsRef.current = loadAttachments;
+  const loadAttachmentsRef = useLatest(loadAttachments);
   useEffect(() => {
     if (detail.attachments.length > 0) void loadAttachmentsRef.current();
-  }, []);
+  }, [detail.attachments.length, loadAttachmentsRef]);
 
   // Which Gmail draft owns this message row (known locally; Gmail as fallback).
   const draftIdQuery = useQuery({
@@ -321,7 +321,7 @@ export function DraftEditor({
   const banner = (
     <DraftRemoteBanner
       remote={draft.remote}
-      mine={{ to, cc, subject, body: editorRef.current?.getText() ?? text }}
+      mine={{ to, cc, subject, body: text }}
       onTakeTheirs={draft.takeTheirs}
       onKeepMine={draft.keepMine}
       onSaveAsNew={draft.saveAsNew}

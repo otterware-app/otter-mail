@@ -212,6 +212,7 @@ export function DraftRemoteBanner({
 }
 
 /** What "Keep mine" would change in their version: fields, then the text. */
+/* oxlint-disable react/no-array-index-key -- Stateless spans represent an ordered diff snapshot. */
 function DraftDiff({ theirs, mine }: { theirs: GmailMessageDetail; mine: DraftVersionText }) {
   const theirBody = theirs.bodyText ?? (theirs.bodyHtml ? htmlToText(theirs.bodyHtml) : "");
   const fields = [
@@ -283,6 +284,7 @@ function DraftDiff({ theirs, mine }: { theirs: GmailMessageDetail; mine: DraftVe
     </div>
   );
 }
+/* oxlint-enable react/no-array-index-key */
 
 /** Footer status for a composer's draft. */
 export function draftStatus(draft: {

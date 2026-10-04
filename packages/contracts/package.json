@@ -10,7 +10,8 @@
     "./mail": "./src/mail.ts",
     "./projects": "./src/projects.ts",
     "./project-tools": "./src/project-tools.ts",
-    "./todoist": "./src/todoist.ts"
+    "./todoist": "./src/todoist.ts",
+    "./openrouter": "./src/openrouter.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

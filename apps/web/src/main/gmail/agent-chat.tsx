@@ -1,3 +1,4 @@
+import { useLatest } from "../use-latest";
 import { useEffect, useRef, useState, type MutableRefObject, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { MessageScroller } from "@shadcn/react/message-scroller";
@@ -287,7 +288,7 @@ function deriveTitle(turns: ChatTurn[]): string {
   return clampTitle(turns.find((t) => t.role === "user")?.text ?? "");
 }
 
-function newConversation(provider: ProviderKind = "hermes"): Conversation {
+function newConversation(provider: ProviderKind = "openrouter"): Conversation {
   return {
     id: crypto.randomUUID(),
     title: "New chat",
@@ -311,6 +312,8 @@ function sourceLabel(source: string): string {
       return "CLI";
     case "codex":
       return "Codex";
+    case "openrouter":
+      return "OpenRouter";
     default:
       return source.charAt(0).toUpperCase() + source.slice(1);
   }
@@ -424,7 +427,14 @@ function formatAgo(ts: number): string {
 
 /** Canonical error codes from the backend → what the transcript says. */
 function friendlyError(code: string, provider: ProviderKind): string {
-  const name = provider === "codex" ? "Codex" : provider === "claude" ? "Claude" : "Hermes";
+  const name =
+    provider === "openrouter"
+      ? "OpenRouter"
+      : provider === "codex"
+        ? "Codex"
+        : provider === "claude"
+          ? "Claude"
+          : "Hermes";
   switch (code) {
     case "not_configured":
       return `${name} isn't set up — connect it in Settings → Agents.`;
@@ -435,6 +445,7 @@ function friendlyError(code: string, provider: ProviderKind): string {
     case "unauthorized":
       return "The API key was rejected — update it in Settings.";
     case "unreachable":
+      if (provider === "openrouter") return "Can't reach OpenRouter. Try again in a moment.";
       return provider === "codex"
         ? "Lost the connection to Codex — send again to retry."
         : "Can't reach Hermes — are you on Tailscale?";
@@ -895,11 +906,13 @@ export function AgentChatPanel({
   const providersQuery = useAgentProviders();
   const setProvidersState = useSetProvidersState();
   const providersState = providersQuery.data;
-  const selectedKind = providersState?.selected ?? "hermes";
+  const selectedKind = providersState?.selected ?? "openrouter";
   const providerKind: ProviderKind =
     active && active.turns.length > 0 ? active.provider : selectedKind;
   const provider = providersState?.providers.find((p) => p.kind === providerKind);
-  const providerName = provider?.displayName ?? (providerKind === "codex" ? "Codex" : "Hermes");
+  const providerName =
+    provider?.displayName ??
+    (providerKind === "openrouter" ? "OpenRouter" : providerKind === "codex" ? "Codex" : "Hermes");
   const usable = isProviderUsable(provider);
   const sessionsAvailable = Boolean(provider?.sessions && usable);
   // Finished runs fold their tool rows behind a "Worked for …" summary.
@@ -964,12 +977,15 @@ export function AgentChatPanel({
       ? skills.filter((s) => s.name.toLowerCase().includes(slashQuery)).slice(0, 8)
       : [];
   const slashOpen = slashQuery !== null && !slashDismissed && slashSkills.length > 0;
-  useEffect(() => {
+  const [indexForQuery, setIndexForQuery] = useState(slashQuery);
+  if (indexForQuery !== slashQuery) {
+    setIndexForQuery(slashQuery);
     setSlashIndex(0);
-  }, [slashQuery]);
+  }
   // Keep the keyboard-highlighted skill scrolled into view.
   useEffect(() => {
     slashItemRef.current?.scrollIntoView({ block: "nearest" });
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- Re-run this DOM/reset lifecycle when its explicit trigger changes, even when the callback reads refs.
   }, [slashIndex]);
   const pickSkill = (skill: Skill) => {
     setActiveSkill(skill);
@@ -1022,18 +1038,17 @@ export function AgentChatPanel({
       : contextKind(contextLabelSets);
 
   // A fresh quote re-arms the attach toggle so it isn't silently dropped.
-  useEffect(() => {
+  const [attachedQuote, setAttachedQuote] = useState(quote);
+  if (attachedQuote !== quote) {
+    setAttachedQuote(quote);
     if (quote) setAttach(true);
-  }, [quote]);
+  }
 
   // Stream events land in their originating conversation (not necessarily the
   // active one); the listener mounts once and reads the stream via a ref.
-  const storeRef = useRef(store);
-  storeRef.current = store;
-  const runsRef = useRef(runs);
-  runsRef.current = runs;
-  const activeIdRef = useRef(activeId);
-  activeIdRef.current = activeId;
+  const storeRef = useLatest(store);
+  const runsRef = useLatest(runs);
+  const activeIdRef = useLatest(activeId);
   const endRun = (requestId: string) =>
     setRuns((all) => {
       const entry = Object.values(all).find((r) => r.requestId === requestId);
@@ -1042,6 +1057,7 @@ export function AgentChatPanel({
       delete next[entry.convoId];
       return next;
     });
+  const endRunForEffect = useLatest(endRun);
   useEffect(() => {
     const unsub = window.desktopBridge.on("agent:chatEvent", (raw: unknown) => {
       const event = raw as ChatEvent;
@@ -1112,7 +1128,7 @@ export function AgentChatPanel({
         }),
       }));
       if (event.type === "done" || event.type === "error") {
-        endRun(event.requestId);
+        endRunForEffect.current(event.requestId);
         if (s.convoId !== activeIdRef.current) setUnseen((u) => new Set(u).add(s.convoId));
       }
       // A steer the agent never got to: it goes first in line.
@@ -1129,7 +1145,7 @@ export function AgentChatPanel({
         ]);
     });
     return unsub;
-  }, []);
+  }, [activeIdRef, endRunForEffect, runsRef]);
 
   const patchConversation = (id: string, fn: (c: Conversation) => Conversation) => {
     setStore((s) => ({
@@ -1141,6 +1157,7 @@ export function AgentChatPanel({
   // Chats saved before turns kept their steps in order: the first time one
   // opens, its agent turns are read back from the agent's own session.
   const upgraded = useRef(new Set<string>());
+  const patchConversationForEffect = useLatest(patchConversation);
   useEffect(() => {
     const c = active;
     if (!c?.sessionId || runs[c.id] || upgraded.current.has(c.id)) return;
@@ -1151,7 +1168,7 @@ export function AgentChatPanel({
     gmailApi.agentSessionMessages(c.provider, c.sessionId).then(
       (messages) => {
         const fresh = turnsFromMessages(messages).filter((t) => t.role === "assistant");
-        patchConversation(c.id, (current) => {
+        patchConversationForEffect.current(c.id, (current) => {
           // Only when the session lines up with the chat, turn for turn.
           if (fresh.length !== current.turns.filter((t) => t.role === "assistant").length)
             return current;
@@ -1166,7 +1183,7 @@ export function AgentChatPanel({
       },
       (error) => console.log("[AgentChat:upgrade] failed", { error: String(error) }),
     );
-  }, [active, runs, providersState]);
+  }, [active, runs, providersState, patchConversationForEffect, upgraded]);
 
   /** Consumes the composer (text, skill, attached context) into a message. */
   const compose = (): Outgoing | null => {
@@ -1404,18 +1421,20 @@ export function AgentChatPanel({
   };
   // The edited message left the queue (it started, or was removed): keep a
   // dirty edit in the composer, otherwise restore the user's draft.
+  const cancelQueuedEditForEffect = useLatest(cancelQueuedEdit);
   useEffect(() => {
     if (!editing || queue.some((m) => m.id === editing.id)) return;
     const original = draft.trim();
     if (original && !editing.savedDraft.trim()) {
+      // oxlint-disable-next-line react/set-state-in-effect -- Coordinate queue consumption and editing with the external agent turn lifecycle.
       setEditing(null);
       toast.info("Queued message is no longer queued", {
         description: "Your unsaved edit was kept in the composer.",
       });
     } else {
-      cancelQueuedEdit();
+      cancelQueuedEditForEffect.current();
     }
-  }, [queue]);
+  }, [queue, cancelQueuedEditForEffect, draft, editing]);
 
   /** Resumes a session persisted on the provider (e.g. started in Hermes' WebUI) in the panel. */
   const openServerSession = (session: ChatSession) => {
@@ -1440,7 +1459,7 @@ export function AgentChatPanel({
       sessionId: session.id,
       sessionOwned: false,
       lastResponseId: null,
-      updatedAt: session.lastActive || Date.now(),
+      updatedAt: session.lastActive,
     };
     setStore((s) => {
       // A new tab, like any chat opened from history (an empty tab is reused).
@@ -1523,11 +1542,13 @@ export function AgentChatPanel({
   // completion, an error, or Stop) — never at a tool boundary; that's what
   // Steer is for. Each chat drains its own queue.
   const nextQueued = queue.find((m) => !runs[m.convoId] && editing?.id !== m.id);
+  const startTurnForEffect = useLatest(startTurn);
   useEffect(() => {
     if (!nextQueued) return;
+    // oxlint-disable-next-line react/set-state-in-effect -- Coordinate queue consumption and editing with the external agent turn lifecycle.
     setQueue((q) => q.filter((m) => m.id !== nextQueued.id));
-    startTurn(nextQueued, "queued");
-  }, [nextQueued, runs, editing]);
+    startTurnForEffect.current(nextQueued, "queued");
+  }, [nextQueued, startTurnForEffect]);
 
   /** Empty chats that aren't open anywhere are dropped (no litter). */
   const pruned = (conversations: Conversation[], tabs: string[]) =>
@@ -1711,8 +1732,7 @@ export function AgentChatPanel({
 
   // Each tab keeps its own unsent draft.
   const draftsRef = useRef<Record<string, string>>({});
-  const draftRef = useRef(draft);
-  draftRef.current = draft;
+  const draftRef = useLatest(draft);
   const shownIdRef = useRef(activeId);
   useEffect(() => {
     const prev = shownIdRef.current;
@@ -1722,7 +1742,7 @@ export function AgentChatPanel({
     setActiveSkill(null);
     setEditing(null);
     shownIdRef.current = activeId;
-  }, [activeId]);
+  }, [activeId, draftRef]);
 
   useKeybindingContext("agentOpen", browserTabId === null);
 
@@ -2322,6 +2342,20 @@ export function AgentChatPanel({
                       )}
                     </div>
                   </div>
+                  {providerKind === "openrouter" && usable ? (
+                    <div className="flex items-center justify-between gap-2 px-4 pb-3 text-xs text-muted-foreground">
+                      <span>OpenRouter</span>
+                      <button
+                        type="button"
+                        className="cursor-pointer hover:text-foreground"
+                        onClick={() =>
+                          void window.desktopBridge.openExternal("https://openrouter.ai/activity")
+                        }
+                      >
+                        Manage usage
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
               )}
             </div>

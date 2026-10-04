@@ -601,7 +601,7 @@ export const mailTools: AgentTool[] = [
     name: "get_attachment",
     title: "Download an attachment",
     description:
-      "Saves one of a message's attachments (from get_thread) to a file on this Mac and answers its path, for you to read.",
+      "Saves one of a message's attachments (from get_thread) to a file on this device and answers its path. The connected agent also receives supported file content.",
     input: {
       type: "object",
       properties: {

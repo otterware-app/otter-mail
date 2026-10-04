@@ -62,7 +62,7 @@ export function trackLabelWrite(
 /** Whether any label write for the account is still pending. */
 export function hasPendingLabelWrites(accountId: string): boolean {
   const prefix = `${accountId}:`;
-  for (const key of [...pending.keys()]) {
+  for (const key of pending.keys()) {
     if (key.startsWith(prefix) && live(key).length > 0) return true;
   }
   return false;

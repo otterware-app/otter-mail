@@ -1,3 +1,4 @@
+import { useLatest } from "../use-latest";
 /**
  * Attachments in the agent chat, as Otter Code does them: paste an image
  * (or files), drop files anywhere on the panel ("Drop files to attach"), or
@@ -6,7 +7,7 @@
  * files as rows, in the composer and in the sent message.
  */
 
-import { useEffect, useRef, useState, type DragEvent, type ReactNode } from "react";
+import { useEffect, useState, type DragEvent, type ReactNode } from "react";
 import { FileTextIcon, ImageIcon, LoaderCircleIcon, PaperclipIcon, XIcon } from "lucide-react";
 import { toast } from "./toast";
 import { gmailApi, type ChatAttachment } from "./api";
@@ -50,15 +51,19 @@ function isImage(file: File): boolean {
 function thumbnail(url: string): Promise<string | undefined> {
   return new Promise((resolve) => {
     const img = new Image();
-    img.onload = () => {
-      const scale = Math.min(1, 240 / Math.max(img.width, img.height));
-      const canvas = document.createElement("canvas");
-      canvas.width = Math.max(1, Math.round(img.width * scale));
-      canvas.height = Math.max(1, Math.round(img.height * scale));
-      canvas.getContext("2d")?.drawImage(img, 0, 0, canvas.width, canvas.height);
-      resolve(canvas.toDataURL("image/jpeg", 0.7));
-    };
-    img.onerror = () => resolve(undefined);
+    img.addEventListener(
+      "load",
+      () => {
+        const scale = Math.min(1, 240 / Math.max(img.width, img.height));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(img.width * scale));
+        canvas.height = Math.max(1, Math.round(img.height * scale));
+        canvas.getContext("2d")?.drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL("image/jpeg", 0.7));
+      },
+      { once: true },
+    );
+    img.addEventListener("error", () => resolve(undefined), { once: true });
     img.src = url;
   });
 }
@@ -66,8 +71,7 @@ function thumbnail(url: string): Promise<string | undefined> {
 /** The composer's attachments: add (validate + stage), remove, take on send. */
 export function useChatAttachments() {
   const [items, setItems] = useState<DraftAttachment[]>([]);
-  const itemsRef = useRef(items);
-  itemsRef.current = items;
+  const itemsRef = useLatest(items);
 
   // Object URLs die with the draft.
   useEffect(
@@ -75,7 +79,7 @@ export function useChatAttachments() {
       for (const item of itemsRef.current)
         if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
     },
-    [],
+    [itemsRef],
   );
 
   const add = async (files: File[]) => {
@@ -362,6 +366,7 @@ export function ComposerAttachments({
 }
 
 /** Attachments inside a sent user bubble (Otter Code's MessagesTimeline). */
+/* oxlint-disable react/no-array-index-key -- Sent messages keep immutable attachment snapshots, including repeated filenames. */
 export function SentAttachments({ attachments }: { attachments: SentAttachment[] }) {
   const images = attachments.filter((a) => a.kind === "image");
   const files = attachments.filter((a) => a.kind === "file");
@@ -405,3 +410,4 @@ export function SentAttachments({ attachments }: { attachments: SentAttachment[]
     </>
   );
 }
+/* oxlint-enable react/no-array-index-key */

@@ -1,3 +1,5 @@
+import { withOccurrenceKeys } from "./list-keys";
+import { useLatest } from "../use-latest";
 import { ListTodoIcon } from "lucide-react";
 import { addEmailToTodoist } from "../integrations/todoist";
 import { SnoozeButton } from "./mail-schedule";
@@ -5,6 +7,7 @@ import {
   Fragment,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -599,12 +602,9 @@ function HtmlBody({
     requestAnimationFrame(() => refitRef.current());
   };
   const frameRef = useRef<HTMLIFrameElement>(null);
-  const quoteRef = useRef(onQuoteText);
-  quoteRef.current = onQuoteText;
-  const inlineRef = useRef(inlineImages);
-  inlineRef.current = inlineImages;
-  const inviteRef = useRef(inviteMessageId);
-  inviteRef.current = inviteMessageId;
+  const quoteRef = useLatest(onQuoteText);
+  const inlineRef = useLatest(inlineImages);
+  const inviteRef = useLatest(inviteMessageId);
   const dark = useDarkAppearance();
   // 15px at a 16px interface (the size the app is drawn at), scaled with it.
   const bodyFontSize = (15 * useInterfaceSetting(INTERFACE_FONT_SIZE)) / 16;
@@ -621,6 +621,8 @@ function HtmlBody({
     }
   };
 
+  const adaptColorsForEffect = useLatest(adaptColors);
+  /* oxlint-disable react/exhaustive-effect-dependencies -- Explicit DOM and reset triggers must re-run this lifecycle. */
   useEffect(() => {
     const iframe = frameRef.current;
     if (!iframe) return;
@@ -651,7 +653,7 @@ function HtmlBody({
       ro?.disconnect();
       ro = new ResizeObserver(fit);
       ro.observe(doc.body);
-      adaptColors(doc);
+      adaptColorsForEffect.current(doc);
       const quoted = findQuotedHistory(doc);
       quotedRef.current = quoted;
       for (const el of quoted) {
@@ -799,7 +801,7 @@ function HtmlBody({
     const poll = setInterval(() => {
       wire();
       if (ticks < 8) {
-        adaptColors(iframe.contentDocument);
+        adaptColorsForEffect.current(iframe.contentDocument);
       }
       fit();
       if (++ticks >= 40) clearInterval(poll);
@@ -819,7 +821,17 @@ function HtmlBody({
     };
     // adaptColors only varies with `dark`, which is a dependency; a new font
     // size remounts the frame (its key), which is wired again.
-  }, [html, dark, bodyFontSize]);
+  }, [
+    html,
+    dark,
+    bodyFontSize,
+    adaptColorsForEffect,
+    inlineRef,
+    inviteRef,
+    quoteRef,
+    adaptColorsForEffect,
+  ]);
+  /* oxlint-enable react/exhaustive-effect-dependencies */
 
   // Marketing/HTML mail is designed for a white canvas — give it a light card
   // inside the dark conversation, like an unfurled preview card.
@@ -1056,6 +1068,7 @@ function ImageAttachmentTile({
   useEffect(() => {
     let cancelled = false;
     let objectUrl: string | null = null;
+    // oxlint-disable-next-line react/set-state-in-effect -- Reset transient reader/composer state when the message or attachment changes.
     setUrl(null);
     setFailed(false);
     void (async () => {
@@ -1357,8 +1370,7 @@ export function ExpandedRow({
 }) {
   const detailQuery = useMessage(accountId, summary.id);
   const modifyMessage = useModifyMessage();
-  const modifyMessageRef = useRef(modifyMessage);
-  modifyMessageRef.current = modifyMessage;
+  const modifyMessageRef = useLatest(modifyMessage);
   const markedRead = useRef(false);
   const markReadDelayMs = useInterfaceSetting(MARK_READ_DELAY);
 
@@ -1380,7 +1392,7 @@ export function ExpandedRow({
       });
     }, markReadDelayMs);
     return () => clearTimeout(timer);
-  }, [summary.unread, summary.id, accountId, markReadDelayMs]);
+  }, [summary.unread, summary.id, accountId, markReadDelayMs, modifyMessageRef]);
 
   const detail = detailQuery.data;
   const inlineImages = useMemo(
@@ -1534,8 +1546,8 @@ function RecipientList({
   const people = splitAddressList(list).map(parseAddressEntry);
   return (
     <>
-      {people.map((p, i) => (
-        <span key={`${p.email}:${i}`}>
+      {withOccurrenceKeys(people, (person) => person.email).map(({ item: p, index: i, key }) => (
+        <span key={key}>
           {i > 0 ? ", " : null}
           <SenderHoverCard
             name={p.name}
@@ -1720,6 +1732,7 @@ function InlineComposer({
     if (previousMode.current === mode) return;
     recipientsDirty.current = false;
     if (previousMode.current === "forward") setAttachments([]);
+    // oxlint-disable-next-line react/set-state-in-effect -- Reset transient reader/composer state when the message or attachment changes.
     if (mode === "forward") setFieldsOpen(true);
     previousMode.current = mode;
   }, [mode]);
@@ -1730,6 +1743,7 @@ function InlineComposer({
     if (recipientsDirty.current) return;
     const source = lastDetail ?? lastMessage;
     if (mode === "forward") {
+      // oxlint-disable-next-line react/set-state-in-effect -- Reset transient reader/composer state when the message or attachment changes.
       setTo("");
       setCc("");
       setCcVisible(false);
@@ -1745,6 +1759,7 @@ function InlineComposer({
   useEffect(() => {
     if (mode !== "forward") return;
     if (!lastDetail) {
+      // oxlint-disable-next-line react/set-state-in-effect -- Reset transient reader/composer state when the message or attachment changes.
       setAttachments(null);
       return;
     }
@@ -1942,7 +1957,7 @@ function InlineComposer({
         </div>
         <DraftRemoteBanner
           remote={draft.remote}
-          mine={{ to, cc, subject, body: editorRef.current?.getText() ?? text }}
+          mine={{ to, cc, subject, body: text }}
           onTakeTheirs={draft.takeTheirs}
           onKeepMine={draft.keepMine}
           onSaveAsNew={draft.saveAsNew}
@@ -2104,7 +2119,10 @@ export function MessageReader({
   });
   // Cleared every render; the message-open path below re-populates it, so the
   // shortcuts are inert when no message is on screen.
-  readerActions.current = {};
+  const renderedActions: typeof readerActions.current = {};
+  useLayoutEffect(() => {
+    readerActions.current = renderedActions;
+  });
 
   const messageQuery = useMessage(accountId, messageId);
   const labelsQuery = useLabels(accountId);
@@ -2130,6 +2148,7 @@ export function MessageReader({
     on: false,
     target: null,
   });
+  // oxlint-disable-next-line react/set-state-in-effect, react/exhaustive-effect-dependencies -- Re-run this DOM/reset lifecycle when its explicit trigger changes, even when the callback reads refs.
   useEffect(() => setTranslation({ on: autoTranslate, target: null }), [messageId, autoTranslate]);
   const conversationTranslation = useMemo(
     () => ({ ...translation, set: setTranslation }),
@@ -2145,6 +2164,7 @@ export function MessageReader({
   const [expandedIds, setExpandedIds] = useState<ReadonlySet<string>>(new Set());
   // Long runs of collapsed messages fold into "N more messages" until opened.
   const [unfolded, setUnfolded] = useState(false);
+  // oxlint-disable-next-line react/set-state-in-effect, react/exhaustive-effect-dependencies -- Re-run this DOM/reset lifecycle when its explicit trigger changes, even when the callback reads refs.
   useEffect(() => setUnfolded(false), [messageId]);
   const seededRef = useRef<string | null>(null);
   const readerAccounts = useAccounts();
@@ -2171,14 +2191,15 @@ export function MessageReader({
   };
 
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- Reset transient reader/composer state when the message or attachment changes.
     setInline(null);
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- Re-run this DOM/reset lifecycle when its explicit trigger changes, even when the callback reads refs.
   }, [messageId]);
 
   // Escape closes the inline composer before anything else: registered in the
   // capture phase so home-view's Escape-deselects-message listener never fires
   // while a draft is open (dialogs keep their own Escape handling).
-  const inlineRef = useRef<InlineMode | null>(null);
-  inlineRef.current = inline;
+  const inlineRef = useLatest(inline);
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || !inlineRef.current) return;
@@ -2192,7 +2213,7 @@ export function MessageReader({
     };
     window.addEventListener("keydown", down, true);
     return () => window.removeEventListener("keydown", down, true);
-  }, []);
+  }, [inlineRef]);
 
   // Seed which conversation rows start expanded: the last message, every
   // unread one, and the opened message itself (differs when opened via search).
@@ -2442,12 +2463,12 @@ export function MessageReader({
     setTranslation((t) => ({ ...t, on: !t.on }));
   };
 
-  readerActions.current = {
+  Object.assign(renderedActions, {
     reply: handleReply,
     replyAll: handleReplyAll,
     forward: handleForward,
     translate: handleToggleTranslation,
-  };
+  });
 
   const isFlagged = message.labelIds.includes("STARRED");
   const isTrashed = message.labelIds.includes("TRASH");

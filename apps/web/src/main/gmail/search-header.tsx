@@ -1,3 +1,4 @@
+import { useLatest } from "../use-latest";
 /**
  * The Search mailbox's header, modelled on Gmail's: a search bar that runs on
  * Enter (suggestions while typing: recent searches, people, instant matches
@@ -643,14 +644,12 @@ export function SearchHeader({
     if (lastQueryRef.current === query) return;
     lastQueryRef.current = query;
     setDraft(query || (base ? `${base} ` : ""));
-  }, [query]);
+  }, [query, base]);
 
   // Leaving for another mailbox keeps what was typed (the sidebar shows a dot).
-  const draftRef = useRef(draft);
-  draftRef.current = draft;
-  const onDraftChangeRef = useRef(onDraftChange);
-  onDraftChangeRef.current = onDraftChange;
-  useEffect(() => () => onDraftChangeRef.current(draftRef.current), []);
+  const draftRef = useLatest(draft);
+  const onDraftChangeRef = useLatest(onDraftChange);
+  useEffect(() => () => onDraftChangeRef.current(draftRef.current), [draftRef, onDraftChangeRef]);
 
   // Escape: the first clears the search, the next (already empty) returns to
   // the mailbox you came from.
@@ -663,10 +662,8 @@ export function SearchHeader({
       onClear();
     } else onExit();
   };
-  const escapeRef = useRef(escape);
-  escapeRef.current = escape;
-  const messageOpenRef = useRef(messageOpen);
-  messageOpenRef.current = messageOpen;
+  const escapeRef = useLatest(escape);
+  const messageOpenRef = useLatest(messageOpen);
   // The same with focus outside the bar, when no message is open (Escape
   // closes the reader first).
   useEffect(() => {
@@ -679,9 +676,10 @@ export function SearchHeader({
     };
     window.addEventListener("keydown", down);
     return () => window.removeEventListener("keydown", down);
-  }, []);
+  }, [escapeRef, messageOpenRef]);
 
   const suggestions = useSuggestions(draft, scope, suggesting);
+  // oxlint-disable-next-line react/set-state-in-effect, react/exhaustive-effect-dependencies -- Re-run this DOM/reset lifecycle when its explicit trigger changes, even when the callback reads refs.
   useEffect(() => setHighlight(0), [draft]);
   // Important is Gmail's sorting: offered while a mailbox searched has it.
   const sortsImportant = accounts.some((a) => scope.includes(a.id) && capabilitiesOf(a).categories);

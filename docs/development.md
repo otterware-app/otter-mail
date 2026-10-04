@@ -31,6 +31,17 @@ The dev commands pick ports from the worktree path, so several checkouts can run
 then symlinks to the main checkout's `.env.local` and `infra/relay/.dev.vars`) and offers both dev
 commands as scripts.
 
+## Agent development
+
+For local developer tests, keep `OPENROUTER_API_KEY` in the repository's ignored `.env` or
+`.env.local`. The app never uses that key as a default for visitors. Connect the demo through
+Settings › Agents; each private browser session supplies and stores its own key on the server.
+Production connections use each Otter account's own key stored on the relay.
+
+The demo's default model is `openrouter/free`; override it with `OPENROUTER_MODEL` in the
+repository's env files. Linked worktrees also read the main checkout's model setting, with
+worktree values and environment variables taking precedence. No env value enters the browser.
+
 ## Data homes
 
 Like T3 Code, data lives under a home, `~/.otter-mail` (or `OTTER_MAIL_HOME`), with one state

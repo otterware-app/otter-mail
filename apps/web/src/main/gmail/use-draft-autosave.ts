@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useLatest } from "../use-latest";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { gmailApi } from "./api";
 import type { ComposeAttachment, GmailMessageDetail } from "./types";
@@ -87,21 +88,15 @@ export function useDraftAutosave({
   const unmountedRef = useRef(false);
   /** Saves suspended: loading, applying another version, or awaiting a choice. */
   const pausedRef = useRef(!enabled);
-  const remoteRef = useRef<DraftRemoteState | null>(null);
-  remoteRef.current = remote;
+  const remoteRef = useLatest(remote);
   const sessionKeyRef = useRef(crypto.randomUUID());
   const snapshotRef = useRef(signal);
 
-  const signalRef = useRef(signal);
-  signalRef.current = signal;
-  const accountRef = useRef(accountId);
-  accountRef.current = accountId;
-  const threadRef = useRef(threadId);
-  threadRef.current = threadId;
-  const getPayloadRef = useRef(getPayload);
-  getPayloadRef.current = getPayload;
-  const onRemoteChangeRef = useRef(onRemoteChange);
-  onRemoteChangeRef.current = onRemoteChange;
+  const signalRef = useLatest(signal);
+  const accountRef = useLatest(accountId);
+  const threadRef = useLatest(threadId);
+  const getPayloadRef = useLatest(getPayload);
+  const onRemoteChangeRef = useLatest(onRemoteChange);
 
   // A resumed draft's id can arrive after mount (looked up by message id).
   useEffect(() => {
@@ -109,7 +104,7 @@ export function useDraftAutosave({
       draftIdRef.current = initialDraftId;
       draftAccountRef.current = accountRef.current;
     }
-  }, [initialDraftId]);
+  }, [initialDraftId, accountRef]);
 
   /**
    * Treats whatever the composer shows a moment from now as already saved:
@@ -127,11 +122,12 @@ export function useDraftAutosave({
 
   // Baseline once the composer is ready (not at first render: seeding the
   // editor changes the signal, and that alone isn't an edit).
+  const adoptCurrentSoonForEffect = useLatest(adoptCurrentSoon);
   useEffect(() => {
     if (!enabled) return;
-    adoptCurrentSoon();
+    adoptCurrentSoonForEffect.current();
     pausedRef.current = remoteRef.current != null;
-  }, [enabled]);
+  }, [enabled, adoptCurrentSoonForEffect, remoteRef]);
 
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ["gmail:messages"] });
@@ -140,8 +136,7 @@ export function useDraftAutosave({
     void qc.invalidateQueries({ queryKey: ["gmail:thread"] });
     void qc.invalidateQueries({ queryKey: ["gmail:labels"] });
   };
-  const refreshRef = useRef(refresh);
-  refreshRef.current = refresh;
+  const refreshRef = useLatest(refresh);
 
   /** Loads another version into the composer (no save for that change). */
   const applyVersion = async (detail: GmailMessageDetail) => {
@@ -234,13 +229,12 @@ export function useDraftAutosave({
       setSaveState("error");
       // Retry while the composer is open; a closed one's last save carries on
       // in the backend (same session, so no duplicate draft).
-      if (!unmountedRef.current) setTimeout(() => void triggerRef.current(), 5000);
+      if (!unmountedRef.current) setTimeout(() => void triggerRef.current?.(), 5000);
     } finally {
       savingRef.current = false;
     }
   };
-  const saveRef = useRef(save);
-  saveRef.current = save;
+  const saveRef = useLatest(save);
   // The in-flight save, so finalize can await the unmount flush before
   // deleting (send path closes the composer first, optimistically).
   const pendingRef = useRef<Promise<void> | null>(null);
@@ -249,15 +243,21 @@ export function useDraftAutosave({
     pendingRef.current = p;
     return p;
   };
-  const triggerRef = useRef(trigger);
-  triggerRef.current = trigger;
+  const triggerRef = useRef<typeof trigger | null>(null);
+  useLayoutEffect(() => {
+    // oxlint-disable-next-line react/immutability -- The retry callback closes over this ref; layout updates it before timers or cleanup can invoke it.
+    triggerRef.current = trigger;
+  });
 
   useEffect(() => {
-    const timer = setTimeout(() => void triggerRef.current(), delayMs);
+    const timer = setTimeout(() => void triggerRef.current?.(), delayMs);
     return () => clearTimeout(timer);
-  }, [signal, delayMs]);
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- Re-run this DOM/reset lifecycle when its explicit trigger changes, even when the callback reads refs.
+  }, [signal, delayMs, triggerRef]);
 
   // Watch for edits made elsewhere while the composer is open and focused.
+  const handleRemoteVersionForEffect = useLatest(handleRemoteVersion);
+  const markGoneForEffect = useLatest(markGone);
   useEffect(() => {
     const check = async () => {
       const account = accountRef.current;
@@ -269,8 +269,9 @@ export function useDraftAutosave({
         const { messageId } = await gmailApi.getDraftVersion(account, draftId);
         // Re-check: a save of ours may have landed while we asked.
         if (doneRef.current || savingRef.current || pausedRef.current) return;
-        if (messageId === null) markGone();
-        else if (messageId !== versionRef.current) await handleRemoteVersion(messageId);
+        if (messageId === null) markGoneForEffect.current();
+        else if (messageId !== versionRef.current)
+          await handleRemoteVersionForEffect.current(messageId);
       } catch (err) {
         console.log("[useDraftAutosave:checkFailed]", { error: String(err) });
       }
@@ -282,7 +283,7 @@ export function useDraftAutosave({
       clearInterval(timer);
       window.removeEventListener("focus", onFocus);
     };
-  }, []);
+  }, [accountRef, handleRemoteVersionForEffect, markGoneForEffect]);
 
   // Flush the last edits and refresh the lists once, on the way out. With an
   // unresolved conflict (or the draft gone), the user's text is kept as a new
@@ -295,9 +296,9 @@ export function useDraftAutosave({
         versionRef.current = null;
         pausedRef.current = false;
       }
-      void Promise.resolve(triggerRef.current()).finally(() => refreshRef.current());
+      void Promise.resolve(triggerRef.current?.()).finally(() => refreshRef.current());
     },
-    [],
+    [refreshRef, remoteRef, triggerRef],
   );
 
   /** Conflict: load the other version, dropping this composer's edits. */
@@ -315,7 +316,7 @@ export function useDraftAutosave({
     versionRef.current = current.detail.id;
     setRemote(null);
     pausedRef.current = false;
-    void triggerRef.current();
+    void triggerRef.current?.();
   };
 
   /** Gone: keep this composer's text as a new draft. */
@@ -325,7 +326,7 @@ export function useDraftAutosave({
     snapshotRef.current = "";
     setRemote(null);
     pausedRef.current = false;
-    void triggerRef.current();
+    void triggerRef.current?.();
   };
 
   /** Stop autosaving (send/discard); optionally delete the persisted draft. */

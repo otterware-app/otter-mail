@@ -73,7 +73,9 @@ export async function getProviderSettings(): Promise<ProviderSettings> {
   const legacyHermes = stored ? null : await readJson<HermesSettings>("assistant-chat.json");
   const selected = PROVIDER_KINDS.includes(stored?.selected as ProviderKind)
     ? (stored?.selected as ProviderKind)
-    : "hermes";
+    : legacyHermes?.baseUrl
+      ? "hermes"
+      : "openrouter";
   cache = {
     selected,
     hermes: {
@@ -82,6 +84,14 @@ export async function getProviderSettings(): Promise<ProviderSettings> {
     },
     codex: migrateRuntimeMode({ ...DEFAULT_CODEX, ...stored?.codex }),
     claude: migrateRuntimeMode({ ...DEFAULT_CLAUDE, ...stored?.claude }),
+    openrouter: migrateRuntimeMode({
+      enabled: true,
+      model: "",
+      reasoningEffort: "",
+      serviceTier: "",
+      runtimeMode: "approval-required",
+      ...stored?.openrouter,
+    }),
   };
   return cache;
 }

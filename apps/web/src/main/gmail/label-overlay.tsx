@@ -53,6 +53,7 @@ export function LabelOverlay({
   const applied = new Set(appliedLabelIds);
 
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- Reset the picker when its external selection context changes.
     if (open) setQuery("");
   }, [open]);
 

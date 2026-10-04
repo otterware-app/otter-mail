@@ -54,6 +54,8 @@ final class Session {
         relay.onSignedOut = { [weak self] in self?.endSession() }
         preferences.onChange = { [weak self] section in self?.preferenceChanged(section) }
         agent.onChange = { [weak self] section in self?.preferenceChanged(section) }
+        agent.relay = relay
+        agent.mailStore = { [weak self] in self?.store }
         Task { [agent] in await agent.check() }
         if case .signedIn = state { startLive() }
     }

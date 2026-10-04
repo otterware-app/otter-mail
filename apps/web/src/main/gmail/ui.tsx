@@ -1,3 +1,4 @@
+import { useLatest } from "../use-latest";
 import {
   forwardRef,
   useEffect,
@@ -166,7 +167,8 @@ export function HintTooltip({
     setPlacement(null);
   };
 
-  useEffect(() => clearTimer, []);
+  const clearTimerForEffect = useLatest(clearTimer);
+  useEffect(() => clearTimerForEffect.current, [clearTimerForEffect]);
 
   // Place against the trigger once the bubble is measured: preferred side,
   // flipped when it would leave the window, clamped horizontally.
@@ -204,9 +206,10 @@ export function HintTooltip({
   }, [anchor, side]);
 
   // Any scroll or window change invalidates the anchor rect.
+  const closeForEffect = useLatest(close);
   useEffect(() => {
     if (!anchor) return;
-    const dismiss = () => close();
+    const dismiss = () => closeForEffect.current();
     window.addEventListener("scroll", dismiss, true);
     window.addEventListener("resize", dismiss);
     window.addEventListener("blur", dismiss);
@@ -215,7 +218,7 @@ export function HintTooltip({
       window.removeEventListener("resize", dismiss);
       window.removeEventListener("blur", dismiss);
     };
-  }, [anchor]);
+  }, [anchor, closeForEffect]);
 
   const triggerOf = (e: { currentTarget: HTMLElement }) => e.currentTarget.firstElementChild;
 
