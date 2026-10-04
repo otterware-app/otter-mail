@@ -160,6 +160,11 @@ for migration. The `APNS_ENVIRONMENT` build setting and signed `aps-environment`
 Debug `development` → sandbox; Release/TestFlight `production` → production. If signing with a
 custom development profile, keep the plist environment consistent with that profile.
 
+The shared App Group also grants Keychain access under its unprefixed group name. Keep only the
+app-private prefixed group in `keychain-access-groups`; adding the App Group there fails signed
+archives against the profiles' prefixed Keychain allowlist. Google token queries select the App
+Group explicitly, while existing Otter sessions remain in the app-private default group.
+
 Regenerate the main App Store profile with the new capabilities, and add the extension's
 “Otter Mail Notifications App Store” profile. The release workflow also needs
 `IOS_NOTIFICATION_PROVISIONING_PROFILE` (base64); see `docs/release.md`. Configure the relay's

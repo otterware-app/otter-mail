@@ -3,5 +3,5 @@
 <plist version="1.0"><dict>
     <key>aps-environment</key><string>$(APNS_ENVIRONMENT)</string>
     <key>com.apple.security.application-groups</key><array><string>$(NOTIFICATION_APP_GROUP)</string></array>
-    <key>keychain-access-groups</key><array><string>$(AppIdentifierPrefix)$(PRODUCT_BUNDLE_IDENTIFIER)</string><string>$(NOTIFICATION_APP_GROUP)</string></array>
+    <key>keychain-access-groups</key><array><string>$(AppIdentifierPrefix)$(PRODUCT_BUNDLE_IDENTIFIER)</string></array>
 </dict></plist>
