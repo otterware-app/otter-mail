@@ -108,7 +108,7 @@ import { NewProjectDialog } from "./gmail/project-menus";
 import { UpdateCard } from "./updates";
 import { useRecordRecentlyViewed } from "./recently-viewed";
 import { SetupFlow } from "./onboarding/setup";
-import { newTab, openLink, useBrowser, useBrowserEvents } from "./browser/store";
+import { newTab, openLink, selectTab, useBrowser, useBrowserEvents } from "./browser/store";
 import { Tour } from "./onboarding/tour";
 import {
   endTour,
@@ -610,10 +610,8 @@ function MailHome() {
   // Rows multi-selected in the list, surfaced to the chat panel's context chip.
   const [chatSelection, setChatSelection] = useState<GmailMessageSummary[]>([]);
   const toggleChat = () => {
-    setChatOpen((open) => {
-      localStorage.setItem("gmail:chat-open", open ? "0" : "1");
-      return !open;
-    });
+    if (chatOpen) closeChat();
+    else openPanel();
   };
   const closeChat = () => {
     localStorage.setItem("gmail:chat-open", "0");
@@ -623,6 +621,15 @@ function MailHome() {
   const openChat = () => {
     localStorage.setItem("gmail:chat-open", "1");
     setChatOpen(true);
+  };
+  const openPanel = () => {
+    const browser = useBrowser.getState();
+    if (features.browser && !browser.activeId) {
+      const page = browser.tabs.at(-1);
+      if (page) selectTab(page.id);
+      else newTab();
+    }
+    openChat();
   };
   // The panel can fill the window (the mail hides) until it closes, or mail
   // asks for the window: a new message, a conversation opened from elsewhere.
@@ -638,7 +645,7 @@ function MailHome() {
   const panelExpanded = chatExpanded && chatVisible;
   const toggleChatExpanded = () => {
     if (settingsRouteRef.current) leaveSettingsRef.current();
-    openChat();
+    if (!chatVisible) openPanel();
     setChatExpanded((expanded) => (chatVisible ? !expanded : true));
   };
   // A page opening in the browser (a link, ⌘T) shows in the panel, out of Settings.

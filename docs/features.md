@@ -279,6 +279,7 @@ optional fix PRs. See [support.md](support.md).
 | Queued follow-ups                                         | ✓                                 | ✓                  | —                                                   |
 | Closing the active tab returns to the last tab viewed     | ✓ (chats and pages)               | ✓ (chats)          | —                                                   |
 | ⌘⇧B toggles the right panel                               | ✓                                 | ✓                  | —                                                   |
+| Opening the right panel defaults to a browser tab         | ✓                                 | —                  | —                                                   |
 | ⌘⇧F toggles the panel's full-width view                   | ✓                                 | ✓                  | —                                                   |
 | ⌘T opens a tab, opening the panel if closed               | ✓ (start page)                    | ✓ (chat)           | —                                                   |
 | Drag to reorder right-panel tabs, with live animation     | ✓ (chats and pages, together)     | ✓ (chats)          | —                                                   |
