@@ -166,9 +166,8 @@ function setupApplicationMenu(): void {
       },
     },
     file: [
-      // Otter Code's ⌘W: closes the active chat tab first; the window only
-      // closes once there's no tab left to close. The main window decides
-      // (window:closeRequest → agent tab, or window:closeMain).
+      // ⌘W closes the panel's active tab, or the panel for its last tab.
+      // Without the panel, the renderer closes the main window.
       {
         label: "Close",
         accelerator: "CommandOrControl+W",

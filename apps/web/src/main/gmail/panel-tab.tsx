@@ -11,19 +11,23 @@ import { cn } from "./ui";
  * scrolls, and a tab that gets selected scrolls into view.
  */
 export function PanelTab({
+  id,
   title,
   tooltip = title,
   icon,
   selected,
   onSelect,
   onClose,
+  dragging = false,
 }: {
+  id: string;
   title: string;
   tooltip?: string;
   icon: ReactNode;
   selected: boolean;
   onSelect: () => void;
   onClose: () => void;
+  dragging?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -33,6 +37,7 @@ export function PanelTab({
     <div
       ref={ref}
       role="tab"
+      data-panel-tab-id={id}
       aria-selected={selected}
       tabIndex={selected ? 0 : -1}
       title={tooltip}
@@ -47,14 +52,15 @@ export function PanelTab({
         }
       }}
       className={cn(
-        "group/tab flex h-7 min-w-32 max-w-44 shrink cursor-pointer items-center gap-1.5 rounded-lg pl-2.5 pr-1 text-sm outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus-ring",
-        selected
+        "group/tab relative flex h-7 min-w-32 max-w-44 shrink touch-none cursor-pointer select-none items-center gap-1.5 rounded-lg pl-2.5 pr-1 text-sm outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus-ring",
+        selected || dragging
           ? "bg-foreground/10 text-foreground"
           : "text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground",
+        dragging && "z-10 cursor-grabbing bg-canvas shadow-sm ring-1 ring-border",
       )}
     >
       <span className="relative flex size-3.5 shrink-0 items-center justify-center">{icon}</span>
-      <span className="min-w-0 truncate">{title}</span>
+      <span className="min-w-0 flex-1 truncate">{title}</span>
       <button
         type="button"
         aria-label={`Close ${title}`}

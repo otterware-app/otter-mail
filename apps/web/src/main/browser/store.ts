@@ -135,17 +135,8 @@ export function openTab(url: string, { background = false } = {}): void {
   });
 }
 
-/** ⌘T or the strip's +: the start page, in a tab at the end (an untouched one is reused). */
+/** ⌘T or the strip's +: a new start page, in a tab at the end. */
 export function newTab(): void {
-  const untouched = get().tabs.find((tab) => !tab.url);
-  if (untouched) {
-    set((s) => ({
-      activeId: untouched.id,
-      revealed: s.revealed + 1,
-      addressFocus: { tabId: untouched.id, seq: (s.addressFocus?.seq ?? 0) + 1 },
-    }));
-    return;
-  }
   const tab = blankTab("");
   set((s) => ({ tabs: [...s.tabs, tab], activeId: tab.id, revealed: s.revealed + 1 }));
 }

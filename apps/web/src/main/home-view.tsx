@@ -108,7 +108,7 @@ import { NewProjectDialog } from "./gmail/project-menus";
 import { UpdateCard } from "./updates";
 import { useRecordRecentlyViewed } from "./recently-viewed";
 import { SetupFlow } from "./onboarding/setup";
-import { openLink, useBrowser, useBrowserEvents } from "./browser/store";
+import { newTab, openLink, useBrowser, useBrowserEvents } from "./browser/store";
 import { Tour } from "./onboarding/tour";
 import {
   endTour,
@@ -220,20 +220,36 @@ function useStoredWidth(
   // The animated frame around a collapsible pane: follows the drag with its
   // open/close transition switched off.
   const frameRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<{ cleanup: () => void; finish: () => void } | null>(null);
+  useEffect(() => () => dragRef.current?.cleanup(), []);
 
   const start = (e: ReactPointerEvent) => {
+    if (e.button !== 0) return;
+    dragRef.current?.finish();
     e.preventDefault();
+    const handle = e.currentTarget;
+    const pointerId = e.pointerId;
     const startX = e.clientX;
     const startW = widthRef.current;
     const cap = Math.max(min, Math.min(max, room ? room() : max));
     let latest = startW;
     let raf = 0;
+    let finished = false;
+    // Browser guests and message iframes must not swallow the release.
+    const cover = document.createElement("div");
+    cover.className = "no-drag fixed inset-0 z-[200] touch-none select-none cursor-col-resize";
+    document.body.append(cover);
     const apply = () => {
       raf = 0;
       if (paneRef.current) paneRef.current.style.width = `${latest}px`;
       if (frameRef.current) frameRef.current.style.width = `${latest}px`;
     };
     const move = (ev: PointerEvent) => {
+      if (ev.pointerId !== pointerId) return;
+      if (!(ev.buttons & 1)) {
+        finish();
+        return;
+      }
       // dir -1: right-side panes grow when the handle drags left.
       latest = Math.min(cap, Math.max(min, startW + dir * (ev.clientX - startX)));
       // Drive the drag through the DOM only — calling setWidth on every
@@ -242,19 +258,39 @@ function useStoredWidth(
       // style write to one per frame and commit to React state once, on release.
       if (!raf) raf = requestAnimationFrame(apply);
     };
-    const up = () => {
+    const cleanup = () => {
+      if (finished) return;
+      finished = true;
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+      window.removeEventListener("blur", finish);
+      handle.removeEventListener("lostpointercapture", finish);
       if (raf) cancelAnimationFrame(raf);
-      apply();
+      cover.remove();
       if (frameRef.current) frameRef.current.style.transitionProperty = "";
+      dragRef.current = null;
+      if (handle.hasPointerCapture(pointerId)) handle.releasePointerCapture(pointerId);
+    };
+    const finish = () => {
+      if (finished) return;
+      cleanup();
+      apply();
       widthRef.current = latest;
       setWidth(latest);
       localStorage.setItem(key, String(latest));
     };
+    const up = (ev: PointerEvent) => {
+      if (ev.pointerId === pointerId) finish();
+    };
+    dragRef.current = { cleanup, finish };
     if (frameRef.current) frameRef.current.style.transitionProperty = "none";
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+    window.addEventListener("blur", finish);
+    handle.addEventListener("lostpointercapture", finish);
+    handle.setPointerCapture(pointerId);
   };
 
   return { width, start, paneRef, frameRef };
@@ -407,9 +443,11 @@ function MailHome() {
     return window.desktopBridge.on("settings:open", () => void pull());
   }, [openSettingsRef]);
 
-  // ⌘W (File ▸ Close): the agent's active chat tab closes first; with no
-  // tab left to close, the window does (Otter Code).
+  // ⌘W (File ▸ Close): close the panel's active tab (the last closes the
+  // panel); close the window when the panel is absent.
   const closeChatTabRef = useRef<(() => boolean) | null>(null);
+  const newChatTabRef = useRef<((reuseEmpty?: boolean) => void) | null>(null);
+  const pendingChatTabs = useRef(0);
   useEffect(
     () =>
       window.desktopBridge.on("window:closeRequest", () => {
@@ -543,6 +581,13 @@ function MailHome() {
   const { active: panelAnimationsActive, durationMs: panelAnimationDurationMs } =
     usePanelAnimationSettings(settingsRoute ? "settings" : "mail");
   const chatVisible = chatOpen && !settingsRoute;
+  useEffect(() => {
+    if (!chatVisible || !newChatTabRef.current) return;
+    while (pendingChatTabs.current > 0) {
+      pendingChatTabs.current--;
+      newChatTabRef.current(false);
+    }
+  }, [chatVisible]);
   const sidebarPresent = usePanelPresence(
     sidebarOpen,
     panelAnimationsActive,
@@ -781,6 +826,16 @@ function MailHome() {
     "commandPalette.toggle": () => setPaletteOpen((o) => !o),
     "sidebar.toggle": () => toggleSidebar(),
     "agent.toggle": () => toggleChat(),
+    "agent.newTab": () => {
+      if (features.browser) {
+        newTab();
+        return;
+      }
+      if (chatVisible && newChatTabRef.current) newChatTabRef.current(false);
+      else pendingChatTabs.current++;
+      if (settingsRouteRef.current) leaveSettingsRef.current();
+      openChat();
+    },
     "search.focus": () => searchFromView(),
     "compose.new": () => setComposeOpen(true),
     "keybindings.show": () => openSettings({ pane: "keybindings" }),
@@ -1697,6 +1752,7 @@ function MailHome() {
                       onToggleExpanded={() => setChatExpanded((expanded) => !expanded)}
                       onOpenChange={openChatChange}
                       closeTabRef={closeChatTabRef}
+                      newTabRef={newChatTabRef}
                       onClosePanel={closeChat}
                       accountId={selectedMessageId ? readerAccount : null}
                       messageId={selectedMessageId}
