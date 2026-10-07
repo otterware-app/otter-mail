@@ -1,5 +1,5 @@
 import { useLatest } from "../use-latest";
-import { useEffect, useRef, useState, type MutableRefObject, type ReactNode } from "react";
+import { useEffect, useRef, useState, type MutableRefObject } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { MessageScroller } from "@shadcn/react/message-scroller";
 import { ScrollArea } from "~/components/ui/scroll-area";
@@ -32,7 +32,8 @@ import { COMPOSER_SURFACE } from "./composer-kit";
 import { WorkLog, type TurnItem } from "./work-log";
 import { PanelControlSlot } from "./top-bar";
 import { PanelTab } from "./panel-tab";
-import { mostRecentTab, tabAfterClose } from "./panel-tabs";
+import { mostRecentTab, orderedPanelTabs } from "./panel-tabs";
+import { usePanelTabDrag } from "./use-panel-tab-drag";
 import {
   gmailApi,
   type ChatEvent,
@@ -81,8 +82,15 @@ import { useCommandHandlers, useKeybindingContext } from "../keybindings/dispatc
 import { useAccounts, useMessage } from "./hooks";
 import type { GmailMessageSummary } from "./types";
 import { features } from "../features";
-import { BrowserPages, BrowserTabs } from "../browser/browser-view";
-import { closeTab as closeBrowserTab, newTab, selectTab, useBrowser } from "../browser/store";
+import { BrowserPages, BrowserTabIcon } from "../browser/browser-view";
+import {
+  closeTab as closeBrowserTab,
+  hostOf,
+  newTab,
+  selectTab,
+  useBrowser,
+  type BrowserTab,
+} from "../browser/store";
 import { modKeyName, shortcutText } from "../keybindings/keys";
 
 /** What the attached context items are, so the chip shows a fitting icon. */
@@ -275,9 +283,19 @@ type Outgoing = {
 type QueuedMessage = Outgoing;
 
 const STORE_KEY = "gmail:hermes-chat:v2";
+const PANEL_TABS_KEY = "gmail:panel-tabs";
 const LEGACY_KEY = "gmail:hermes-chat:v1";
 const MAX_STORED_TURNS = 80;
 const MAX_CONVERSATIONS = 40;
+
+function loadPanelTabOrder(): string[] {
+  try {
+    const order: unknown = JSON.parse(localStorage.getItem(PANEL_TABS_KEY) ?? "[]");
+    return Array.isArray(order) ? order.filter((id) => typeof id === "string") : [];
+  } catch {
+    return [];
+  }
+}
 
 function clampTitle(text: string): string {
   const t = text.trim();
@@ -746,60 +764,71 @@ const TAB_STATE_LABEL: Record<ChatTab["state"], string | null> = {
 };
 
 /**
- * The panel's strip: Codex-style pill tabs for chats open side by side, then
- * the browser's (`children`) — always shown, so the current chat is named
- * even when it's the only one. A chat's icon carries its state (working,
- * waiting on an approval, or finished while you were elsewhere).
+ * The panel's strip: draggable pill tabs for chats and browser pages,
+ * always shown, so the current chat is named even when it's the only one.
+ * A chat's icon carries its state (working, waiting on an approval,
+ * or finished while you were elsewhere).
  */
-function ChatTabs({
+function AgentTabs({
   tabs,
   activeId,
   onSelect,
   onClose,
-  children,
+  onReorder,
 }: {
-  tabs: ChatTab[];
-  /** The chat showing; null while a browser tab is. */
-  activeId: string | null;
+  tabs: (ChatTab | BrowserTab)[];
+  activeId: string;
   onSelect: (id: string) => void;
   onClose: (id: string) => void;
-  children?: ReactNode;
+  onReorder: (order: string[]) => void;
 }) {
+  const { ref, draggingId, handlers } = usePanelTabDrag(onReorder);
   return (
     <div
       role="tablist"
+      ref={ref}
       aria-label="Open chats and pages"
-      className="no-drag scroll-fade-x flex min-w-0 shrink items-center gap-1 overflow-x-auto [scrollbar-width:none]"
+      className="no-drag scroll-fade-x relative flex min-w-0 shrink items-center gap-1 overflow-x-auto [scrollbar-width:none]"
+      {...handlers}
     >
       {tabs.map((tab) => {
-        const status = TAB_STATE_LABEL[tab.state];
+        const page = "url" in tab;
+        const status = page ? null : TAB_STATE_LABEL[tab.state];
+        const title = page ? tab.title || (tab.url ? hostOf(tab.url) : "New tab") : tab.title;
         return (
           <PanelTab
             key={tab.id}
-            title={tab.title}
-            tooltip={status ? `${tab.title} — ${status}` : tab.title}
+            id={tab.id}
+            title={title}
+            tooltip={
+              page && tab.url ? `${title}\n${tab.url}` : status ? `${title} — ${status}` : title
+            }
             selected={tab.id === activeId}
+            dragging={draggingId === tab.id}
             onSelect={() => onSelect(tab.id)}
             onClose={() => onClose(tab.id)}
             icon={
-              <>
-                <MousePointer2Icon className="size-3.5" />
-                {tab.state !== "idle" ? (
-                  <span
-                    aria-hidden
-                    className={cn(
-                      "absolute -bottom-0.5 -right-0.5 size-1.5 rounded-full ring-1 ring-canvas",
-                      tab.state === "approval" ? "bg-warning" : "bg-primary",
-                      tab.state === "working" && "animate-status-pulse",
-                    )}
-                  />
-                ) : null}
-              </>
+              page ? (
+                <BrowserTabIcon tab={tab} />
+              ) : (
+                <>
+                  <MousePointer2Icon className="size-3.5" />
+                  {tab.state !== "idle" ? (
+                    <span
+                      aria-hidden
+                      className={cn(
+                        "absolute -bottom-0.5 -right-0.5 size-1.5 rounded-full ring-1 ring-canvas",
+                        tab.state === "approval" ? "bg-warning" : "bg-primary",
+                        tab.state === "working" && "animate-status-pulse",
+                      )}
+                    />
+                  ) : null}
+                </>
+              )
             }
           />
         );
       })}
-      {children}
     </div>
   );
 }
@@ -811,6 +840,7 @@ export function AgentChatPanel({
   quote,
   onClearQuote,
   closeTabRef,
+  newTabRef,
   onClosePanel,
   project,
   onOpenChange,
@@ -830,8 +860,10 @@ export function AgentChatPanel({
   /** A highlighted excerpt to attach; overrides the auto-derived context. */
   quote?: QuoteContext | null;
   onClearQuote?: () => void;
-  /** ⌘W: closes the active chat or page (true), or false for the last chat. */
+  /** ⌘W: closes the active chat or page, including the last tab. */
   closeTabRef?: MutableRefObject<(() => boolean) | null>;
+  /** Global ⌘T: a new chat on shells without browser pages. */
+  newTabRef?: MutableRefObject<((reuseEmpty?: boolean) => void) | null>;
   /** Closing the last tab closes the panel. */
   onClosePanel?: () => void;
   onOpenChange: (change: ChatChange) => Promise<void>;
@@ -843,6 +875,18 @@ export function AgentChatPanel({
   // The browser's tab showing over the chat (Mac), if one is.
   const browserTabId = useBrowser((s) => (features.browser ? s.activeId : null));
   const browserTabs = useBrowser((s) => s.tabs);
+  const [tabOrder, setTabOrder] = useState(loadPanelTabOrder);
+  const panelTabs = orderedPanelTabs(tabOrder, [
+    ...store.tabs,
+    ...(features.browser ? browserTabs.map((tab) => tab.id) : []),
+  ]);
+  if (panelTabs.length !== tabOrder.length || panelTabs.some((id, at) => id !== tabOrder[at])) {
+    setTabOrder(panelTabs);
+  }
+  const panelTabsRef = useLatest(panelTabs);
+  useEffect(() => {
+    localStorage.setItem(PANEL_TABS_KEY, JSON.stringify(tabOrder));
+  }, [tabOrder]);
   const panelRef = useRef<HTMLDivElement>(null);
   const recentTabsRef = useRef<string[]>([]);
   useEffect(() => {
@@ -1577,6 +1621,13 @@ export function AgentChatPanel({
     });
     inputRef.current?.focus();
   };
+  useEffect(() => {
+    if (!newTabRef) return;
+    newTabRef.current = newChat;
+    return () => {
+      newTabRef.current = null;
+    };
+  });
 
   /** Shows a chat: its tab if open, else a new tab. */
   const switchTo = (id: string) => {
@@ -1603,7 +1654,7 @@ export function AgentChatPanel({
   };
 
   /**
-   * Closes a chat or page, following the full strip. Chats stay in history
+   * Closes a chat or page, returning to the last viewed tab. Chats stay in history
    * (a running turn finishes there).
    * The last tab closes the panel, leaving a fresh "New chat" for next time.
    */
@@ -1611,10 +1662,10 @@ export function AgentChatPanel({
     const s = storeRef.current;
     const browser = useBrowser.getState();
     const pages = features.browser ? browser.tabs : [];
-    const tabs = [...s.tabs, ...pages.map((tab) => tab.id)];
+    const tabs = orderedPanelTabs(panelTabsRef.current, [...s.tabs, ...pages.map((tab) => tab.id)]);
     if (!tabs.includes(id)) return;
     const shown = (features.browser ? browser.activeId : null) ?? s.activeId;
-    const next = tabAfterClose(tabs, id);
+    const next = mostRecentTab(tabs, id, recentTabsRef.current);
     if (tabs.length < 2) onClosePanel?.();
     if (pages.some((tab) => tab.id === id)) {
       closeBrowserTab(id);
@@ -1683,7 +1734,10 @@ export function AgentChatPanel({
   const previousTab = () => {
     const s = storeRef.current;
     const browser = useBrowser.getState();
-    const tabs = [...s.tabs, ...(features.browser ? browser.tabs.map((tab) => tab.id) : [])];
+    const tabs = orderedPanelTabs(panelTabsRef.current, [
+      ...s.tabs,
+      ...(features.browser ? browser.tabs.map((tab) => tab.id) : []),
+    ]);
     const shown = (features.browser ? browser.activeId : null) ?? s.activeId;
     const id = mostRecentTab(tabs, shown, recentTabsRef.current);
     if (!id) return false;
@@ -1692,12 +1746,6 @@ export function AgentChatPanel({
   };
   useCommandHandlers({
     "agent.newChat": () => newChat(),
-    "agent.newTab": (event) => {
-      if (!(event.target instanceof Node) || !panelRef.current?.contains(event.target))
-        return false;
-      if (features.browser) newTab();
-      else newChat(false);
-    },
     "agent.previousTab": (event) => {
       if (!(event.target instanceof Node) || !panelRef.current?.contains(event.target))
         return false;
@@ -1715,11 +1763,6 @@ export function AgentChatPanel({
       closeTab(page);
       return true;
     }
-    if (
-      storeRef.current.tabs.length < 2 &&
-      (!features.browser || useBrowser.getState().tabs.length === 0)
-    )
-      return false;
     closeTab(storeRef.current.activeId);
     return true;
   };
@@ -1839,8 +1882,10 @@ export function AgentChatPanel({
             "pl-[max(--spacing(3),calc(var(--workspace-controls-left)-var(--workspace-rail-width)))]",
         )}
       >
-        <ChatTabs
-          tabs={store.tabs.map((id) => {
+        <AgentTabs
+          tabs={panelTabs.map((id) => {
+            const page = features.browser ? browserTabs.find((tab) => tab.id === id) : null;
+            if (page) return page;
             const convo = conversations.find((c) => c.id === id);
             const tabRun = runs[id];
             return {
@@ -1855,12 +1900,11 @@ export function AgentChatPanel({
                   : "idle",
             };
           })}
-          activeId={browserTabId ? null : activeId}
-          onSelect={switchTo}
+          activeId={browserTabId ?? activeId}
+          onSelect={showPanelTab}
           onClose={closeTab}
-        >
-          {features.browser ? <BrowserTabs onClose={closeTab} /> : null}
-        </ChatTabs>
+          onReorder={setTabOrder}
+        />
         {/* Right after the tabs, like a browser's new-tab button: with the
             browser, its start page (which offers a new chat too). */}
         {features.browser ? (
@@ -1888,7 +1932,11 @@ export function AgentChatPanel({
           </IconBtn>
         </HintTooltip>
         {onToggleExpanded ? (
-          <HintTooltip label={expanded ? "Collapse panel" : "Expand panel"} side="bottom">
+          <HintTooltip
+            label={expanded ? "Collapse panel" : "Expand panel"}
+            shortcut="agent.toggleExpanded"
+            side="bottom"
+          >
             <IconBtn
               label={expanded ? "Collapse panel" : "Expand panel"}
               active={expanded}

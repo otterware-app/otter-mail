@@ -277,9 +277,13 @@ optional fix PRs. See [support.md](support.md).
 | Chat about a conversation (pointers, not mail)            | ✓ (also selections, quotes)       | ✓                  | ✓ (a thread)                                        |
 | Attach images and files to a chat                         | ✓                                 | ✓                  | —                                                   |
 | Queued follow-ups                                         | ✓                                 | ✓                  | —                                                   |
-| Control + Tab returns to the most recently used panel tab | ✓ (chats and pages)               | ✓ (chats)          | —                                                   |
+| Closing the active tab returns to the last tab viewed     | ✓ (chats and pages)               | ✓ (chats)          | —                                                   |
 | ⌘⇧B toggles the right panel                               | ✓                                 | ✓                  | —                                                   |
-| ⌘T opens a tab while focus is in the panel                | ✓ (start page)                    | ✓ (chat)           | —                                                   |
+| Opening the right panel defaults to a browser tab         | ✓                                 | —                  | —                                                   |
+| ⌘⇧F toggles the panel's full-width view                   | ✓                                 | ✓                  | —                                                   |
+| ⌘T opens a tab, opening the panel if closed               | ✓ (start page)                    | ✓ (chat)           | —                                                   |
+| Drag to reorder right-panel tabs, with live animation     | ✓ (chats and pages, together)     | ✓ (chats)          | —                                                   |
+| Closing the last panel tab closes the panel               | ✓ (click or ⌘W)                   | ✓ (click)          | —                                                   |
 | Control + Tab returns to the most recently used panel tab | ✓ (chats and pages)               | ✓ (chats)          | —                                                   |
 | Mail tools (OpenRouter; Claude, Codex on Mac)             | ✓ (every mailbox)                 | ✓ (OpenRouter)     | ✓ (OpenRouter; read, search, draft, send, organize) |
 | Calendar tools (OpenRouter; Claude, Codex on Mac)         | ✓                                 | ✓ (OpenRouter)     | —                                                   |
@@ -332,7 +336,7 @@ can't embed other sites, so the web app opens links in a new browser tab as befo
 | Feature                                                                    | Mac | Web | iPhone |
 | -------------------------------------------------------------------------- | --- | --- | ------ |
 | Pages as tabs beside the chats: back, forward, reload, address and search  | ✓   | —   | —      |
-| ⌘W closes a chat or page, selecting the left tab, then the right if needed | ✓   | —   | —      |
+| ⌘W closes a chat or page, returning to the last tab viewed                 | ✓   | —   | —      |
 | Links in mail and chat open in a tab or the default browser; ⌘-click flips | ✓   | —   | —      |
 | Start page (⌘T): new chat, extensions, suggested sites; ⌘L for the address | ✓   | —   | —      |
 | Panel fills the window (expand), for a page or a long chat                 | ✓   | ✓   | —      |

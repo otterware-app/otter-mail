@@ -26,7 +26,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../gmail/menu";
-import { PanelTab } from "../gmail/panel-tab";
 import { toast } from "../gmail/toast";
 import { Btn, HintTooltip, IconBtn, cn } from "../gmail/ui";
 import { ExtensionToolbar } from "./extension-toolbar";
@@ -77,7 +76,7 @@ function faviconFor(url: string): string {
   return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(hostOf(url))}&sz=64`;
 }
 
-function TabIcon({ tab }: { tab: BrowserTab }) {
+export function BrowserTabIcon({ tab }: { tab: BrowserTab }) {
   const [failed, setFailed] = useState<string | null>(null);
   if (tab.loading) return <LoaderCircleIcon className="size-3.5 animate-spin" />;
   if (tab.favicon && failed !== tab.favicon) {
@@ -85,32 +84,13 @@ function TabIcon({ tab }: { tab: BrowserTab }) {
       <img
         src={tab.favicon}
         alt=""
+        draggable={false}
         className="size-3.5 rounded-[3px]"
         onError={() => setFailed(tab.favicon)}
       />
     );
   }
   return <GlobeIcon className="size-3.5" />;
-}
-
-/** The browser's tabs in the panel's strip, after the chats'. */
-export function BrowserTabs({ onClose }: { onClose: (id: string) => void }) {
-  const tabs = useBrowser((s) => s.tabs);
-  const activeId = useBrowser((s) => s.activeId);
-  return tabs.map((tab) => {
-    const title = tab.title || (tab.url ? hostOf(tab.url) : "New tab");
-    return (
-      <PanelTab
-        key={tab.id}
-        title={title}
-        tooltip={tab.url ? `${title}\n${tab.url}` : title}
-        icon={<TabIcon tab={tab} />}
-        selected={tab.id === activeId}
-        onSelect={() => selectTab(tab.id)}
-        onClose={() => onClose(tab.id)}
-      />
-    );
-  });
 }
 
 /**
@@ -125,7 +105,7 @@ export function BrowserPages({ onNewChat }: { onNewChat: () => void }) {
   if (activeId && !shown.has(activeId)) setShown(new Set(shown).add(activeId));
   return (
     <div
-      className="absolute inset-x-0 bottom-0 top-(--workspace-topbar-height) z-10 overflow-hidden rounded-xl bg-canvas"
+      className="absolute inset-x-0 bottom-0 top-(--workspace-topbar-height) z-10 overflow-hidden rounded-t-xl bg-canvas"
       style={activeId ? undefined : OFFSCREEN}
     >
       {tabs.map((tab) =>

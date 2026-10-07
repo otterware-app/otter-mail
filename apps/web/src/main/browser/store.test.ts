@@ -12,6 +12,16 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("closing browser tabs", () => {
+  it("creates and reveals a fresh tab on each New Tab request, even with another start page open", async () => {
+    const { newTab, useBrowser } = await import("./store");
+    newTab();
+    newTab();
+    const state = useBrowser.getState();
+    expect(state.tabs).toHaveLength(2);
+    expect(state.tabs[0].id).not.toBe(state.tabs[1].id);
+    expect(state.activeId).toBe(state.tabs[1].id);
+    expect(state.revealed).toBe(2);
+  });
   it("keeps selecting a remaining page when closing from the left", async () => {
     const { openTab, selectTab, closeTab, useBrowser } = await import("./store");
     openTab("https://example.com/first");
