@@ -168,11 +168,12 @@ export function attachBrowser(win: BrowserWindow): void {
     trackTab(page);
     // A focused guest page's keys never reach the panel's dispatcher.
     page.on("before-input-event", (event, input) => {
-      // ⇧⌘B (Ctrl+Shift+B off the Mac).
+      // Panel visibility and expansion shortcuts, even while a page has focus.
       const mod = hostOS.modifierKey === "metaKey";
+      const key = input.key.toLowerCase();
       if (
         input.type === "keyDown" &&
-        input.key.toLowerCase() === "b" &&
+        (key === "b" || key === "f") &&
         (mod ? input.meta && !input.control : input.control && !input.meta) &&
         input.shift &&
         !input.alt
@@ -180,7 +181,7 @@ export function attachBrowser(win: BrowserWindow): void {
         event.preventDefault();
         if (!win.isDestroyed())
           win.webContents.send("keybindings:keydown", {
-            key: "b",
+            key,
             [hostOS.modifierKey]: true,
             shiftKey: true,
           });

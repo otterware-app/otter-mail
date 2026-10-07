@@ -1932,7 +1932,11 @@ export function AgentChatPanel({
           </IconBtn>
         </HintTooltip>
         {onToggleExpanded ? (
-          <HintTooltip label={expanded ? "Collapse panel" : "Expand panel"} side="bottom">
+          <HintTooltip
+            label={expanded ? "Collapse panel" : "Expand panel"}
+            shortcut="agent.toggleExpanded"
+            side="bottom"
+          >
             <IconBtn
               label={expanded ? "Collapse panel" : "Expand panel"}
               active={expanded}

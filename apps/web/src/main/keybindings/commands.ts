@@ -46,6 +46,7 @@ export const KEYBINDING_COMMANDS = [
   "commandPalette.toggle",
   "sidebar.toggle",
   "agent.toggle",
+  "agent.toggleExpanded",
   "agent.newTab",
   "agent.newChat",
   "agent.previousTab",
@@ -147,6 +148,7 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   // ⌘B means bold while typing.
   { key: "mod+b", command: "sidebar.toggle", when: OUTSIDE_FIELDS },
   { key: "mod+shift+b", command: "agent.toggle", when: "!dialogOpen" },
+  { key: "mod+shift+f", command: "agent.toggleExpanded", when: "!dialogOpen" },
   { key: "mod+t", command: "agent.newTab", when: "!dialogOpen" },
   { key: "mod+shift+o", command: "agent.newChat", when: "!dialogOpen" },
   { key: "ctrl+tab", command: "agent.previousTab", when: "!dialogOpen" },

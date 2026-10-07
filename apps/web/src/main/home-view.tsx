@@ -629,9 +629,18 @@ function MailHome() {
   const [chatExpanded, setChatExpanded] = useState(false);
   useEffect(() => {
     // oxlint-disable-next-line react/set-state-in-effect -- Synchronize pane and composer state with route, notification and navigation events.
-    if (!chatOpen || composeOpen || selectedMessageId) setChatExpanded(false);
-  }, [chatOpen, composeOpen, selectedMessageId]);
+    if (!chatOpen || composeOpen) setChatExpanded(false);
+  }, [chatOpen, composeOpen]);
+  useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- Opening a message returns the expanded panel to the mail view.
+    if (selectedMessageId) setChatExpanded(false);
+  }, [selectedMessageId]);
   const panelExpanded = chatExpanded && chatVisible;
+  const toggleChatExpanded = () => {
+    if (settingsRouteRef.current) leaveSettingsRef.current();
+    openChat();
+    setChatExpanded((expanded) => (chatVisible ? !expanded : true));
+  };
   // A page opening in the browser (a link, ⌘T) shows in the panel, out of Settings.
   const browserRevealed = useBrowser((s) => s.revealed);
   const openChatForEffect = useLatest(openChat);
@@ -826,6 +835,7 @@ function MailHome() {
     "commandPalette.toggle": () => setPaletteOpen((o) => !o),
     "sidebar.toggle": () => toggleSidebar(),
     "agent.toggle": () => toggleChat(),
+    "agent.toggleExpanded": () => toggleChatExpanded(),
     "agent.newTab": () => {
       if (features.browser) {
         newTab();
@@ -1749,7 +1759,7 @@ function MailHome() {
                   >
                     <AgentChatPanel
                       expanded={panelExpanded}
-                      onToggleExpanded={() => setChatExpanded((expanded) => !expanded)}
+                      onToggleExpanded={toggleChatExpanded}
                       onOpenChange={openChatChange}
                       closeTabRef={closeChatTabRef}
                       newTabRef={newChatTabRef}
