@@ -1,0 +1,22 @@
+[package]
+name = "otter-mail"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+gpui-kit.workspace = true
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+mail-core = { path = "../mail-core" }
+gpui-wry = "0.7.1"
+wry = { version = "0.53.3", package = "lb-wry" }
+url = "2"
+raw-window-handle = "0.6"
+chrono = "0.4"
+log = "0.4"
+env_logger = "0.11"
+futures = "0.3"
+open = "5"
+dirs = "6"

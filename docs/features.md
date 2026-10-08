@@ -12,6 +12,35 @@ The Linux app is the same desktop app; it matches the Mac column except where
 An app shows only what it supports: what it doesn't have isn't listed, switched off, or pointed
 to another app. This page is where they're compared.
 
+## GPUI desktop preview
+
+The tables below describe the shipping apps. The Rust/GPUI desktop preview in
+`crates/otter-mail` is under development and does not yet replace the Electron release.
+
+The preview has the original light/dark theme palette, mailbox rail and folders,
+conversation list and reader, plain text composing, command palette, and settings
+inside the main window. Sidebar, list and browser widths are independently resizable;
+the reader fills the remaining space. Its macOS browser pane has native WKWebView
+tabs, URL/search entry, back/forward, reload and links opened from mail. Linux hides
+the embedded browser; it uses the system browser for links.
+
+Persistent macOS preview runs protect mailbox tokens and saved passwords with
+Apple Keychain-backed encryption, including development builds. Older unencrypted
+native development credentials migrate on open; inaccessible credentials are
+preserved. Demo mailbox credentials stay in memory without Keychain access.
+
+Website AutoFill is separate from mailbox encryption. On the tested macOS version,
+the embedded browser exposes Apple's native `AutoFill → Passwords…` context-menu
+command: right-click a password field, or focus it and press Control–Return.
+The menu has been verified; filling saved credentials has not. Automatic password
+suggestions and save prompts have not been implemented. Passkeys for arbitrary
+websites require Apple's approved browser entitlement, which the preview lacks.
+
+Chrome extensions, the agent/chat pane, integrations, rich text composing, browser
+history UI, browser expansion, favicons, updates and release packaging have not been
+ported. Live account and platform behavior still need parity checks; current visual
+verification uses the made-up mailbox. See [native development](development.md#gpui-desktop-preview).
+
 ## Linux
 
 A .deb for Debian 12+ and Ubuntu 22.04+ (x64 and arm64), installed with apt, updating itself
@@ -356,6 +385,15 @@ support, plus Otter Mail's own layer for what Chrome has and Electron doesn't
 its desktop app on Mac, add Otter Mail in 1Password's Settings › Browser › Add Browser. It then
 shares the desktop app's unlock, including Touch ID. Camera, microphone, location and
 notifications are refused to pages.
+
+Apple Passwords AutoFill is not supported in the Electron browser. Apple's iCloud
+Passwords extension uses a macOS helper restricted to approved browsers; Otter Mail
+is not in the current browser list and does not have the managed browser entitlement.
+Installing the extension alone cannot enable it on current macOS. Apple's
+[browser registration policy](https://github.com/apple/password-manager-resources#how-apple-uses-web-browser-extension-distribution-information)
+requires Apple to include a browser and distribute the updated helper with an OS
+update. This restriction is separate from the GPUI preview's native WebKit
+`AutoFill → Passwords…` menu.
 
 ## Translation
 
