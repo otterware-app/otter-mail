@@ -109,3 +109,5 @@ export {
   type AppSettings,
 } from "./services/settings-store.js";
 export type * from "./types.js";
+
+export { signInWithSession, clearOtterSession } from "./services/otter-account.js";

@@ -192,6 +192,18 @@ export async function signIn(idToken: string): Promise<RelayUser> {
   return relayUser;
 }
 
+/** Adopts an Otter Accounts device credential after checking it with Mail's relay. */
+export async function signInWithSession(token: string): Promise<RelayUser> {
+  const { user } = await request<MeResponse>("GET", "/v1/me", { token });
+  await setSession({ token, user });
+  return user;
+}
+
+/** For a host whose account session owns sign-out; mailbox connections stay on this device. */
+export async function clearOtterSession(): Promise<void> {
+  await setSession(null);
+}
+
 /**
  * Where to send the browser to sign in with Google (the web app's sign-in);
  * Google returns it to `callbackURL`, signed in by cookie.
