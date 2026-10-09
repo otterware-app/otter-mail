@@ -290,6 +290,31 @@ async function listAgents(g: Gateway): Promise<{ defaultId: string; agents: Agen
   return { defaultId: result.defaultId ?? "main", agents: result.agents ?? [] };
 }
 
+/** The gateway's profile for connections it can't tie to a person (every token or device-token client). */
+const OWNER_PROFILE_ID = "gateway-owner";
+
+/**
+ * Who the gateway takes this device for: a person's profile, or the shared
+ * owner profile. Null when the gateway can't say (an older one).
+ */
+async function whoAmI(g: Gateway): Promise<{ label: string } | null> {
+  try {
+    const { profile } = await g.client.request<{
+      profile: { id: string; displayName: string | null; emails: string[] };
+    }>("users.self", {});
+    if (profile.id === OWNER_PROFILE_ID)
+      return {
+        label: profile.displayName
+          ? `the shared owner (${profile.displayName})`
+          : "the shared owner",
+      };
+    return { label: profile.displayName ?? profile.emails[0] ?? profile.id };
+  } catch (error) {
+    logger.info("agent", "openclaw users.self failed", { error: String(error) });
+    return null;
+  }
+}
+
 /** Text of a gateway message: a string or content parts. */
 function textOf(message: unknown): string {
   const content = (message as { content?: unknown })?.content;
@@ -356,12 +381,12 @@ export const openClawProvider: ChatProvider = {
     }
     try {
       const g = await gateway(settings);
-      const { defaultId, agents } = await listAgents(g);
+      const [{ defaultId, agents }, me] = await Promise.all([listAgents(g), whoAmI(g)]);
       return {
         ...base,
         installed: true,
         status: "ready",
-        auth: { status: "authenticated" },
+        auth: { status: "authenticated", ...me },
         models: agents.map((agent) => ({
           slug: agent.id,
           name: agent.identity?.name ?? agent.name ?? agent.id,
