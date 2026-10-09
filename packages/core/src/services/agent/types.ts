@@ -5,9 +5,15 @@
  * turns, and every provider streams the same canonical {@link ChatEvent}s.
  */
 
-export type ProviderKind = "hermes" | "openrouter" | "codex" | "claude";
+export type ProviderKind = "hermes" | "openclaw" | "openrouter" | "codex" | "claude";
 
-export const PROVIDER_KINDS: readonly ProviderKind[] = ["openrouter", "hermes", "codex", "claude"];
+export const PROVIDER_KINDS: readonly ProviderKind[] = [
+  "openrouter",
+  "hermes",
+  "openclaw",
+  "codex",
+  "claude",
+];
 
 export type ProviderState = "ready" | "warning" | "error" | "disabled";
 
@@ -108,6 +114,14 @@ export type HermesSettings = {
   sessions?: boolean;
 };
 
+export type OpenClawSettings = {
+  enabled: boolean;
+  /** The gateway's WebSocket, `wss://<machine>.<tailnet>.ts.net`. */
+  url: string;
+  /** The gateway agent new chats use; empty → its default agent. */
+  model: string;
+};
+
 export type CodexSettings = {
   enabled: boolean;
   /** Empty → `codex` on the login shell's PATH. */
@@ -151,13 +165,19 @@ export type OpenRouterSettings = {
 export type ProviderSettings = {
   selected: ProviderKind;
   hermes: HermesSettings;
+  openclaw: OpenClawSettings;
   codex: CodexSettings;
   claude: ClaudeSettings;
   openrouter: OpenRouterSettings;
 };
 
-/** Settings as the renderer sees them: Hermes' API key never leaves the backend. */
-export type ProviderSettingsView = ProviderSettings & { hermesHasKey: boolean };
+/** Settings as the renderer sees them: Hermes' key and OpenClaw's token never leave the backend. */
+export type ProviderSettingsView = ProviderSettings & {
+  hermesHasKey: boolean;
+  openclawHasToken: boolean;
+  /** The pairing request this device waits on (`openclaw devices approve <id>`). */
+  openclawPairingRequest: string | null;
+};
 
 /**
  * One step an agent took, described the same way whichever agent took it

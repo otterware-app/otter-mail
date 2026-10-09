@@ -1,7 +1,7 @@
 /**
- * Provider settings (assistant-providers.json) plus the Hermes API key, which
- * is full agent control: kept in the platform's secrets, never sent to the
- * renderer, never logged.
+ * Provider settings (assistant-providers.json) plus the Hermes API key and the
+ * OpenClaw gateway token, which are full agent control: kept in the platform's
+ * secrets, never sent to the renderer, never logged.
  */
 
 import { readJson, writeJson } from "../../json-file.js";
@@ -13,6 +13,7 @@ import {
   type RuntimeMode,
   type CodexSettings,
   type HermesSettings,
+  type OpenClawSettings,
   type ProviderKind,
   type ProviderSettings,
 } from "./types.js";
@@ -32,6 +33,12 @@ function migrateHermes(stored: Partial<HermesSettings>): Partial<HermesSettings>
     return { ...stored, agentModel: stored.model, model: "" };
   return stored;
 }
+
+const DEFAULT_OPENCLAW: OpenClawSettings = {
+  enabled: true,
+  url: "",
+  model: "",
+};
 
 const DEFAULT_CODEX: CodexSettings = {
   enabled: true,
@@ -63,6 +70,10 @@ function migrateRuntimeMode<T extends { runtimeMode: RuntimeMode }>(settings: T)
 
 // Stored under names from when agents were "assistants"; renaming them would lose them.
 const HERMES_KEY_SECRET = "assistant-hermes-key";
+const OPENCLAW_TOKEN_SECRET = "openclaw-gateway-token";
+/** This device's Ed25519 key (JWK) and the device token the gateway issued it. */
+const OPENCLAW_DEVICE_KEY_SECRET = "openclaw-device-key";
+const OPENCLAW_DEVICE_TOKEN_SECRET = "openclaw-device-token";
 
 let cache: ProviderSettings | null = null;
 
@@ -82,6 +93,7 @@ export async function getProviderSettings(): Promise<ProviderSettings> {
       ...DEFAULT_HERMES,
       ...migrateHermes({ ...legacyHermes, ...stored?.hermes }),
     },
+    openclaw: { ...DEFAULT_OPENCLAW, ...stored?.openclaw },
     codex: migrateRuntimeMode({ ...DEFAULT_CODEX, ...stored?.codex }),
     claude: migrateRuntimeMode({ ...DEFAULT_CLAUDE, ...stored?.claude }),
     openrouter: migrateRuntimeMode({
@@ -116,3 +128,20 @@ export async function setHermesKey(key: string): Promise<void> {
 export async function clearHermesKey(): Promise<void> {
   await platform().secrets.delete(HERMES_KEY_SECRET);
 }
+
+const secret = async (name: string): Promise<string> =>
+  (await platform()
+    .secrets.get(name)
+    .catch(() => null)) ?? "";
+
+export const getOpenClawToken = () => secret(OPENCLAW_TOKEN_SECRET);
+export const setOpenClawToken = (token: string) =>
+  platform().secrets.set(OPENCLAW_TOKEN_SECRET, token);
+export const getOpenClawDeviceKey = () => secret(OPENCLAW_DEVICE_KEY_SECRET);
+export const setOpenClawDeviceKey = (jwk: string) =>
+  platform().secrets.set(OPENCLAW_DEVICE_KEY_SECRET, jwk);
+export const getOpenClawDeviceToken = () => secret(OPENCLAW_DEVICE_TOKEN_SECRET);
+export const setOpenClawDeviceToken = (record: string) =>
+  platform().secrets.set(OPENCLAW_DEVICE_TOKEN_SECRET, record);
+export const clearOpenClawDeviceToken = () =>
+  platform().secrets.delete(OPENCLAW_DEVICE_TOKEN_SECRET);

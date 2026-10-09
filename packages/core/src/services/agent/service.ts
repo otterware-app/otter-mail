@@ -5,9 +5,10 @@
  * pushed to the windows as `agent:providersChanged`. Chat turns are
  * fire-and-forget; their events stream as `agent:chatEvent`.
  *
- * Hermes is a server, so it works everywhere; Codex and Claude are local
- * CLIs, which the Mac app hands over as `Platform.agentProviders`. Only what
- * the platform runs is listed: the web app doesn't show the Mac's agents.
+ * Hermes and OpenClaw are servers, so they work everywhere; Codex and Claude
+ * are local CLIs, which the Mac app hands over as `Platform.agentProviders`.
+ * Only what the platform runs is listed: the web app doesn't show the Mac's
+ * agents.
  */
 
 import { broadcast } from "../../ipc.js";
@@ -19,14 +20,22 @@ import {
   normalizeHermesBaseUrl,
   probeHermesSessions,
 } from "./hermes.js";
+import {
+  normalizeOpenClawUrl,
+  openClawPairingRequest,
+  openClawProvider,
+  resetOpenClawConnection,
+} from "./openclaw.js";
 import { openRouterProvider } from "./openrouter.js";
 import { onOtterAccountChange } from "../otter-account.js";
 import { answerToolApproval } from "./tools/index.js";
 import {
   getHermesKey,
+  getOpenClawToken,
   getProviderSettings,
   saveProviderSettings,
   setHermesKey,
+  setOpenClawToken,
   clearHermesKey,
 } from "./settings.js";
 import {
@@ -49,10 +58,12 @@ let providers: Partial<Record<ProviderKind, ChatProvider>> | null = null;
 /** The providers this platform runs. */
 function available(): Partial<Record<ProviderKind, ChatProvider>> {
   providers ??= Object.fromEntries(
-    [openRouterProvider, hermesProvider, ...(platform().agentProviders ?? [])].map((p) => [
-      p.kind,
-      p,
-    ]),
+    [
+      openRouterProvider,
+      hermesProvider,
+      openClawProvider,
+      ...(platform().agentProviders ?? []),
+    ].map((p) => [p.kind, p]),
   );
   return providers;
 }
@@ -65,6 +76,7 @@ function provider(kind: ProviderKind): ChatProvider {
 
 const DISPLAY_NAMES: Record<ProviderKind, string> = {
   hermes: "Hermes",
+  openclaw: "OpenClaw",
   codex: "Codex",
   claude: "Claude",
   openrouter: "OpenRouter",
@@ -110,17 +122,20 @@ async function getState(): Promise<ProvidersState> {
           : fallback || null,
     } as ProviderSnapshot;
   });
-  const { hermes, codex, claude, openrouter, selected } = settings;
+  const { hermes, openclaw, codex, claude, openrouter, selected } = settings;
   return {
     providers: snapshots,
     selected: available()[selected] ? selected : "openrouter",
     settings: {
       hermes,
+      openclaw,
       codex,
       claude,
       openrouter,
       selected,
       hermesHasKey: (await getHermesKey()).length > 0,
+      openclawHasToken: (await getOpenClawToken()).length > 0,
+      openclawPairingRequest: openClawPairingRequest(),
     },
   };
 }
@@ -187,6 +202,7 @@ export type SettingsPatch = {
   hermes?: Partial<
     Pick<ProviderSettings["hermes"], "enabled" | "model" | "reasoningEffort" | "serviceTier">
   >;
+  openclaw?: Partial<Pick<ProviderSettings["openclaw"], "enabled" | "model">>;
   codex?: Partial<ProviderSettings["codex"]>;
   claude?: Partial<ProviderSettings["claude"]>;
   openrouter?: Partial<ProviderSettings["openrouter"]>;
@@ -201,6 +217,7 @@ export async function updateProviderSettings(patch: SettingsPatch): Promise<Prov
     selected:
       patch.selected && PROVIDER_KINDS.includes(patch.selected) ? patch.selected : current.selected,
     hermes: { ...current.hermes, ...patch.hermes },
+    openclaw: { ...current.openclaw, ...patch.openclaw },
     codex: { ...current.codex, ...patch.codex },
     claude: { ...current.claude, ...patch.claude },
     openrouter: { ...current.openrouter, ...patch.openrouter },
@@ -245,6 +262,24 @@ export async function connectHermes(baseUrl: string, apiKey: string): Promise<Pr
   logger.info("agent", "hermes connected", { baseUrl: base, sessions });
   checked.delete("hermes");
   void check("hermes");
+  return getState();
+}
+
+/**
+ * Saves the gateway URL and token, then connects in the background: the
+ * status that follows says whether the device still needs approving.
+ */
+export async function connectOpenClaw(url: string, token: string): Promise<ProvidersState> {
+  await resetOpenClawConnection();
+  await setOpenClawToken(token);
+  const current = await getProviderSettings();
+  await saveProviderSettings({
+    ...current,
+    openclaw: { ...current.openclaw, url: normalizeOpenClawUrl(url) },
+  });
+  logger.info("agent", "openclaw connecting", { url: normalizeOpenClawUrl(url) });
+  checked.delete("openclaw");
+  void check("openclaw");
   return getState();
 }
 
@@ -340,7 +375,10 @@ export function shutdownProviders(): void {
 
 // ── Preferences sync (services/preferences.ts) ──────────────────────────────
 
-/** Where the CLIs live is this device's business; everything else follows the account. */
+/**
+ * Where the CLIs live, and OpenClaw's gateway (its token stays on the device),
+ * are this device's business; everything else follows the account.
+ */
 const DEVICE_KEYS = ["binaryPath", "homePath", "launchArgs"] as const;
 
 type Synced<T> = Omit<T, (typeof DEVICE_KEYS)[number]>;
@@ -379,6 +417,7 @@ export async function applySyncedProviderSettings(
         ? synced.selected
         : current.selected,
     hermes: { ...current.hermes, ...synced.hermes },
+    openclaw: current.openclaw,
     codex: { ...current.codex, ...(synced.codex && withoutDeviceKeys(synced.codex)) },
     claude: { ...current.claude, ...(synced.claude && withoutDeviceKeys(synced.claude)) },
     openrouter: { ...current.openrouter, ...synced.openrouter },

@@ -98,7 +98,7 @@ export type MailAppsResult = { apps: MailApp[]; defaultId: string | null };
  * Agent providers (mirrors main/services/agent/types.ts). A snapshot
  * is one provider's health; every provider streams the same ChatEvents.
  */
-export type ProviderKind = "hermes" | "openrouter" | "codex" | "claude";
+export type ProviderKind = "hermes" | "openclaw" | "openrouter" | "codex" | "claude";
 export type ProviderState = "ready" | "warning" | "error" | "disabled";
 export type ProviderOptionChoice = {
   id: string;
@@ -173,6 +173,13 @@ export type ProviderSettingsView = {
     serviceTier: string;
     sessions?: boolean;
   };
+  openclaw: {
+    enabled: boolean;
+    /** The gateway's WebSocket, `wss://<computer>.<tailnet>.ts.net`. */
+    url: string;
+    /** The gateway agent new chats use; empty → its default agent. */
+    model: string;
+  };
   claude: {
     enabled: boolean;
     binaryPath: string;
@@ -193,6 +200,9 @@ export type ProviderSettingsView = {
     runtimeMode: RuntimeMode;
   };
   hermesHasKey: boolean;
+  openclawHasToken: boolean;
+  /** The pairing request this device waits on (`openclaw devices approve <id>`). */
+  openclawPairingRequest: string | null;
 };
 export type ProvidersState = {
   providers: ProviderSnapshot[];
@@ -202,6 +212,7 @@ export type ProvidersState = {
 export type AgentSettingsPatch = {
   selected?: ProviderKind;
   hermes?: { enabled?: boolean; model?: string; reasoningEffort?: string; serviceTier?: string };
+  openclaw?: { enabled?: boolean; model?: string };
   codex?: Partial<ProviderSettingsView["codex"]>;
   claude?: Partial<ProviderSettingsView["claude"]>;
   openrouter?: Partial<ProviderSettingsView["openrouter"]>;
@@ -667,6 +678,9 @@ export const gmailApi = {
 
   connectHermes: (params: { baseUrl: string; apiKey: string }): Promise<ProvidersState> =>
     ipc("agent:connectHermes", params),
+
+  connectOpenClaw: (params: { url: string; token: string }): Promise<ProvidersState> =>
+    ipc("agent:connectOpenClaw", params),
 
   /**
    * Starts a turn and returns at once; it streams as `agent:chatEvent`.

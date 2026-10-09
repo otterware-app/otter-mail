@@ -323,7 +323,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     title: "Providers",
     pane: "agents",
     searchTerms: [
-      "agents openrouter api key server model claude codex hermes enable turn on off default new chats",
+      "agents openrouter api key server model claude codex hermes openclaw enable turn on off default new chats",
     ],
   },
   {
@@ -351,6 +351,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     title: "Connection",
     pane: "agents",
     searchTerms: ["hermes base url api key server connect"],
+  },
+  {
+    id: "openclaw-connection",
+    title: "Connection",
+    pane: "agents",
+    searchTerms: ["openclaw gateway address token connect pair approve device tailscale"],
   },
   {
     id: "follow-up-behavior",
