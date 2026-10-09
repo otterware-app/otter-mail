@@ -21,9 +21,11 @@ import {
   probeHermesSessions,
 } from "./hermes.js";
 import {
+  hasOpenClawCredentials,
   normalizeOpenClawUrl,
   openClawPairingRequest,
   openClawProvider,
+  parseOpenClawSetupCode,
   resetOpenClawConnection,
 } from "./openclaw.js";
 import { openRouterProvider } from "./openrouter.js";
@@ -31,11 +33,13 @@ import { onOtterAccountChange } from "../otter-account.js";
 import { answerToolApproval } from "./tools/index.js";
 import {
   getHermesKey,
-  getOpenClawToken,
   getProviderSettings,
   saveProviderSettings,
   setHermesKey,
   setOpenClawToken,
+  clearOpenClawToken,
+  setOpenClawBootstrapToken,
+  clearOpenClawBootstrapToken,
   clearHermesKey,
 } from "./settings.js";
 import {
@@ -134,7 +138,7 @@ async function getState(): Promise<ProvidersState> {
       openrouter,
       selected,
       hermesHasKey: (await getHermesKey()).length > 0,
-      openclawHasToken: (await getOpenClawToken()).length > 0,
+      openclawHasToken: await hasOpenClawCredentials(),
       openclawPairingRequest: openClawPairingRequest(),
     },
   };
@@ -266,18 +270,41 @@ export async function connectHermes(baseUrl: string, apiKey: string): Promise<Pr
 }
 
 /**
- * Saves the gateway URL and token, then connects in the background: the
- * status that follows says whether the device still needs approving.
+ * Saves how to reach the gateway (a setup code, or its address and token),
+ * then connects in the background: the status that follows says whether the
+ * device still needs approving.
  */
-export async function connectOpenClaw(url: string, token: string): Promise<ProvidersState> {
-  await resetOpenClawConnection();
-  await setOpenClawToken(token);
+export async function connectOpenClaw(
+  input: { code: string } | { url: string; token: string },
+): Promise<ProvidersState> {
+  let url: string;
+  if ("code" in input) {
+    const code = parseOpenClawSetupCode(input.code);
+    if (!code)
+      throw new Error("That isn't a setup code. Copy what openclaw qr --setup-code-only prints.");
+    if (code.expiresAtMs && code.expiresAtMs < Date.now())
+      throw new Error(
+        "That setup code has expired. Make a new one with openclaw qr --setup-code-only.",
+      );
+    url = code.url;
+    await resetOpenClawConnection();
+    await clearOpenClawToken();
+    await setOpenClawBootstrapToken(code.bootstrapToken);
+  } else {
+    url = input.url;
+    await resetOpenClawConnection();
+    await clearOpenClawBootstrapToken();
+    await setOpenClawToken(input.token);
+  }
   const current = await getProviderSettings();
   await saveProviderSettings({
     ...current,
     openclaw: { ...current.openclaw, url: normalizeOpenClawUrl(url) },
   });
-  logger.info("agent", "openclaw connecting", { url: normalizeOpenClawUrl(url) });
+  logger.info("agent", "openclaw connecting", {
+    url: normalizeOpenClawUrl(url),
+    with: "code" in input ? "setup code" : "token",
+  });
   checked.delete("openclaw");
   void check("openclaw");
   return getState();

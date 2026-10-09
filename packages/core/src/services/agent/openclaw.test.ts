@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { normalizeOpenClawUrl } from "./openclaw.js";
+import { normalizeOpenClawUrl, parseOpenClawSetupCode } from "./openclaw.js";
 import { openClawStep } from "./steps.js";
 
 describe("OpenClaw", () => {
@@ -22,5 +22,20 @@ describe("OpenClaw", () => {
       detail: "ls -la",
     });
     expect(openClawStep("web_search", { query: "otters" }).kind).toBe("tool");
+  });
+
+  it("reads the address and bootstrap token from a setup code", () => {
+    const code = btoa(
+      JSON.stringify({ url: "wss://gw.tail1234.ts.net", bootstrapToken: "bt-1", expiresAtMs: 1 }),
+    )
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/, "");
+    expect(parseOpenClawSetupCode(` ${code}\n`)).toEqual({
+      url: "wss://gw.tail1234.ts.net",
+      bootstrapToken: "bt-1",
+      expiresAtMs: 1,
+    });
+    expect(parseOpenClawSetupCode("not a code")).toBeNull();
   });
 });

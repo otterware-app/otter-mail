@@ -1,9 +1,11 @@
 /**
  * OpenClaw over its gateway's WebSocket, the way OpenClaw's own apps connect
  * (wss://<machine>.<tailnet>.ts.net with Tailscale Serve). This install is a
- * device with its own Ed25519 key: it introduces itself once with the gateway
- * token, the user approves it on the gateway (`openclaw devices approve`), and
- * from then on it signs in with the device token the gateway issued.
+ * device with its own Ed25519 key: it introduces itself once, with a setup
+ * code from `openclaw qr` (the gateway's address and a one-time bootstrap
+ * token) or the gateway token, the user approves it on the gateway
+ * (`openclaw devices approve`), and from then on it signs in with the device
+ * token the gateway issued.
  *
  * Each chat is a gateway session (`agent:<agentId>:otter-mail:<uuid>`);
  * replies, tool calls and command approvals arrive as gateway events.
@@ -21,7 +23,9 @@ import { logger } from "../../logger.js";
 import { platform } from "../../platform.js";
 import { readAttachment } from "./attachments.js";
 import {
+  clearOpenClawBootstrapToken,
   clearOpenClawDeviceToken,
+  getOpenClawBootstrapToken,
   getOpenClawDeviceKey,
   getOpenClawDeviceToken,
   getOpenClawToken,
@@ -49,6 +53,26 @@ export function normalizeOpenClawUrl(raw: string): string {
   if (/^wss?:\/\//i.test(trimmed)) return trimmed;
   if (/^https?:\/\//i.test(trimmed)) return trimmed.replace(/^http/i, "ws");
   return `wss://${trimmed}`;
+}
+
+/** A setup code (`openclaw qr --setup-code-only`): base64url JSON of the address and a bootstrap token. */
+export type OpenClawSetupCode = { url: string; bootstrapToken: string; expiresAtMs?: number };
+
+export function parseOpenClawSetupCode(code: string): OpenClawSetupCode | null {
+  try {
+    const json = JSON.parse(atob(code.trim().replace(/-/g, "+").replace(/_/g, "/"))) as Record<
+      string,
+      unknown
+    >;
+    if (typeof json.url !== "string" || typeof json.bootstrapToken !== "string") return null;
+    return {
+      url: json.url,
+      bootstrapToken: json.bootstrapToken,
+      ...(typeof json.expiresAtMs === "number" ? { expiresAtMs: json.expiresAtMs } : {}),
+    };
+  } catch {
+    return null;
+  }
 }
 
 // ── Device identity ──────────────────────────────────────────────────────────
@@ -119,7 +143,24 @@ function gatewayCode(error: unknown): string {
   return (error as { details?: { code?: string } })?.details?.code ?? "";
 }
 
-function open(url: string, token: string): Promise<Gateway> {
+/** How this device introduces itself: the gateway token or a setup code's bootstrap token. */
+type Credentials = { token: string; bootstrapToken: string };
+
+/** Null until there's a way in: a token, a setup code, or the device token from an earlier pairing. */
+async function credentials(): Promise<Credentials | null> {
+  const [token, bootstrapToken, deviceToken] = await Promise.all([
+    getOpenClawToken(),
+    getOpenClawBootstrapToken(),
+    getOpenClawDeviceToken(),
+  ]);
+  return token || bootstrapToken || deviceToken ? { token, bootstrapToken } : null;
+}
+
+export async function hasOpenClawCredentials(): Promise<boolean> {
+  return (await credentials()) !== null;
+}
+
+function open(url: string, { token, bootstrapToken }: Credentials): Promise<Gateway> {
   return new Promise((resolve, reject) => {
     let requestId = 0;
     let settled = false;
@@ -163,7 +204,9 @@ function open(url: string, token: string): Promise<Gateway> {
           client: clientInfo,
           role: "operator",
           defaultScopes: SCOPES,
-          token,
+          token: token || undefined,
+          bootstrapToken: bootstrapToken || undefined,
+          preferBootstrapToken: Boolean(bootstrapToken),
           nonce,
           challengeTs,
         }),
@@ -180,6 +223,8 @@ function open(url: string, token: string): Promise<Gateway> {
       onConnectHello: (hello, context) => lifecycle.acceptHello(hello, context.plan),
       onHello: () => {
         pairingRequest = null;
+        // The device token the gateway just issued replaces the one-time setup code.
+        if (bootstrapToken) void clearOpenClawBootstrapToken();
         settle(null);
       },
       onConnectFailure: (error) => {
@@ -209,11 +254,11 @@ function open(url: string, token: string): Promise<Gateway> {
 /** The connected gateway, connecting first when needed. */
 async function gateway(settings: ProviderSettings): Promise<Gateway> {
   const { url } = settings.openclaw;
-  const token = await getOpenClawToken();
-  if (!url || !token) throw new Error("not_configured");
+  const creds = await credentials();
+  if (!url || !creds) throw new Error("not_configured");
   if (current?.url !== url) {
     disconnect();
-    const ready = open(url, token);
+    const ready = open(url, creds);
     current = { url, ready };
     ready.catch(() => {
       if (current?.ready === ready) current = null;
@@ -300,13 +345,13 @@ export const openClawProvider: ChatProvider = {
       model: null,
       sessions: true,
     };
-    if (!settings.openclaw.url || !(await getOpenClawToken())) {
+    if (!settings.openclaw.url || !(await credentials())) {
       return {
         ...base,
         installed: false,
         status: "warning",
         auth: { status: "unknown" },
-        message: "Add the gateway address and token to connect.",
+        message: "Paste a setup code to connect.",
       };
     }
     try {
@@ -339,7 +384,7 @@ export const openClawProvider: ChatProvider = {
             : code === "origin_not_allowed"
               ? "The gateway doesn't allow this site yet."
               : code === "unauthorized"
-                ? "The gateway refused the token."
+                ? "The gateway refused the setup code or token — make a new setup code."
                 : "Can't reach the gateway — are you on Tailscale?",
       };
     }
