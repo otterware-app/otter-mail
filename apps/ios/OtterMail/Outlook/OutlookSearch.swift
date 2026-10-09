@@ -70,7 +70,7 @@ nonisolated enum OutlookSearch {
             return "received\(op.key == "after" ? ">=" : "<")\(day.string(from: date))"
         case "newer_than", "older_than":
             guard let match = op.value.lowercased().wholeMatch(of: /(\d+)([dwmy])/), let count = Double(match.1) else { return nil }
-            let days = ["d": 1.0, "w": 7, "m": 30, "y": 365][String(match.2)] ?? 1
+            let days: Double = ["d": 1, "w": 7, "m": 30, "y": 365][String(match.2)] ?? 1
             let cutoff = now.addingTimeInterval(-count * days * 86_400)
             return "received\(op.key == "newer_than" ? ">=" : "<")\(day.string(from: cutoff))"
         default:

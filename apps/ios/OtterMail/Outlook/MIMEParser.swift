@@ -79,7 +79,7 @@ nonisolated enum MIMEParser {
         let delimiter = Array("--\(boundary)".utf8)
         var parts: [ArraySlice<UInt8>] = []
         // The first delimiter starts the body or a line.
-        var at = body.starts(with: delimiter) ? body.startIndex : find([10] + delimiter, in: body, from: body.startIndex).map { $0 + 1 }
+        var at: Int? = body.starts(with: delimiter) ? body.startIndex : find([10] + delimiter, in: body, from: body.startIndex).map { $0 + 1 }
         while let found = at {
             let after = found + delimiter.count
             // "--boundary--" closes it.
