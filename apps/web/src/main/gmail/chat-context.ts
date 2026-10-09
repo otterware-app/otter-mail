@@ -3,7 +3,7 @@ import type { GmailMessageSummary } from "./types";
 
 /**
  * Pointer-sized mail context for the agent chat. The agent can read the same
- * mailboxes (Claude and Codex through Otter Mail's tools, Hermes with gog on
+ * mailboxes (Claude and Codex through Otter Mail's tools, Hermes and OpenClaw with gog on
  * its server), so ids are enough — no mail content leaves the app.
  */
 export type AgentContext = {
@@ -85,7 +85,7 @@ export function buildHandoffText(
     }
   }
   lines.push(
-    provider === "hermes"
+    provider === "hermes" || provider === "openclaw"
       ? "Fetch full content with gog if needed."
       : "Read them with the otter-mail tools (get_thread) if needed.",
   );

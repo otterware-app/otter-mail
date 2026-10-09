@@ -321,7 +321,7 @@ export function CommandPalette({
         id: "chat",
         icon: <MousePointer2Icon className={ICON} />,
         title: "Toggle agent panel",
-        keywords: "chat agent assistant ai claude codex hermes",
+        keywords: "chat agent assistant ai claude codex hermes openclaw",
         shortcut: sc("agent.toggle"),
         run: onToggleChat,
       },

@@ -225,3 +225,11 @@ export function hermesStep(name: string, args: unknown): ToolStep {
   }
   return genericStep(name, args);
 }
+
+/** An OpenClaw tool call: its shell (`bash`, `/usr/bin/bash -lc <command>`), else the tool by name. */
+export function openClawStep(name: string, args: unknown): ToolStep {
+  const command = (args as { command?: unknown } | null)?.command;
+  if (name === "bash" && typeof command === "string")
+    return commandStep(command.replace(/^(\S*\/)?bash -l?c /, "").replace(/^(['"])(.*)\1$/s, "$2"));
+  return genericStep(name, args);
+}

@@ -69,6 +69,13 @@ function settingsPatch(p: Params): agent.SettingsPatch {
     }
     patch.hermes = h;
   }
+  const openclaw = p?.openclaw as Params;
+  if (openclaw) {
+    const o: NonNullable<agent.SettingsPatch["openclaw"]> = {};
+    if (bool(openclaw.enabled) !== undefined) o.enabled = bool(openclaw.enabled);
+    if (typeof openclaw.model === "string") o.model = str(openclaw.model);
+    patch.openclaw = o;
+  }
   const codex = p?.codex as Params;
   if (codex) patch.codex = agentPatch(codex, ["binaryPath", "homePath", "launchArgs"]);
   const claude = p?.claude as Params;
@@ -143,6 +150,14 @@ export function registerAgentHandlers(): void {
     preferenceChanged("assistant");
     preferenceChanged("hermesKey");
     return state;
+  });
+
+  handle("agent:connectOpenClaw", async (params: unknown) => {
+    const p = params as Params;
+    const url = str(p?.url);
+    const token = str(p?.token);
+    if (!url || !token) throw new Error("Gateway URL and token are both required.");
+    return agent.connectOpenClaw(url, token);
   });
 
   handle("agent:send", async (params: unknown) => {

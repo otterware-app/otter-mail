@@ -453,7 +453,9 @@ function friendlyError(code: string, provider: ProviderKind): string {
         ? "Codex"
         : provider === "claude"
           ? "Claude"
-          : "Hermes";
+          : provider === "openclaw"
+            ? "OpenClaw"
+            : "Hermes";
   switch (code) {
     case "not_configured":
       return `${name} isn't set up — connect it in Settings → Agents.`;
@@ -465,6 +467,8 @@ function friendlyError(code: string, provider: ProviderKind): string {
       return "The API key was rejected — update it in Settings.";
     case "unreachable":
       if (provider === "openrouter") return "Can't reach OpenRouter. Try again in a moment.";
+      if (provider === "openclaw")
+        return "Can't reach the OpenClaw gateway — are you on Tailscale?";
       return provider === "codex"
         ? "Lost the connection to Codex — send again to retry."
         : "Can't reach Hermes — are you on Tailscale?";
@@ -472,6 +476,10 @@ function friendlyError(code: string, provider: ProviderKind): string {
       return `${name} went quiet for too long — the run was stopped.`;
     case "cancelled":
       return "Stopped.";
+    case "pairing_required":
+      return "Approve this device on the OpenClaw gateway — the command is in Settings → Agents.";
+    case "origin_not_allowed":
+      return "The OpenClaw gateway doesn't allow this site yet — see Settings → Agents.";
     case "session_not_found":
       return `This chat's ${name} session no longer exists — send again to start a new one.`;
     default:
@@ -1806,15 +1814,19 @@ export function AgentChatPanel({
   /** Setup fallback: switch new chats to another provider. */
   const pickProvider = (kind: ProviderKind) => updateSettings({ selected: kind });
 
-  // Hermes' approval mode is server-side config; Codex / Claude pick it per turn.
+  // Hermes' and OpenClaw's approval modes are server-side config; Codex / Claude pick it per turn.
   const runtimeMode =
-    providerKind === "hermes" ? null : (providersState?.settings[providerKind].runtimeMode ?? null);
+    providerKind === "hermes" || providerKind === "openclaw"
+      ? null
+      : (providersState?.settings[providerKind].runtimeMode ?? null);
   const pendingApproval = activeApprovals[0];
 
   // Reasoning / Service Tier of the model in use, with the saved choices.
   const currentModel = provider?.models.find((m) => m.slug === provider.model);
   const traitOptions = currentModel?.options ?? [];
-  const traitSettings = providersState?.settings[providerKind];
+  // OpenClaw's agents bring their own model settings.
+  const traitSettings =
+    providerKind === "openclaw" ? undefined : providersState?.settings[providerKind];
   const traitValues = {
     reasoningEffort: traitSettings?.reasoningEffort ?? "",
     serviceTier: traitSettings?.serviceTier ?? "",

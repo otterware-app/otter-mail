@@ -171,7 +171,7 @@ export interface Platform {
   offlineDownloads: boolean;
   /** Absent where there's no on-device translator (browsers other than Chrome). */
   translator?: Translator;
-  /** Agents beyond Hermes that run on this device (Codex and Claude, on the Mac). */
+  /** Agents beyond Hermes and OpenClaw that run on this device (Codex and Claude, on the Mac). */
   agentProviders?: ChatProvider[];
   /** Local demo agent endpoint; production uses the signed-in relay. */
   agentServerUrl?: string;

@@ -21,7 +21,7 @@ import { SettingsGroup, SettingsRow, SettingsSection, timeAgo } from "./settings
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
 /** Copies `value`; the icon turns to a check for a moment. */
-function CopyButton({
+export function CopyButton({
   value,
   label,
   className,

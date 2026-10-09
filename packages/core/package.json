@@ -14,6 +14,7 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p src/protocols/test && tsc --noEmit -p src/providers/imap/test && tsc --noEmit -p src/services/test"
   },
   "dependencies": {
+    "@openclaw/gateway-client": "2026.9.9",
     "@openrouter/ai-sdk-provider": "3.1.0",
     "@otter-mail/contracts": "workspace:*",
     "@otter-mail/shared": "workspace:*",
