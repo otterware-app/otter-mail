@@ -168,6 +168,9 @@ export function providerSummary(p: ProviderSnapshot | undefined): {
       headline: "Unavailable",
       detail: p.message ?? "The provider failed its startup checks.",
     };
+  // OpenClaw's label is who the gateway takes this device for: a person, or its shared owner.
+  if (p.auth.status === "authenticated" && p.kind === "openclaw" && p.auth.label)
+    return { headline: `Connected as ${p.auth.label}`, detail: p.message };
   if (p.auth.status === "authenticated")
     return {
       headline: p.auth.label ? `Authenticated · ${p.auth.label}` : "Authenticated",
