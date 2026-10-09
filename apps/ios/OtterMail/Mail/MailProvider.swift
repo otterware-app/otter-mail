@@ -2,7 +2,8 @@ import Foundation
 
 /**
  * Where a mailbox's mail comes from, as core's providers/provider.ts: Gmail's
- * API (`Gmail/`), or an IMAP server with SMTP to send (`Imap/`). MailSync
+ * API (`Gmail/`), an IMAP server with SMTP to send (`Imap/`), or Outlook
+ * through Microsoft Graph (`Outlook/`). MailSync
  * drives it and keeps the copy; above it everything sees threads carrying
  * labels, and the UI asks `capabilities` what a mailbox can do.
  *
@@ -44,9 +45,10 @@ protocol MailProvider: AnyObject {
 
     /**
      * Keeps new mail coming while the app is open: Gmail asks to push through
-     * the relay (`pushTopic`, renewed daily; the relay's events then sync), an
-     * IMAP server is watched with IDLE, calling `onChange`. Answers what to
-     * cancel when the app goes to the background, if anything runs here.
+     * the relay (`pushTopic`, renewed daily; the relay's events then sync),
+     * Outlook keeps a Graph subscription pointed at the relay, an IMAP server
+     * is watched with IDLE, calling `onChange`. Answers what to cancel when
+     * the app goes to the background, if anything runs here.
      */
     func watch(pushTopic: String?, _ state: inout MailboxState, onChange: @escaping () -> Void) async -> Task<Void, Never>?
 }
@@ -66,6 +68,16 @@ nonisolated struct Outgoing {
     var threadID: String?
     /** The draft message it replaces. */
     var draft: String?
+
+    // The same message as the composer has it, for Outlook, which writes it through Graph rather than as MIME.
+    var subject = ""
+    var html = ""
+    var to: [Person] = []
+    var cc: [Person] = []
+    var bcc: [Person] = []
+    var files: [MIME.File] = []
+    /** The message it answers (Outlook makes the reply from it, so it stays in the conversation). */
+    var replyTo: String? = nil
 }
 
 /** What's kept per mailbox besides its threads: the provider's cursors, and where each folder's list got to. */
@@ -85,6 +97,10 @@ nonisolated struct MailboxState: Codable {
     var trashedFrom: [String: String]? = nil
     /** Folder key → the oldest date its pages reached: its list stops there, so the next page adds to the bottom. */
     var reached: [String: Date]? = nil
+    /** Outlook: each followed folder's delta link, by folder id. */
+    var deltas: [String: String]? = nil
+    /** Outlook: this iPhone's Graph subscription, which sends the mailbox's changes to the relay (`watchTopic`: where). */
+    var subscription: String? = nil
 
     /** A folder's page came in, back to `oldest`; `next` is the page after it, nil at the end. */
     mutating func paged(_ key: String, next: String?, oldest: Date?) {

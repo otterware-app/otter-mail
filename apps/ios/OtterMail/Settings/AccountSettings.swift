@@ -50,7 +50,7 @@ struct AccountSettings: View {
                     .confirmationDialog("Sign out?", isPresented: $confirmSignOut, titleVisibility: .visible) {
                         Button("Sign out", role: .destructive) { Task { await session.signOut() } }
                     } message: {
-                        Text("Your mail leaves this iPhone. It stays in Gmail, and your mailboxes stay on your other devices.")
+                        Text("Your mail leaves this iPhone. It stays on its servers, and your mailboxes stay on your other devices.")
                     }
             }
 
@@ -63,7 +63,7 @@ struct AccountSettings: View {
                             }
                         }
                     } message: {
-                        Text("Signs out every device and forgets your mailboxes and preferences. Your mail stays in Gmail.")
+                        Text("Signs out every device and forgets your mailboxes and preferences. Your mail stays on its servers.")
                     }
             } footer: {
                 Text("Your Otter account carries your mailboxes, themes and settings to the Mac and the web.")

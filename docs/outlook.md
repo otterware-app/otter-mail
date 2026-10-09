@@ -108,8 +108,27 @@ The mailbox's default Outlook calendar (`outlook/calendar.ts`): invitations are 
 (`iCalUId`); the agents' calendar tools list, read, create, change and delete events. A video
 call is a Teams meeting where the account can have one.
 
+## The iPhone app
+
+Its own Swift implementation of the same design (`apps/ios/OtterMail/Outlook/`, sign-in in
+`Account/MicrosoftAuth.swift`), with the same label ids, so views, projects and preferences agree:
+
+- Sign-in is the installed-app flow with PKCE in a browser sheet, as a public client, returning to
+  `msauth.<bundle id>://auth` (an iOS redirect on the same app registration). Rotated refresh
+  tokens stay in the iPhone's Keychain; the code exchange's ID token links the mailbox.
+- Threads are conversations, read whole whenever one of their messages changes. The first sync
+  shows the inbox's newest page, then follows the inbox, Sent and Drafts with deltas; other
+  folders are followed once their list is opened. A delta follows a folder's mail from a month
+  back (or its first page, if older); older pages are read once.
+- Bodies, inline images, attachments and headers come from the MIME source when a message first
+  syncs; one whose attachments pass 2 MB is read from Graph's properties, its files downloaded
+  when opened.
+- Each phone keeps its own Graph subscription (`/v1/outlook/watch`), so the relay's `mail` events
+  sync it while the app is open; without one it polls every two minutes.
+- It lacks: APNs notifications for Outlook (the relay registers phones for Gmail only; Outlook
+  mail is announced by background refresh), Outlook's calendar (invitations), and making,
+  renaming or deleting labels (the iPhone doesn't for any mailbox).
+
 ## Not yet
 
-- The iPhone app doesn't have Outlook: the relay only lists Outlook mailboxes to clients that ask
-  for them (`?providers=…,outlook`).
 - Focused Inbox, Outlook's server signatures and rules, and sender photos.
