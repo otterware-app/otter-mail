@@ -17,6 +17,10 @@ The callback validates the ID token and sets the original Mail cookie for the ce
 Google's existing `/v1/auth/callback/google` registration remains: requests for new Accounts
 flows redirect to Accounts, where Better Auth verifies the original host-bound state cookie.
 Gmail mailbox authorization and sealed refresh tokens stay in the Mail relay.
+Accounts' session answers name the account's sign-in methods (`google`, `microsoft`,
+`password`); the relay passes them on in `/v1/me` (`RelayUser.signInMethods`), and the web
+app adds the matching mailbox right after an Otter sign-in: Gmail for Google, Outlook for
+Microsoft, none for a password alone.
 
 Drive is the fixed first-party client `otter-drive`: authorization code + S256 PKCE,
 exact redirects, and only `openid profile email`. Dynamic registration is disabled.
