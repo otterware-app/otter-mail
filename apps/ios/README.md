@@ -22,12 +22,17 @@ their code.
 
 ## How it works
 
-Like the Mac app, the phone signs in to Google itself and talks to Gmail directly, and to IMAP and
-SMTP servers directly too (`docs/imap.md`); the relay never sees its mail, tokens or passwords.
+Like the Mac app, the phone signs in to Google and Microsoft itself and talks to Gmail and
+Microsoft Graph directly, and to IMAP and SMTP servers directly too (`docs/imap.md`,
+`docs/outlook.md`); the relay never sees its mail, tokens or passwords.
 
 - `Account/GoogleAuth.swift`: Google sign-in per mailbox with the otterware project's "iOS" OAuth
   client (no secret; PKCE; Google returns to the client ID's reversed form). Refresh tokens stay in
   the Keychain.
+- `Account/MicrosoftAuth.swift`: Microsoft sign-in per Outlook mailbox (work, school and
+  personal), the same app registration as the relay's, as a public client: PKCE, Microsoft
+  returning to `msauth.<bundle id>://auth`. The address is Graph's `/me` `mail` (else the sign-in
+  name). Microsoft rotates refresh tokens: each refresh keeps the new one in the Keychain.
 - `Account/Relay.swift`: the Otter relay (`packages/contracts/src/relay.ts`). Signing in hands it
   the Google ID token (the relay accepts the iOS client's, see `GOOGLE_IOS_CLIENT_ID`); then the
   linked mailboxes, the preferences, and the `/v1/events` socket while the app is open.
@@ -38,6 +43,14 @@ SMTP servers directly too (`docs/imap.md`); the relay never sees its mail, token
   through the mailbox's `MailProvider` (`Mail/MailProvider.swift`, core's provider seam).
 - `Gmail/`: the Gmail provider: the Gmail API (`GmailAPI.swift`), messages out (`MIME.swift`),
   history-based sync; `users.watch` is renewed daily so pushes reach the relay.
+- `Outlook/`: the Outlook provider (`OutlookProvider.swift`), through Microsoft Graph
+  (`GraphAPI.swift`: immutable ids, 4 requests in flight, Retry-After, `$batch`). Folders and
+  categories are labels with core's ids (`OutlookFolders.swift`); threads are conversations, read
+  whole when any of their messages changes; each followed folder has a delta (the inbox, Sent and
+  Drafts, then folders once opened). Bodies and files come from the MIME source
+  (`MIMEParser.swift`); writes are PATCHes and moves, replies `createReply`, drafts updated in
+  place; search is Outlook's KQL (`OutlookSearch.swift`). A Graph subscription points at the
+  relay, so its `mail` events sync the mailbox while the app is open.
 - `Imap/`: the IMAP provider (`ImapProvider.swift`): folders as labels, flags, UID/CONDSTORE sync,
   IDLE on the inbox while the app is open. Its IMAP and SMTP clients run over Network.framework
   with the system's TLS (`MailSocket.swift`; STARTTLS goes through `URLSessionStreamTask`, which
