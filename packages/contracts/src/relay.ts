@@ -15,12 +15,17 @@
  * errors as `{ error: string }`.
  */
 
-/** The person signed in to Otter Mail (they sign in with Google). */
+/** How someone signs in to their Otter account (Otter Accounts). */
+export type SignInMethod = "google" | "microsoft" | "password";
+
+/** The person signed in to Otter Mail. */
 export interface RelayUser {
   id: string;
   email: string;
   name: string | null;
   picture: string | null;
+  /** The account's sign-in methods, where Otter Accounts says (it decides which mailbox to offer first). */
+  signInMethods?: SignInMethod[];
 }
 
 import type { AgentToken } from "./agent-tokens.js";

@@ -25,6 +25,7 @@ import {
   type PreferencesResponse,
   type RelayEvent,
   type RelayUser,
+  type SignInMethod,
   TUNNEL_CLOSE,
 } from "@otter-mail/contracts/relay";
 import type { MailProviderKind } from "@otter-mail/contracts/mail";
@@ -300,7 +301,15 @@ authed.use(async (c, next) => {
     id: session.id,
     expiresAt: session.expiresAt.getTime(),
     createdAt: session.createdAt.getTime(),
-    user: { id: user.id, email: user.email, name: user.name || null, picture: user.image ?? null },
+    user: {
+      id: user.id,
+      email: user.email,
+      name: user.name || null,
+      picture: user.image ?? null,
+      ...("signInMethods" in user && Array.isArray(user.signInMethods)
+        ? { signInMethods: user.signInMethods as SignInMethod[] }
+        : {}),
+    },
   });
   await next();
 });

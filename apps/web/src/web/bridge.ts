@@ -11,7 +11,7 @@ import { prepareTodoistPopup, closeTodoistPopup, authorizeTodoistPopup } from ".
  * invokes the channel, and the backend's request picks up what they return.
  */
 
-import type { OutlookSignInResult } from "@otter-mail/contracts/relay";
+import type { MeResponse, OutlookSignInResult } from "@otter-mail/contracts/relay";
 import type {
   DesktopBridge,
   NativeThemeInfo,
@@ -405,6 +405,25 @@ if ("Notification" in window && Notification.permission === "default") {
 }
 
 /**
+ * The mailbox an Otter sign-in implies: Gmail for a Google account, Outlook
+ * for a Microsoft one (where the relay can sign in to it), none for a password
+ * alone. No click to open a popup with: the provider's page opens in this tab.
+ */
+async function addOwnMailbox(email: string): Promise<void> {
+  const accounts = await invoke<{ email: string; signedOut?: boolean }[]>("gmail:listAccounts");
+  if (accounts.some((a) => a.email.toLowerCase() === email && !a.signedOut)) return;
+  const me = await fetch(`${RELAY_URL}/v1/me`, { credentials: "include" })
+    .then((r) => (r.ok ? (r.json() as Promise<MeResponse>) : null))
+    .catch(() => null);
+  // Before Otter Accounts named sign-in methods, every account was a Google one.
+  const methods = me?.user.signInMethods ?? ["google"];
+  if (methods.includes("google")) void invoke("gmail:addAccount", { email });
+  else if (methods.includes("microsoft") && me?.outlook) {
+    void invoke("gmail:addOutlookAccount", { email });
+  }
+}
+
+/**
  * The web app needs an Otter account (it holds the Gmail sign-ins): sign in
  * first. The demo's mailboxes need none.
  */
@@ -420,12 +439,7 @@ export async function requireOtterAccount(): Promise<void> {
   } else if (state.user && sessionStorage.getItem(ADD_OWN_MAILBOX)) {
     // Just signed in to Otter: its address's mailbox next, unless this browser has it.
     sessionStorage.removeItem(ADD_OWN_MAILBOX);
-    const email = state.user.email.toLowerCase();
-    const accounts = await invoke<{ email: string; signedOut?: boolean }[]>("gmail:listAccounts");
-    if (!accounts.some((a) => a.email.toLowerCase() === email && !a.signedOut)) {
-      // No click to open a popup with: Google's page opens in this tab.
-      void invoke("gmail:addAccount", { email });
-    }
+    void addOwnMailbox(state.user.email.toLowerCase());
   }
   webBridge.on("otter:state", (next) => {
     if (!(next as { user: unknown }).user) location.assign("/");
