@@ -78,6 +78,9 @@ function pickFiles(): Promise<PageRequests["pickFiles"]["result"]> {
   });
 }
 
+/** Set while the Otter sign-in redirect is out: coming back, add the address's own mailbox. */
+const ADD_OWN_MAILBOX = "otter:addOwnMailbox";
+
 let signInPopup: Window | null = null;
 
 /** The relay's mailbox sign-ins: Gmail's (`/v1/gmail/…`) and Outlook's (`/v1/outlook/…`). */
@@ -282,7 +285,11 @@ async function invoke<T>(channel: string, params?: unknown): Promise<T> {
       // Back to the page it was opened at: a link to a message, say.
       callbackURL: location.href,
     });
-    if (result?.redirectTo) location.assign(result.redirectTo);
+    if (result?.redirectTo) {
+      // Back from it, the address's own mailbox follows (requireOtterAccount).
+      sessionStorage.setItem(ADD_OWN_MAILBOX, "1");
+      location.assign(result.redirectTo);
+    }
     return result as T;
   }
   if (channel === "otter:signOut" && !__DEMO__) {
@@ -403,13 +410,22 @@ if ("Notification" in window && Notification.permission === "default") {
  */
 export async function requireOtterAccount(): Promise<void> {
   if (__DEMO__) return;
-  const state = await invoke<{ user: unknown }>("otter:getState");
+  const state = await invoke<{ user: { email: string } | null }>("otter:getState");
   if (!state.user) await invoke("otter:signIn");
   // Back from signing in to Gmail or Outlook in this tab: finish adding the mailbox.
   if (returnedSignIn?.result) {
     const channel =
       returnedSignIn.provider === "outlook" ? "gmail:addOutlookAccount" : "gmail:addAccount";
     void invoke(channel, { email: returnedSignIn.result.email });
+  } else if (state.user && sessionStorage.getItem(ADD_OWN_MAILBOX)) {
+    // Just signed in to Otter: its address's mailbox next, unless this browser has it.
+    sessionStorage.removeItem(ADD_OWN_MAILBOX);
+    const email = state.user.email.toLowerCase();
+    const accounts = await invoke<{ email: string; signedOut?: boolean }[]>("gmail:listAccounts");
+    if (!accounts.some((a) => a.email.toLowerCase() === email && !a.signedOut)) {
+      // No click to open a popup with: Google's page opens in this tab.
+      void invoke("gmail:addAccount", { email });
+    }
   }
   webBridge.on("otter:state", (next) => {
     if (!(next as { user: unknown }).user) location.assign("/");

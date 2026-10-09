@@ -6,7 +6,8 @@ import { LaptopIcon } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "~/components/ui/avatar";
 import { Dialog } from "~/components/ui/dialog";
 import { Text } from "~/components/ui/text";
-import { useAccounts } from "../gmail/hooks";
+import { gmailApi } from "../gmail/api";
+import { useAccounts, useAddAccount } from "../gmail/hooks";
 import { toast } from "../gmail/toast";
 import { Btn, cn } from "../gmail/ui";
 import { otterApi, useOtterAccount } from "../otter-account";
@@ -45,21 +46,36 @@ export function OtterAvatar({
 }
 
 /**
- * "Sign in with Google" for the Otter account (never a mailbox): Google in the
- * browser on the desktop, a redirect on the web. Cancellable while it waits.
+ * "Sign in with Google" for the Otter account: Google in the browser on the
+ * desktop, a redirect on the web (whose bridge chains the rest, bridge.ts).
+ * Signed in, the address's own mailbox follows, unless this device already has
+ * it: Google again, the address prefilled. Cancellable while either waits.
  */
 function useOtterSignIn() {
-  const [pending, setPending] = useState(false);
+  const [pending, setPending] = useState<"otter" | "mailbox" | null>(null);
+  const addMailbox = useAddAccount();
   const signIn = () => {
-    setPending(true);
+    setPending("otter");
     otterApi
       .signIn()
+      .then(async (state) => {
+        const email = state?.user?.email.toLowerCase();
+        if (!email) return;
+        const accounts = await gmailApi.listAccounts();
+        if (accounts.some((a) => a.email.toLowerCase() === email && !a.signedOut)) return;
+        setPending("mailbox");
+        await addMailbox.mutateAsync(email).catch((err: unknown) => {
+          toast.error(`Couldn't add ${email}`, { description: errorText(err) });
+        });
+      })
       .catch((err: unknown) => {
         toast.error("Couldn't sign in to Otter Mail", { description: errorText(err) });
       })
-      .finally(() => setPending(false));
+      .finally(() => setPending(null));
   };
-  return { pending, signIn, cancel: () => void otterApi.cancelSignIn() };
+  const cancel = () =>
+    void (pending === "mailbox" ? gmailApi.cancelAddAccount() : otterApi.cancelSignIn());
+  return { pending, signIn, cancel };
 }
 
 function SignInControl() {
@@ -261,9 +277,14 @@ export function OtterSignInOnboardingLink() {
   return (
     <p className="text-sm text-muted-foreground">
       {pending ? (
-        <button type="button" className="cursor-pointer underline" onClick={cancel}>
-          Cancel sign-in
-        </button>
+        <>
+          {pending === "mailbox"
+            ? "Adding your mailbox: finish in Google. "
+            : "Waiting for Google. "}
+          <button type="button" className="cursor-pointer underline" onClick={cancel}>
+            Cancel
+          </button>
+        </>
       ) : (
         <>
           Already use Otter Mail?{" "}
