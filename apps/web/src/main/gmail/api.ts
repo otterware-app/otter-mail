@@ -679,8 +679,9 @@ export const gmailApi = {
   connectHermes: (params: { baseUrl: string; apiKey: string }): Promise<ProvidersState> =>
     ipc("agent:connectHermes", params),
 
-  connectOpenClaw: (params: { url: string; token: string }): Promise<ProvidersState> =>
-    ipc("agent:connectOpenClaw", params),
+  connectOpenClaw: (
+    params: { code: string } | { url: string; token: string },
+  ): Promise<ProvidersState> => ipc("agent:connectOpenClaw", params),
 
   /**
    * Starts a turn and returns at once; it streams as `agent:chatEvent`.

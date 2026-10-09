@@ -154,10 +154,12 @@ export function registerAgentHandlers(): void {
 
   handle("agent:connectOpenClaw", async (params: unknown) => {
     const p = params as Params;
+    const code = str(p?.code);
+    if (code) return agent.connectOpenClaw({ code });
     const url = str(p?.url);
     const token = str(p?.token);
-    if (!url || !token) throw new Error("Gateway URL and token are both required.");
-    return agent.connectOpenClaw(url, token);
+    if (!url || !token) throw new Error("Paste a setup code, or the gateway address and token.");
+    return agent.connectOpenClaw({ url, token });
   });
 
   handle("agent:send", async (params: unknown) => {

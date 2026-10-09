@@ -71,6 +71,8 @@ function migrateRuntimeMode<T extends { runtimeMode: RuntimeMode }>(settings: T)
 // Stored under names from when agents were "assistants"; renaming them would lose them.
 const HERMES_KEY_SECRET = "assistant-hermes-key";
 const OPENCLAW_TOKEN_SECRET = "openclaw-gateway-token";
+/** A setup code's one-time bootstrap token (`openclaw qr`), until the gateway issues a device token. */
+const OPENCLAW_BOOTSTRAP_SECRET = "openclaw-bootstrap-token";
 /** This device's Ed25519 key (JWK) and the device token the gateway issued it. */
 const OPENCLAW_DEVICE_KEY_SECRET = "openclaw-device-key";
 const OPENCLAW_DEVICE_TOKEN_SECRET = "openclaw-device-token";
@@ -137,6 +139,12 @@ const secret = async (name: string): Promise<string> =>
 export const getOpenClawToken = () => secret(OPENCLAW_TOKEN_SECRET);
 export const setOpenClawToken = (token: string) =>
   platform().secrets.set(OPENCLAW_TOKEN_SECRET, token);
+export const clearOpenClawToken = () => platform().secrets.delete(OPENCLAW_TOKEN_SECRET);
+export const getOpenClawBootstrapToken = () => secret(OPENCLAW_BOOTSTRAP_SECRET);
+export const setOpenClawBootstrapToken = (token: string) =>
+  platform().secrets.set(OPENCLAW_BOOTSTRAP_SECRET, token);
+export const clearOpenClawBootstrapToken = () =>
+  platform().secrets.delete(OPENCLAW_BOOTSTRAP_SECRET);
 export const getOpenClawDeviceKey = () => secret(OPENCLAW_DEVICE_KEY_SECRET);
 export const setOpenClawDeviceKey = (jwk: string) =>
   platform().secrets.set(OPENCLAW_DEVICE_KEY_SECRET, jwk);

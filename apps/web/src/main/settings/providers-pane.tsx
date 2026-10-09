@@ -590,10 +590,23 @@ const gatewayHost = (address: string) =>
     .replace(/^[a-z]+:\/\//i, "")
     .replace(/[/:].*$/, "");
 
+/** The gateway address inside a setup code (base64url JSON), for the allow-this-site step. */
+function setupCodeUrl(code: string): string {
+  try {
+    const json = JSON.parse(atob(code.trim().replace(/-/g, "+").replace(/_/g, "/"))) as {
+      url?: unknown;
+    };
+    return typeof json.url === "string" ? json.url : "";
+  } catch {
+    return "";
+  }
+}
+
 /**
- * OpenClaw: the minimum setup on the gateway's computer, step by step, then
- * its address and token. Connecting makes this install a device the gateway
- * must approve once; Settings waits for that and says how.
+ * OpenClaw: the minimum setup on the gateway's computer, step by step, then a
+ * setup code from `openclaw qr` (or, failing that, the address and token).
+ * Connecting makes this install a device the gateway must approve once;
+ * Settings waits for that and says how.
  */
 function OpenClawEditor({
   state,
@@ -605,12 +618,15 @@ function OpenClawEditor({
   update: (patch: AgentSettingsPatch) => void;
 }) {
   const setState = useSetProvidersState();
+  const [code, setCode] = useState("");
+  const [useToken, setUseToken] = useState(false);
   const [url, setUrl] = useState("");
   const [token, setToken] = useState("");
   const [saving, setSaving] = useState(false);
-  const { openclaw, openclawHasToken, openclawPairingRequest } = state.settings;
+  const { openclaw, openclawPairingRequest } = state.settings;
   const connected = provider.status === "ready";
   const device = window.desktopBridge.platform === "web" ? "browser" : osNames.computer;
+  const host = gatewayHost(url || setupCodeUrl(code) || openclaw.url);
 
   // Waiting for approval: look again every few seconds, so it connects once approved.
   useEffect(() => {
@@ -621,14 +637,19 @@ function OpenClawEditor({
 
   const connect = async () => {
     const address = url.trim() || openclaw.url;
-    if (!address || !token.trim()) {
-      toast.error("Gateway address and token are both required");
+    if (useToken ? !address || !token.trim() : !code.trim()) {
+      toast.error(useToken ? "Gateway address and token are both required" : "Paste a setup code");
       return;
     }
     setSaving(true);
-    console.log("[Settings:connectOpenClaw]");
+    console.log("[Settings:connectOpenClaw]", useToken ? "token" : "setup code");
     try {
-      setState(await gmailApi.connectOpenClaw({ url: address, token: token.trim() }));
+      setState(
+        await gmailApi.connectOpenClaw(
+          useToken ? { url: address, token: token.trim() } : { code: code.trim() },
+        ),
+      );
+      setCode("");
       setUrl("");
       setToken("");
     } catch (error) {
@@ -652,64 +673,97 @@ function OpenClawEditor({
             <Command value="openclaw config set gateway.tailscale.mode serve" />
             <Command value="openclaw gateway restart" />
           </SettingsRow>
-          <SettingsRow
-            title="2. Copy the gateway token"
-            description="Paste it below with the address. It stays on this device."
-          >
-            <Command value="openclaw config get gateway.auth.token" />
-          </SettingsRow>
           {SITE_ORIGIN ? (
             <SettingsRow
-              title="3. Allow Otter Mail on the web"
+              title="2. Allow Otter Mail on the web"
               description="Browsers may only connect from sites the gateway allows. This keeps the gateway's own Control UI allowed; add any other sites you allowed before."
             >
               <Command
                 value={`openclaw config set gateway.controlUi.allowedOrigins '${JSON.stringify([
-                  `https://${gatewayHost(url || openclaw.url) || "<computer>.<tailnet>.ts.net"}`,
+                  `https://${host || "<computer>.<tailnet>.ts.net"}`,
                   SITE_ORIGIN,
                 ])}'`}
               />
             </SettingsRow>
           ) : null}
+          <SettingsRow
+            title={`${SITE_ORIGIN ? 3 : 2}. Make a setup code`}
+            description="Paste it below. It holds the gateway's address and works once, for 10 minutes."
+          >
+            <Command value="openclaw qr --setup-code-only --limited" />
+          </SettingsRow>
         </SettingsSection>
       )}
       <SettingsSection {...searchableSetting("openclaw-connection")}>
-        <SettingsRow
-          title="Gateway address"
-          description={
-            openclaw.url ? (
-              <span className="font-mono text-xs">{openclaw.url}</span>
-            ) : (
-              "wss://<computer>.<tailnet>.ts.net"
-            )
-          }
-          control={
-            <TextInput
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              placeholder={openclaw.url ? "Change address" : "computer.tailnet.ts.net"}
-              aria-label="OpenClaw gateway address"
-              className="@min-[32rem]/settings-row:w-56"
+        {openclaw.url ? (
+          <SettingsRow
+            title="Gateway"
+            description={<span className="font-mono text-xs">{openclaw.url}</span>}
+          />
+        ) : null}
+        {useToken ? (
+          <>
+            <SettingsRow
+              title="Gateway address"
+              description="wss://<computer>.<tailnet>.ts.net"
+              control={
+                <TextInput
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
+                  placeholder={openclaw.url ? "Change address" : "computer.tailnet.ts.net"}
+                  aria-label="OpenClaw gateway address"
+                  className="@min-[32rem]/settings-row:w-56"
+                />
+              }
             />
-          }
-        />
-        <SettingsRow
-          title="Gateway token"
-          description="gateway.auth.token. Only used to introduce this device."
-          control={
-            <TextInput
-              type="password"
-              value={token}
-              onChange={(e) => setToken(e.target.value)}
-              placeholder={openclawHasToken ? "Replace token" : "Token"}
-              aria-label="OpenClaw gateway token"
-              className="@min-[32rem]/settings-row:w-56"
-            />
-          }
-        />
+            <SettingsRow
+              title="Gateway token"
+              description="gateway.auth.token, which this prints on the gateway's computer. It stays on this device."
+              control={
+                <TextInput
+                  type="password"
+                  value={token}
+                  onChange={(e) => setToken(e.target.value)}
+                  placeholder="Token"
+                  aria-label="OpenClaw gateway token"
+                  className="@min-[32rem]/settings-row:w-56"
+                />
+              }
+            >
+              {/* `openclaw config get` redacts secrets, so read the config file itself. */}
+              <Command value={`node -p "require('$(openclaw config file)').gateway.auth.token"`} />
+            </SettingsRow>
+          </>
+        ) : (
+          <SettingsRow
+            title="Setup code"
+            description="From openclaw qr --setup-code-only."
+            control={
+              <TextInput
+                type="password"
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                placeholder="Paste setup code"
+                aria-label="OpenClaw setup code"
+                className="@min-[32rem]/settings-row:w-56"
+              />
+            }
+          />
+        )}
         <SettingsRow
           title={openclaw.url ? "Reconnect" : "Connect"}
-          description={`Connects this ${device} to the gateway. The first time, you approve it there.`}
+          description={
+            <>
+              Connects this {device} to the gateway. The first time, you approve it there.{" "}
+              <button
+                type="button"
+                className="underline underline-offset-2 hover:text-foreground"
+                onClick={() => setUseToken(!useToken)}
+              >
+                {useToken ? "Use a setup code instead" : "Use the gateway token instead"}
+              </button>
+            </>
+          }
           control={
             <Btn size="sm" variant="primary" disabled={saving} onClick={() => void connect()}>
               {saving ? "Connecting…" : openclaw.url ? "Reconnect" : "Connect"}

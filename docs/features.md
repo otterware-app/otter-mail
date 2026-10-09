@@ -321,8 +321,10 @@ with an agent token.
 
 OpenClaw connects to the user's gateway over its WebSocket, as OpenClaw's own apps do (usually
 `wss://<computer>.<tailnet>.ts.net`, with Tailscale Serve). Each install is a device with its own
-key: the gateway token introduces it once, the user approves it on the gateway
-(`openclaw devices approve`), and Settings › Agents walks through those steps. The web app also
+key: a setup code from `openclaw qr` (or the gateway token) introduces it once, the user
+approves it on the gateway (`openclaw devices approve`), and Settings › Agents walks through
+those steps. Each device pairs on its own; the Hermes connection instead follows the Otter
+account. The web app also
 needs its site in the gateway's `gateway.controlUi.allowedOrigins`. Each chat is a gateway
 session, so the gateway's other conversations can be resumed; the gateway's agents are the models
 to pick. Replies, tool steps, steering and command approvals come through; it works on mail with
