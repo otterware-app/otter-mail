@@ -230,7 +230,7 @@ function ContextRecap({ context }: { context: ContextMeta }) {
       : (context.subjects[0] ?? "1 conversation");
   return (
     <div className="mb-1 flex justify-end">
-      <span className="flex max-w-full items-center gap-1.5 rounded-sm border border-border px-2 py-0.5 text-2xs font-medium text-muted-foreground">
+      <span className="flex max-w-64 items-center gap-1.5 rounded-sm border border-border px-2 py-0.5 text-2xs font-medium text-muted-foreground">
         <ContextKindIcon kind={context.kind} className="size-3 shrink-0" />
         <span className="min-w-0 truncate">{label}</span>
       </span>

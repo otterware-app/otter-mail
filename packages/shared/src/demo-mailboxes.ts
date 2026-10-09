@@ -273,7 +273,7 @@ const personal: SeedAccount = {
             from: p("TAP Air Portugal", "no-reply@flytap.example"),
             hoursAgo: 26,
             starred: true,
-            text: "Booking reference: 7XQ2LM\n\nPassenger: ROBIN OTTER\nFlight TP 1352 · Fri 16 Oct\nDeparts 07:40 · Arrives 10:05 (local time)\nSeat 14A · 1 checked bag\n\nYour e-ticket is attached. Online check-in opens 36 hours before departure.",
+            text: "Booking reference: 7XQ2LM\n\nPassenger: ROBIN OTTER\nFlight TP 1352 · Fri 16 Oct\nDeparts 07:40 · Arrives 10:05 (local time)\nSeat 14A · 1 checked bag\n\nYour e-ticket is attached. Online check-in opens 36 hours before departure.\n\nManage your booking:\nhttps://booking.example.com/manage?ref=7XQ2LM&passenger=ROBIN%20OTTER&token=eyJhbGciOiJIUzI1NiJ9.eyJyZWYiOiI3WFEyTE0iLCJleHAiOjE3OTk5OTk5OTl9.c2lnbmF0dXJlLW9mLWEtbWFkZS11cC1ib29raW5nLXRva2Vu",
             attachments: [
               {
                 filename: "e-ticket-7XQ2LM.pdf",
