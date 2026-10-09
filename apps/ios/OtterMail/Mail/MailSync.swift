@@ -125,6 +125,13 @@ final class MailSync {
 
     func waitForCache() async { await cacheLoad?.value }
 
+    /** A notified Outlook conversation may be in a folder that has not been opened yet. */
+    func loadNotificationThread(_ id: String, email: String) async {
+        _ = try? await run(email) { provider, state, known in
+            try await provider.refresh(MailThread(id: id, mailbox: email, subject: "", labels: [], messages: []), &state, known: known)
+        }
+    }
+
     /** Writes the copy soon (changes come in bursts). */
     private func scheduleSave() {
         guard !stopped else { return }

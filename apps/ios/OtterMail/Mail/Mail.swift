@@ -55,21 +55,6 @@ nonisolated enum MailProviderKind: String, Codable {
     case gmail, imap, outlook
 }
 
-/** A mail server: TLS from the start ("tls", ports 993/465), or upgraded with STARTTLS (143/587). */
-nonisolated struct MailServer: Hashable, Codable {
-    enum Security: String, Codable, CaseIterable { case tls, starttls }
-    var host: String
-    var port: Int
-    var security: Security
-}
-
-/** Where an IMAP mailbox lives. It follows the Otter account; the password stays on each device. */
-nonisolated struct ImapSettings: Hashable, Codable {
-    /** The login, usually the address itself. */
-    var username: String
-    var imap: MailServer
-    var smtp: MailServer
-}
 
 /** What a mailbox can do beyond reading, organizing and sending; the UI hides the rest. */
 nonisolated struct MailCapabilities: Hashable {

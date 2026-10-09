@@ -1,5 +1,5 @@
 import { importPKCS8, SignJWT } from "jose";
-import type { MailPushMetadata } from "@otter-mail/contracts/relay";
+import type { MailPushMetadata, NewMailPushMetadata } from "@otter-mail/contracts/relay";
 import type { Env } from "./worker.ts";
 import type { PushDevice } from "./push.ts";
 
@@ -30,18 +30,33 @@ export function configured(env: Env): boolean {
 }
 
 /** Explicit allowlist: never spread a Pub/Sub event or registration into the APNs body. */
-export function payload(metadata: MailPushMetadata) {
+export function payload(metadata: MailPushMetadata | NewMailPushMetadata) {
   return {
     aps: {
-      alert: { title: "Otter Mail", body: "Mailbox updated. Open Otter Mail to check your mail." },
+      alert: {
+        title: "Otter Mail",
+        body:
+          metadata.version === 2
+            ? "New mail. Open Otter Mail to read it."
+            : "Mailbox updated. Open Otter Mail to check your mail.",
+      },
       "mutable-content": 1,
+      ...(metadata.version === 2 ? { sound: "default" } : {}),
     },
     otter: {
-      version: 1,
+      version: metadata.version,
       userId: metadata.userId,
       email: metadata.email,
       historyId: metadata.historyId,
       mode: metadata.mode,
+      ...(metadata.version === 2
+        ? {
+            provider: metadata.provider,
+            messageId: metadata.messageId,
+            ...(metadata.folder ? { folder: metadata.folder } : {}),
+            ...(metadata.uidValidity ? { uidValidity: metadata.uidValidity } : {}),
+          }
+        : {}),
     },
   };
 }
@@ -52,7 +67,7 @@ export type Result = "sent" | "invalid" | "retry" | "rejected" | { retryAfterMs:
 export async function send(
   env: Env,
   device: PushDevice,
-  metadata: MailPushMetadata,
+  metadata: MailPushMetadata | NewMailPushMetadata,
   transport: typeof fetch = fetch,
 ): Promise<Result> {
   const host =

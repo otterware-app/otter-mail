@@ -22,6 +22,9 @@ final class Session {
     private(set) var store: MailStore
     /** Set while a sign-in sheet or first sync is running, with what it's doing. */
     private(set) var busy: String?
+    private(set) var notificationConnections: [String: Relay.NotificationConnection] = [:]
+    private(set) var notificationProviders: Set<String> = []
+    @ObservationIgnored private let notificationAuthorization = NotificationAuthorization()
     /** A thread to open (from a notification). */
     var opening: NotificationDestination?
 
@@ -29,6 +32,7 @@ final class Session {
         var userId: String?
         var email: String?
         var thread: String?
+        var message: String? = nil
     }
 
     let preferences: Preferences
@@ -99,6 +103,7 @@ final class Session {
         try await link(profile, idToken: idToken)
         busy = "Loading your mail…"
         await refreshAccount()
+        await offerNotifications(profile.email)
     }
 
     private func startLive() {
@@ -131,6 +136,7 @@ final class Session {
             await currentSync.syncAll()
             guard !Task.isCancelled, sync === currentSync else { return }
             await currentSync.watch(pushTopic: pushTopic)
+            await refreshNotificationConnections()
             await updatePushRegistration()
             await requestNotifications()
             await updateBadge()
@@ -190,6 +196,7 @@ final class Session {
         guard let idToken = tokens.idToken else { throw GoogleAuth.Failure.google("Google didn't return an ID token.") }
         try await link(profile, idToken: idToken)
         await sync?.sync(profile.email)
+        await offerNotifications(profile.email)
     }
 
     /** Signs in to Google (or Microsoft, for Outlook) for a mailbox linked on another device (or whose sign-in lapsed). */
@@ -244,6 +251,7 @@ final class Session {
         busy = "Loading your mail…"
         await sync?.sync(profile.email)
         await sync?.watch(pushTopic: pushTopic)
+        await offerNotifications(profile.email)
     }
 
     /**
@@ -528,6 +536,8 @@ final class Session {
 
     /** Back to the welcome screen, with nothing of the account left here. */
     private func endSession() {
+        notificationConnections = [:]
+        notificationProviders = []
         let previousUser = user
         PushState.configure(nil)
         pushingRegistration?.cancel()
@@ -605,9 +615,18 @@ final class Session {
     /** Local preference/access changes take effect immediately, even when the relay is offline. */
     private func configurePush() {
         guard let user else { PushState.configure(nil); return }
-        // APNs for Gmail only: the relay doesn't push Outlook's changes to phones yet.
-        let emails = store.shownMailboxes.filter { $0.provider == .gmail && !$0.signedOut && google.isSignedIn($0.email) }.map { $0.email.lowercased() }
-        PushState.configure(.init(userId: user.id, mode: preferences.notifications.rawValue, mailboxes: emails))
+        let available = store.shownMailboxes.filter { mailbox in
+            guard !mailbox.signedOut else { return false }
+            guard ["ready", "retry"].contains(notificationConnections[mailbox.email.lowercased()]?.status ?? "") else { return false }
+            switch mailbox.provider {
+            case .gmail: return google.isSignedIn(mailbox.email)
+            case .outlook: return microsoft.isSignedIn(mailbox.email)
+            case .imap: return ImapProvider.password(mailbox.email) != nil
+            }
+        }
+        let emails = available.map { $0.email.lowercased() }
+        let settings = Dictionary(uniqueKeysWithValues: available.compactMap { mailbox in mailbox.imap.map { (mailbox.email.lowercased(), $0) } })
+        PushState.configure(.init(userId: user.id, mode: preferences.notifications.rawValue, mailboxes: emails, imapSettings: settings))
         if pushingRegistration == nil {
             pushingRegistration = Task {
                 await updatePushRegistration()
@@ -643,10 +662,56 @@ final class Session {
         guard let email = destination.email ?? destination.thread.flatMap({ store.thread($0)?.mailbox }),
               let mailbox = store.mailboxes.first(where: { $0.email.lowercased() == email.lowercased() }), !mailbox.signedOut else { return }
         await sync?.sync(mailbox.email)
+        if let message = destination.message, let id = ImapID(message), mailbox.imap != nil,
+           !store.threads.contains(where: { $0.mailbox == mailbox.email && $0.messages.contains(where: { $0.id == message }) }) {
+            await sync?.loadMore(.label(id.path, id.path), scope: mailbox.email)
+        }
+        if let message = destination.message, destination.thread == nil,
+           let thread = store.threads.first(where: { $0.mailbox.lowercased() == mailbox.email.lowercased() && $0.messages.contains(where: { $0.id == message }) }) {
+            opening?.thread = thread.id
+        }
         if let thread = destination.thread, mailbox.provider == .gmail, store.thread(thread)?.mailbox.lowercased() != mailbox.email.lowercased() {
             let api = GmailAPI(email: mailbox.email) { [google] force in try await google.accessToken(mailbox.email, force: force) }
             if let loaded = try? await api.thread(thread), loaded.mailbox == mailbox.email,
                user?.id == originalUser, store.mailbox(mailbox.email) != nil { store.upsert(threads: [loaded]) }
         }
+        if let thread = destination.thread, mailbox.provider == .outlook, store.thread(thread)?.mailbox.lowercased() != mailbox.email.lowercased() {
+            await sync?.loadNotificationThread(thread, email: mailbox.email)
+        }
+    }
+
+    func refreshNotificationConnections() async {
+        guard let userId = user?.id, let result = try? await relay.notificationConnections(), user?.id == userId else { return }
+        notificationConnections = Dictionary(uniqueKeysWithValues: result.connections.map { ($0.email.lowercased(), $0) })
+        notificationProviders = Set(result.providers.filter { $0.value }.map(\.key))
+        configurePush()
+    }
+    func connectNotifications(_ email: String) async throws {
+        guard let mailbox = store.mailbox(email), !mailbox.signedOut, let userId = user?.id else { return }
+        busy = "Connecting notifications…"
+        defer { busy = nil }
+        if let settings = mailbox.imap {
+            guard let password = ImapProvider.password(email) else { throw ImapError.signedOut }
+            try await relay.connectImapNotifications(email, settings: settings, password: password)
+        } else {
+            let url = try await relay.authorizeNotifications(email)
+            try await notificationAuthorization.authorize(url)
+        }
+        guard user?.id == userId else { return }
+        await refreshNotificationConnections()
+        await requestNotifications()
+        configurePush()
+    }
+
+    private func offerNotifications(_ email: String) async {
+        await refreshNotificationConnections()
+        guard preferences.notifications != .off, let mailbox = store.mailbox(email), mailbox.imap == nil,
+              notificationProviders.contains(mailbox.provider.rawValue), notificationConnections[email.lowercased()]?.status != "ready" else { return }
+        // Mail sign-in remains usable if the user cancels the separate limited permission.
+        do { try await connectNotifications(email) } catch { await refreshNotificationConnections() }
+    }
+    func disconnectNotifications(_ email: String) async throws {
+        try await relay.disconnectNotifications(email)
+        await refreshNotificationConnections()
     }
 }

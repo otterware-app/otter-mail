@@ -172,6 +172,42 @@ export const pushRevocations = sqliteTable(
   (t) => [primaryKey({ columns: [t.userId, t.sessionId] })],
 );
 
+/** Provider credentials encrypted for this user/mailbox. No mail content is stored. */
+export const notificationConnections = sqliteTable(
+  "notification_connections",
+  {
+    userId: text().notNull(),
+    email: text().notNull(),
+    provider: text().$type<MailProviderKind>().notNull(),
+    generation: text().notNull(),
+    credential: text().notNull(),
+    status: text().notNull().default("connecting"),
+    updatedAt: integer().notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.userId, t.email] }),
+    foreignKey({
+      columns: [t.userId, t.email],
+      foreignColumns: [linkedAccounts.userId, linkedAccounts.email],
+    }).onDelete("cascade"),
+  ],
+);
+
+/** Single-use, short-lived OAuth requests, bound to the original Otter session. */
+export const notificationAuthorizations = sqliteTable("notification_authorizations", {
+  id: text().primaryKey(),
+  userId: text()
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  email: text().notNull(),
+  provider: text().notNull(),
+  sessionId: text().notNull(),
+  sessionCreatedAt: integer().notNull(),
+  verifier: text().notNull(),
+  returnTo: text().notNull(),
+  expiresAt: integer().notNull(),
+});
+
 /** Each Otter account's preferences (contracts' `Preferences`), synced to its devices. */
 export const preferences = sqliteTable("preferences", {
   userId: text()

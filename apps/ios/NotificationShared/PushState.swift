@@ -11,6 +11,7 @@ nonisolated enum PushState {
         var userId: String
         var mode: String
         var mailboxes: [String]
+        var imapSettings: [String: ImapSettings]? = nil
     }
 
     struct Cursor: Codable, Sendable {

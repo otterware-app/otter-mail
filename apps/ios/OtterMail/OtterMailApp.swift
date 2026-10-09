@@ -94,7 +94,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         let info = response.notification.request.content.userInfo
         let metadata = info["otter"] as? [String: Any]
         let destination = Session.NotificationDestination(userId: metadata?["userId"] as? String,
-            email: (info["mailbox"] as? String) ?? (metadata?["email"] as? String), thread: info["thread"] as? String)
+            email: (info["mailbox"] as? String) ?? (metadata?["email"] as? String), thread: info["thread"] as? String, message: info["message"] as? String)
         if let session { session.opening = destination } else { tapped = destination }
         completionHandler()
     }

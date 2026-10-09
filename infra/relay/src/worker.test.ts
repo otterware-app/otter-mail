@@ -48,6 +48,7 @@ import type {
 const CLIENT_ID = "test-client.apps.googleusercontent.com";
 const WEB_CLIENT_ID = "997327858649-test-web.apps.googleusercontent.com";
 const LEGACY_WEB_CLIENT_ID = "187875144740-test-web.apps.googleusercontent.com";
+const NOTIFICATION_CLIENT_ID = "notification-client.apps.googleusercontent.com";
 const IOS_CLIENT_ID = "test-ios-client.apps.googleusercontent.com";
 const IOS_STORE_CLIENT_ID = "test-ios-store-client.apps.googleusercontent.com";
 const MS_CLIENT_ID = "11111111-0000-0000-0000-00000000web0";
@@ -73,6 +74,16 @@ const notifications: {
   token: string;
   body: Record<string, unknown>;
   headers: http.IncomingHttpHeaders;
+}[] = [];
+const notificationMail = new Map<
+  string,
+  { historyId: string; added: { id: string; historyId: string; labels: string[] }[] }
+>();
+const notificationReads: {
+  email: string;
+  path: string;
+  fields: string | null;
+  format: string | null;
 }[] = [];
 
 beforeAll(async () => {
@@ -110,6 +121,45 @@ beforeAll(async () => {
   const publicJwk = { ...(await exportJWK(pair.publicKey)), kid: "test", alg: "RS256" };
   jwks = http.createServer((req, res) => {
     res.setHeader("content-type", "application/json");
+    if (req.url?.startsWith("/gmail/v1/users/me/")) {
+      const address = /^Bearer at:([^:]+):/.exec(req.headers.authorization ?? "")?.[1];
+      if (!address) {
+        res.writeHead(401).end("{}");
+        return;
+      }
+      const state = notificationMail.get(address) ?? { historyId: "100", added: [] };
+      notificationMail.set(address, state);
+      const url = new URL(req.url, "http://mock.test");
+      notificationReads.push({
+        email: address,
+        path: url.pathname,
+        fields: url.searchParams.get("fields"),
+        format: url.searchParams.get("format"),
+      });
+      let result: unknown;
+      if (url.pathname.endsWith("/profile"))
+        result = { emailAddress: address, historyId: state.historyId };
+      else if (url.pathname.endsWith("/watch"))
+        result = { historyId: state.historyId, expiration: String(Date.now() + 7 * 86_400_000) };
+      else if (url.pathname.endsWith("/history")) {
+        const baseline = BigInt(url.searchParams.get("startHistoryId") ?? "0");
+        result = {
+          historyId: state.historyId,
+          history: state.added
+            .filter((m) => BigInt(m.historyId) > baseline)
+            .map((m) => ({ messagesAdded: [{ message: { id: m.id } }] })),
+        };
+      } else {
+        const message = state.added.find((m) => m.id === url.pathname.split("/").at(-1));
+        if (!message) {
+          res.writeHead(404).end("{}");
+          return;
+        }
+        result = { id: message.id, labelIds: message.labels };
+      }
+      res.writeHead(200).end(JSON.stringify(result));
+      return;
+    }
     if (req.url?.startsWith("/graph/v1.0/me")) {
       const email = /^Bearer mat:([^:]+):/.exec(req.headers.authorization ?? "")?.[1];
       res.writeHead(email ? 200 : 401);
@@ -204,6 +254,13 @@ beforeAll(async () => {
       GOOGLE_WEB_CLIENT_SECRET: { type: "plain_text", value: "legacy-secret" },
       GOOGLE_GMAIL_CLIENT_ID: { type: "plain_text", value: WEB_CLIENT_ID },
       GOOGLE_GMAIL_CLIENT_SECRET: { type: "plain_text", value: "web-secret" },
+      NOTIFICATION_CREDENTIAL_SECRET: {
+        type: "plain_text",
+        value: "notification-test-encryption-key",
+      },
+      NOTIFICATION_GOOGLE_CLIENT_ID: { type: "plain_text", value: NOTIFICATION_CLIENT_ID },
+      NOTIFICATION_GOOGLE_CLIENT_SECRET: { type: "plain_text", value: "notification-secret" },
+      NOTIFICATION_GOOGLE_API_ORIGIN: { type: "plain_text", value: `http://127.0.0.1:${port}` },
       APP_ORIGIN: { type: "plain_text", value: APP_ORIGIN },
       COOKIE_DOMAIN: { type: "plain_text", value: "" },
       TUNNEL_TEST_TARGET: { type: "plain_text", value: mailTarget },
@@ -277,11 +334,13 @@ function signInRequest(token: string) {
 async function googleToken(form: URLSearchParams): Promise<[number, unknown]> {
   const clientId = form.get("client_id");
   const secret =
-    clientId === WEB_CLIENT_ID
-      ? "web-secret"
-      : clientId === LEGACY_WEB_CLIENT_ID
-        ? "legacy-secret"
-        : null;
+    clientId === NOTIFICATION_CLIENT_ID
+      ? "notification-secret"
+      : clientId === WEB_CLIENT_ID
+        ? "web-secret"
+        : clientId === LEGACY_WEB_CLIENT_ID
+          ? "legacy-secret"
+          : null;
   if (!secret || form.get("client_secret") !== secret) {
     return [401, { error: "invalid_client" }];
   }
@@ -300,6 +359,9 @@ async function googleToken(form: URLSearchParams): Promise<[number, unknown]> {
       expires_in: 3599,
       id_token: await idToken(email, { aud: clientId! }),
       ...(grant === "authorization_code" ? { refresh_token: `rt:${email}` } : {}),
+      ...(clientId === NOTIFICATION_CLIENT_ID
+        ? { scope: "https://www.googleapis.com/auth/gmail.metadata openid email" }
+        : {}),
     },
   ];
 }
@@ -365,6 +427,24 @@ async function link(token: string, email: string, profile: Record<string, unknow
     idToken: await idToken(email),
     ...profile,
   });
+}
+
+async function connectNotificationMailbox(token: string, email: string) {
+  const response = await call("POST", "/v1/notification-connections/authorize", token, {
+    email,
+    returnTo: "desktop",
+  });
+  expect(response.status).toBe(200);
+  const { url } = (await response.json()) as { url: string };
+  const state = new URL(url).searchParams.get("state")!;
+  const result = await fetch(
+    `${base}${new URL(new URL(url).searchParams.get("redirect_uri")!).pathname}?state=${encodeURIComponent(state)}&code=${encodeURIComponent("code:" + email)}`,
+  );
+  const status = (await (await call("GET", "/v1/notification-connections", token)).json()) as {
+    connections: { email: string; status: string }[];
+  };
+  expect(status.connections.find((c) => c.email === email)?.status).toBe("ready");
+  expect(await result.text()).toContain("Background notifications connected");
 }
 
 /** The linked mailboxes, as a build that knows IMAP asks for them (`query` "" for older ones). */
@@ -2052,7 +2132,12 @@ describe("iPhone push registration and lifecycle", () => {
         token = "ab".repeat(32);
       apnsDelays.set(token, 1500);
       await link(owner.token, email);
+      await connectNotificationMailbox(owner.token, email);
       await call("PUT", "/v1/push/device", owner.token, pushRegistration(token, [email]));
+      notificationMail.set(email, {
+        historyId: "200",
+        added: [{ id: "abc123", historyId: "200", labels: ["UNREAD", "INBOX"] }],
+      });
       await push({ emailAddress: email, historyId: "9007199254740993" });
       await push({ emailAddress: email, historyId: "9007199254740994" });
       await push({ emailAddress: email, historyId: "9007199254740994" });
@@ -2066,12 +2151,13 @@ describe("iPhone push registration and lifecycle", () => {
       expect(notifications.filter((n) => n.token === token)).toHaveLength(1);
       apnsDelays.delete(token);
       const delivered = notifications.find((n) => n.token === token)!;
-      expect(delivered.body.otter).toEqual({
-        version: 1,
+      expect(delivered.body.otter).toMatchObject({
+        version: 2,
         userId: owner.user.id,
         email,
-        historyId: "9007199254740994",
         mode: "inbox",
+        provider: "gmail",
+        messageId: "abc123",
       });
       expect(delivered.headers["apns-topic"]).toBe("dev.otterware.mail.dev");
       expect(JSON.stringify(delivered.body)).not.toMatch(
@@ -2081,7 +2167,12 @@ describe("iPhone push registration and lifecycle", () => {
       const offEmail = "push-off-mail@example.com",
         offToken = "cd".repeat(32);
       await link(off.token, offEmail);
+      await connectNotificationMailbox(off.token, offEmail);
       await call("PUT", "/v1/push/device", off.token, pushRegistration(offToken, [offEmail]));
+      notificationMail.set(offEmail, {
+        historyId: "200",
+        added: [{ id: "def123", historyId: "200", labels: ["UNREAD", "INBOX"] }],
+      });
       await push({ emailAddress: offEmail, historyId: "10" });
       await call("PUT", "/v1/preferences", off.token, {
         preferences: { settings: { notificationsMode: "off" } },

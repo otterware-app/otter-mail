@@ -111,6 +111,7 @@ struct MailboxSettings: View {
     let email: String
     @State private var name = ""
     @State private var confirmRemove = false
+    @State private var confirmNotifications = false
     @State private var password = ""
     @State private var error: String?
 
@@ -122,6 +123,30 @@ struct MailboxSettings: View {
 
     private func form(_ mailbox: Mailbox) -> some View {
         SettingsForm {
+            if !mailbox.signedOut, session.notificationProviders.contains(mailbox.provider.rawValue) {
+                Section {
+                    let connection = session.notificationConnections[email.lowercased()]
+                    LabeledContent("Background notifications", value: notificationStatus(connection?.status))
+                    if connection?.status == "ready" {
+                        Button("Disconnect background notifications") {
+                            Task { do { try await session.disconnectNotifications(email) } catch { self.error = error.localizedDescription } }
+                        }
+                    } else {
+                        Button(session.busy ?? "Connect notifications") {
+                            if mailbox.imap != nil { confirmNotifications = true } else { connectNotifications() }
+                        }.disabled(session.busy != nil)
+                    }
+                } footer: {
+                    Text(mailbox.imap != nil
+                        ? "Otter securely stores the IMAP password to watch for new mail. The watcher reads message IDs and flags; sender and preview load directly on this iPhone."
+                        : "Otter needs limited provider permission to confirm new mail before sending an alert. Sender and preview load directly on this iPhone.")
+                }
+                .confirmationDialog("Enable IMAP background notifications?", isPresented: $confirmNotifications, titleVisibility: .visible) {
+                    Button("Enable notifications") { connectNotifications() }
+                } message: {
+                    Text("Otter will securely store this mailbox’s password and connect to its IMAP server. The password permits mailbox access; the watcher requests only message IDs and flags.")
+                }
+            }
             if mailbox.signedOut, let imap = mailbox.imap {
                 Section {
                     SecureField("Password", text: $password)
@@ -208,11 +233,30 @@ struct MailboxSettings: View {
         .navigationTitle(mailbox.displayName)
         .toolbarTitleDisplayMode(.inline)
         .onAppear { name = mailbox.displayName }
+        .task {
+            while !Task.isCancelled {
+                await session.refreshNotificationConnections()
+                do { try await Task.sleep(for: .seconds(5)) } catch { return }
+            }
+        }
         .onDisappear { rename(mailbox) }
         .alert("Couldn't sign in", isPresented: .constant(error != nil)) {
             Button("OK") { error = nil }
         } message: {
             Text(error ?? "")
+        }
+    }
+
+    private func connectNotifications() {
+        Task { do { try await session.connectNotifications(email) } catch { self.error = error.localizedDescription } }
+    }
+    private func notificationStatus(_ status: String?) -> String {
+        switch status {
+        case "ready": "Connected"
+        case "connecting": "Checking…"
+        case "retry": "Retrying connection"
+        case "reauthorize": "Reconnect required"
+        default: "Not connected"
         }
     }
 

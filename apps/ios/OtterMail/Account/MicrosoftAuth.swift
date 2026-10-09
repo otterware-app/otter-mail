@@ -26,11 +26,7 @@ final class MicrosoftAuth {
         "https://graph.microsoft.com/Calendars.ReadWrite",
     ]
 
-    struct Tokens {
-        var accessToken: String
-        var idToken: String?
-        var expiresAt: Date
-    }
+    typealias Tokens = MicrosoftCredentials.Tokens
 
     struct Profile {
         /** The mailbox's address, lowercased: its id everywhere. */
@@ -62,7 +58,7 @@ final class MicrosoftAuth {
     private static var redirectURI: String { "\(redirectScheme)://auth" }
     private static func refreshKey(_ email: String) -> String { "microsoft-refresh-token:\(email.lowercased())" }
 
-    func isSignedIn(_ email: String) -> Bool { Keychain.get(Self.refreshKey(email)) != nil }
+    func isSignedIn(_ email: String) -> Bool { Keychain.migrateShared(Self.refreshKey(email)); return Keychain.get(Self.refreshKey(email)) != nil }
 
     /** Opens Microsoft's sign-in; keeps the refresh token for the address it signed in. */
     func signIn(loginHint: String? = nil) async throws -> (profile: Profile, tokens: Tokens) {
@@ -106,7 +102,7 @@ final class MicrosoftAuth {
         }
         let tokens = response.tokens
         let profile = try await Self.profile(accessToken: tokens.accessToken)
-        guard Keychain.set(Self.refreshKey(profile.email), refreshToken, thisDeviceOnly: true) else {
+        do { try await MicrosoftCredentials.save(profile.email, refreshToken: refreshToken) } catch {
             throw Failure.microsoft("Couldn't save the Microsoft sign-in on this iPhone.")
         }
         refreshing[profile.email]?.cancel()
@@ -134,27 +130,18 @@ final class MicrosoftAuth {
         refreshing[key]?.cancel()
         refreshing[key] = nil
         tokens[key] = nil
-        Keychain.set(Self.refreshKey(email), nil)
+        MicrosoftCredentials.forget(email)
     }
 
     private func refresh(_ email: String) async throws -> Tokens {
         let key = email.lowercased()
         if let running = refreshing[key] { return try await running.value }
         let task = Task { () throws -> Tokens in
-            guard let saved = Keychain.get(Self.refreshKey(email)) else { throw Failure.signedOut(email) }
-            let response: Response
             do {
-                response = try await Self.tokenRequest(["grant_type": "refresh_token", "refresh_token": saved])
-            } catch Failure.signedOut(_) {
-                // Unless a new sign-in replaced it while the request was out.
-                if Keychain.get(Self.refreshKey(email)) == saved { Keychain.set(Self.refreshKey(email), nil) }
+                return try await MicrosoftCredentials.refresh(email, force: true)
+            } catch MicrosoftCredentials.Failure.revoked {
                 throw Failure.signedOut(email)
             }
-            try Task.checkCancellation()
-            // Forgotten or signed in again meanwhile: this answer is for a sign-in that's gone.
-            guard Keychain.get(Self.refreshKey(email)) == saved else { throw Failure.signedOut(email) }
-            if let rotated = response.refresh_token { Keychain.set(Self.refreshKey(email), rotated, thisDeviceOnly: true) }
-            return response.tokens
         }
         refreshing[key] = task
         defer { if refreshing[key] == task { refreshing[key] = nil } }

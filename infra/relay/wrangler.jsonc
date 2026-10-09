@@ -25,6 +25,7 @@
     "bindings": [
       { "name": "USER_HUB", "class_name": "UserHub" },
       { "name": "AGENT_HUB", "class_name": "AgentHub" },
+      { "name": "NOTIFICATION_MAILBOX", "class_name": "NotificationMailbox" },
     ],
   },
   "services": [
@@ -33,6 +34,7 @@
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["UserHub"] },
     { "tag": "v2", "new_sqlite_classes": ["AgentHub"] },
+    { "tag": "v3", "new_sqlite_classes": ["NotificationMailbox"] },
   ],
   // The web app's tunnel, per user and minute (periods are 10 or 60 seconds):
   // to the servers of their IMAP mailboxes, and to any other host (checking a
