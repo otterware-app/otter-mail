@@ -21,7 +21,7 @@ nonisolated enum MailDiscovery {
         var errorDescription: String? {
             switch self {
             case .gmail: "Add Gmail with “Add Gmail mailbox”: it signs in with Google."
-            case .outlook: "Outlook and Hotmail need Microsoft sign-in, which Otter Mail doesn't have yet."
+            case .outlook: "Add Outlook and Hotmail with “Add Outlook mailbox”: it signs in with Microsoft."
             }
         }
     }

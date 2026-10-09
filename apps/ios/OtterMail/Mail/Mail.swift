@@ -1,10 +1,11 @@
 import Foundation
 
 /**
- * The mail the app shows, shaped like Gmail's: mailboxes (the Gmail and IMAP
- * accounts on the Otter account), their labels, and threads of messages.
- * Label ids are Gmail's (`INBOX`, `STARRED`, …) or a user label's name; an
- * IMAP folder is a label (docs/imap.md).
+ * The mail the app shows, shaped like Gmail's: mailboxes (the Gmail, IMAP and
+ * Outlook accounts on the Otter account), their labels, and threads of
+ * messages. Label ids are Gmail's (`INBOX`, `STARRED`, …) or a user label's;
+ * an IMAP folder is a label (docs/imap.md), and so are Outlook's folders and
+ * categories (docs/outlook.md).
  */
 
 nonisolated struct Person: Hashable, Codable {
@@ -25,25 +26,33 @@ nonisolated struct Mailbox: Identifiable, Hashable, Codable {
     /** Set in Settings › Mailboxes; shown in the sidebar and on rows. */
     var displayName: String
     var color: String
-    /** The address's signature, as HTML: Gmail's, or for IMAP the Otter account's (preferences, `signatures`). */
+    /** The address's signature, as HTML: Gmail's, or for IMAP and Outlook the Otter account's (preferences, `signatures`). */
     var signature: String
     var labels: [MailLabel]
     var picture: String? = nil
-    /** Linked to the Otter account on another device, but not signed in on this one (Google, or the IMAP password). */
+    /** Linked to the Otter account on another device, but not signed in on this one (Google, Microsoft, or the IMAP password). */
     var signedOut = false
-    /** Where an IMAP mailbox lives; nil for Gmail. */
+    /** Where an IMAP mailbox lives; nil for Gmail and Outlook. */
     var imap: ImapSettings? = nil
+    /** An Outlook mailbox (Microsoft Graph). */
+    var outlook: Bool? = nil
 
     var id: String { email }
     var me: Person { Person(name: name, email: email) }
-    var provider: MailProviderKind { imap == nil ? .gmail : .imap }
-    var capabilities: MailCapabilities { imap == nil ? .gmail : .imap }
+    var provider: MailProviderKind { imap != nil ? .imap : outlook == true ? .outlook : .gmail }
+    var capabilities: MailCapabilities {
+        switch provider {
+        case .gmail: .gmail
+        case .imap: .imap
+        case .outlook: .outlook
+        }
+    }
 }
 
 // ── Providers (packages/contracts/src/mail.ts) ────────────────────────────
 
 nonisolated enum MailProviderKind: String, Codable {
-    case gmail, imap
+    case gmail, imap, outlook
 }
 
 /** A mail server: TLS from the start ("tls", ports 993/465), or upgraded with STARTTLS (143/587). */
@@ -66,17 +75,19 @@ nonisolated struct ImapSettings: Hashable, Codable {
 nonisolated struct MailCapabilities: Hashable {
     /** Gmail's sorting of the inbox (categories, Important). */
     var categories: Bool
-    /** A message can carry several labels at once (Gmail); IMAP mail sits in one folder. */
+    /** A message can carry several labels at once (Gmail, Outlook's categories); IMAP mail sits in one folder. */
     var multipleLabels: Bool
     var labelColors: Bool
     /** Signatures kept by the server (Gmail's settings) rather than on this iPhone. */
     var serverSignatures: Bool
     var calendar: Bool
-    /** New mail arrives by push through the relay (Gmail); otherwise the iPhone watches itself. */
+    /** New mail arrives by push through the relay (Gmail, Outlook); otherwise the iPhone watches itself. */
     var relayPush: Bool
 
     static let gmail = MailCapabilities(categories: true, multipleLabels: true, labelColors: true, serverSignatures: true, calendar: true, relayPush: true)
     static let imap = MailCapabilities(categories: false, multipleLabels: false, labelColors: false, serverSignatures: false, calendar: false, relayPush: false)
+    /** Categories are its labels (colored), folders move mail; Graph doesn't expose Outlook's signatures. */
+    static let outlook = MailCapabilities(categories: false, multipleLabels: true, labelColors: true, serverSignatures: false, calendar: false, relayPush: true)
 }
 
 nonisolated struct MailLabel: Identifiable, Hashable, Codable {

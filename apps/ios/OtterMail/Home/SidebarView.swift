@@ -118,8 +118,8 @@ struct SidebarView: View {
                         .foregroundStyle(palette.warning)
                         .padding(12)
                 }
-                // Important is Gmail's sorting; a mailbox without it (IMAP) doesn't show it.
-                let sorts = scope.flatMap(store.mailbox)?.capabilities.categories ?? true
+                // Important is Gmail's sorting, and Outlook's high importance; IMAP has neither.
+                let sorts = scope.flatMap(store.mailbox)?.provider != .imap
                 ForEach(Folder.system.filter { sorts || $0 != .important }, id: \.self) { folder in
                     row(folder, scope: scope)
                 }

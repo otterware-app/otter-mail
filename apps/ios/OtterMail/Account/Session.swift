@@ -35,6 +35,7 @@ final class Session {
     let agent = Agent()
     @ObservationIgnored let relay = Relay()
     @ObservationIgnored let google = GoogleAuth()
+    @ObservationIgnored let microsoft = MicrosoftAuth()
     @ObservationIgnored private var sync: MailSync?
     @ObservationIgnored private var pushTopic: String?
     @ObservationIgnored private var refreshing: Task<Void, Never>?
@@ -102,7 +103,7 @@ final class Session {
 
     private func startLive() {
         if let user { store.configureRecovery(namespace: Data(user.id.utf8).base64EncodedString().replacingOccurrences(of: "/", with: "_")) }
-        let sync = MailSync(store: store, google: google)
+        let sync = MailSync(store: store, google: google, microsoft: microsoft, relay: relay)
         self.sync = sync
         store.sync = sync
         let cached = (try? JSONDecoder().decode([Mailbox].self, from: UserDefaults.standard.data(forKey: "otter:mailboxes") ?? Data())) ?? []
@@ -113,7 +114,7 @@ final class Session {
         Task { await refreshAccount() }
     }
 
-    /** Everything from the relay, then mail from Gmail: on launch, and when the app comes back. */
+    /** Everything from the relay, then mail from the mailboxes' servers: on launch, and when the app comes back. */
     func refreshAccount() async {
         if let refreshing { return await refreshing.value }
         guard case .signedIn = state, let currentSync = sync else { return }
@@ -174,7 +175,7 @@ final class Session {
         await pullPreferences()
         guard case .signedIn = state else { return }
         await sync?.syncAll(notify: true)
-        await sync?.watch(pushTopic: pushTopic, gmailOnly: true)
+        await sync?.watch(pushTopic: pushTopic, relayOnly: true)
         await updatePushRegistration()
         await updateBadge()
     }
@@ -191,18 +192,58 @@ final class Session {
         await sync?.sync(profile.email)
     }
 
-    /** Signs in to Google for a mailbox linked on another device (or whose sign-in lapsed). */
+    /** Signs in to Google (or Microsoft, for Outlook) for a mailbox linked on another device (or whose sign-in lapsed). */
     func signIn(mailbox email: String) async throws {
         busy = "Signing in…"
         defer { busy = nil }
-        let (profile, _) = try await google.signIn(loginHint: email)
-        guard profile.email.lowercased() == email.lowercased() else {
-            await google.signOut(profile.email)
-            throw GoogleAuth.Failure.google("That's \(profile.email). Sign in as \(email).")
+        if store.mailbox(email)?.provider == .outlook {
+            let (profile, _) = try await microsoft.signIn(loginHint: email)
+            guard profile.email == email.lowercased() else {
+                // Not a mailbox here: its sign-in has no use.
+                if store.mailbox(profile.email) == nil { microsoft.forget(profile.email) }
+                throw MicrosoftAuth.Failure.microsoft("That's \(profile.email). Sign in as \(email).")
+            }
+        } else {
+            let (profile, _) = try await google.signIn(loginHint: email)
+            guard profile.email.lowercased() == email.lowercased() else {
+                await google.signOut(profile.email)
+                throw GoogleAuth.Failure.google("That's \(profile.email). Sign in as \(email).")
+            }
         }
         store.setSignedOut(false, email)
         saveMailboxes()
         await sync?.sync(email)
+        await sync?.watch(pushTopic: pushTopic)
+    }
+
+    /**
+     * Signs in to an Outlook mailbox (Microsoft 365, or outlook.com and the
+     * like) and links it to the Otter account with Microsoft's ID token.
+     */
+    func addOutlookMailbox() async throws {
+        busy = "Adding the mailbox…"
+        defer { busy = nil }
+        let (profile, tokens) = try await microsoft.signIn()
+        guard let idToken = tokens.idToken else { throw MicrosoftAuth.Failure.microsoft("Microsoft didn't return an ID token.") }
+        let existing = store.mailbox(profile.email)
+        store.upsert(mailbox: Mailbox(
+            email: profile.email,
+            name: profile.name ?? profile.email,
+            displayName: existing?.displayName ?? profile.name ?? profile.email,
+            color: existing?.color ?? Self.defaultColor(profile.email),
+            // Outlook's signature follows the Otter account, as IMAP's does.
+            signature: existing?.signature ?? remoteSignatures[profile.email] ?? "",
+            labels: existing?.labels ?? [],
+            outlook: true
+        ))
+        saveMailboxes()
+        try await relay.putAccount(profile.email, idToken: idToken, profile: .init(
+            email: profile.email, provider: .outlook, name: profile.name,
+            displayName: existing?.displayName, color: existing?.color
+        ))
+        busy = "Loading your mail…"
+        await sync?.sync(profile.email)
+        await sync?.watch(pushTopic: pushTopic)
     }
 
     /**
@@ -283,7 +324,7 @@ final class Session {
         }
     }
 
-    /** Saves the signature in Gmail, or here and on the Otter account for IMAP (the demo just keeps it). */
+    /** Saves the signature in Gmail, or here and on the Otter account for IMAP and Outlook (the demo just keeps it). */
     func setSignature(_ html: String, for email: String) async throws {
         if let sync {
             try await sync.setSignature(html, for: email)
@@ -307,11 +348,12 @@ final class Session {
         try? await relay.unlink(mailbox.email)
     }
 
-    /** Forgets the mailbox's sign-in here: Google's (and asks Google to end it), or the IMAP password. */
+    /** Forgets the mailbox's sign-in here: Google's (and asks Google to end it), Microsoft's, or the IMAP password. */
     private func signOut(_ mailbox: Mailbox) async {
         let userId = user?.id
-        let revocation = mailbox.imap == nil ? google.forget(mailbox.email) : nil
-        if mailbox.imap != nil { ImapProvider.setPassword(nil, for: mailbox.email) }
+        let revocation = mailbox.provider == .gmail ? google.forget(mailbox.email) : nil
+        if mailbox.provider == .imap { ImapProvider.setPassword(nil, for: mailbox.email) }
+        if mailbox.provider == .outlook { microsoft.forget(mailbox.email) }
         configurePush()
         if let userId {
             try? await PushState.locked("notification:" + mailbox.email) {
@@ -329,6 +371,7 @@ final class Session {
         for account in accounts {
             let existing = store.mailbox(account.email)
             let imap = account.provider == .imap ? account.imap : nil
+            let outlook = account.provider == .outlook
             if let before = existing?.imap, let imap, Self.hosts(before) != Self.hosts(imap) {
                 // Moved to other servers on another device: the password isn't sent there until it's entered again for them.
                 ImapProvider.setPassword(nil, for: account.email)
@@ -339,12 +382,14 @@ final class Session {
                 name: account.name ?? (imap == nil ? account.email : ""),
                 displayName: account.displayName ?? account.name ?? account.email,
                 color: account.color ?? Self.defaultColor(account.email),
-                // New here: an IMAP mailbox's signature as the account keeps it.
-                signature: existing?.signature ?? (imap == nil ? "" : remoteSignatures[account.email.lowercased()] ?? ""),
+                // New here: an IMAP or Outlook mailbox's signature as the account keeps it.
+                signature: existing?.signature ?? (imap == nil && !outlook ? "" : remoteSignatures[account.email.lowercased()] ?? ""),
                 labels: existing?.labels ?? [],
                 picture: account.picture,
-                signedOut: imap == nil ? !google.isSignedIn(account.email) : ImapProvider.password(account.email) == nil,
-                imap: imap
+                signedOut: imap != nil ? ImapProvider.password(account.email) == nil
+                    : outlook ? !microsoft.isSignedIn(account.email) : !google.isSignedIn(account.email),
+                imap: imap,
+                outlook: outlook ? true : nil
             ))
         }
         // Unlinked on another device: gone here too.
@@ -501,8 +546,9 @@ final class Session {
         relay.disconnect()
         sync?.forgetAll()
         sync = nil
-        let revocations = mailboxes.filter { $0.imap == nil }.map { google.forget($0.email) }
-        for mailbox in mailboxes where mailbox.imap != nil { ImapProvider.setPassword(nil, for: mailbox.email) }
+        let revocations = mailboxes.filter { $0.provider == .gmail }.map { google.forget($0.email) }
+        for mailbox in mailboxes where mailbox.provider == .imap { ImapProvider.setPassword(nil, for: mailbox.email) }
+        for mailbox in mailboxes where mailbox.provider == .outlook { microsoft.forget(mailbox.email) }
         Task {
             for mailbox in mailboxes {
                 try? await PushState.locked("notification:" + mailbox.email) {
@@ -559,7 +605,8 @@ final class Session {
     /** Local preference/access changes take effect immediately, even when the relay is offline. */
     private func configurePush() {
         guard let user else { PushState.configure(nil); return }
-        let emails = store.shownMailboxes.filter { $0.imap == nil && !$0.signedOut && google.isSignedIn($0.email) }.map { $0.email.lowercased() }
+        // APNs for Gmail only: the relay doesn't push Outlook's changes to phones yet.
+        let emails = store.shownMailboxes.filter { $0.provider == .gmail && !$0.signedOut && google.isSignedIn($0.email) }.map { $0.email.lowercased() }
         PushState.configure(.init(userId: user.id, mode: preferences.notifications.rawValue, mailboxes: emails))
         if pushingRegistration == nil {
             pushingRegistration = Task {
@@ -596,7 +643,7 @@ final class Session {
         guard let email = destination.email ?? destination.thread.flatMap({ store.thread($0)?.mailbox }),
               let mailbox = store.mailboxes.first(where: { $0.email.lowercased() == email.lowercased() }), !mailbox.signedOut else { return }
         await sync?.sync(mailbox.email)
-        if let thread = destination.thread, mailbox.imap == nil, store.thread(thread)?.mailbox.lowercased() != mailbox.email.lowercased() {
+        if let thread = destination.thread, mailbox.provider == .gmail, store.thread(thread)?.mailbox.lowercased() != mailbox.email.lowercased() {
             let api = GmailAPI(email: mailbox.email) { [google] force in try await google.accessToken(mailbox.email, force: force) }
             if let loaded = try? await api.thread(thread), loaded.mailbox == mailbox.email,
                user?.id == originalUser, store.mailbox(mailbox.email) != nil { store.upsert(threads: [loaded]) }
