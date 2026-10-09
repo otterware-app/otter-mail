@@ -17,7 +17,7 @@ import Network
 nonisolated final class MailSocket {
     let transport: any MailTransport
     private var buffer = Data()
-    private var literalLimit = Self.maxLiteral
+    private var literalLimit = MailSocket.maxLiteral
 
     private init(_ transport: any MailTransport) {
         self.transport = transport

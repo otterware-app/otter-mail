@@ -8,17 +8,6 @@ import Foundation
  * categories (docs/outlook.md).
  */
 
-nonisolated struct Person: Hashable, Codable {
-    var name: String
-    var email: String
-
-    /** The name, or the address when there's none. */
-    var label: String { name.isEmpty ? email : name }
-
-    /** Whether this is `address` (a mailbox's own, say), whatever its case. */
-    func isAddress(_ address: String) -> Bool { email.caseInsensitiveCompare(address) == .orderedSame }
-}
-
 nonisolated struct Mailbox: Identifiable, Hashable, Codable {
     /** The address: the one thing every device agrees on. */
     var email: String
