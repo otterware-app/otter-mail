@@ -875,18 +875,46 @@ function splitPlainQuote(text: string): [string, string] {
   return [text, ""];
 }
 
+const URL_RE = /\bhttps?:\/\/[^\s<>"]+[^\s<>".,;:!?)\]}'*]/g;
+
+/** Plain text with its URLs as links that open like the HTML body's. */
+function Linkified({ text }: { text: string }) {
+  const parts: ReactNode[] = [];
+  let last = 0;
+  for (const match of text.matchAll(URL_RE)) {
+    const url = match[0];
+    parts.push(text.slice(last, match.index));
+    parts.push(
+      <a
+        key={match.index}
+        href={url}
+        onClick={(e) => {
+          e.preventDefault();
+          openLink(url, { flip: isModClick(e) });
+        }}
+        className="text-primary underline underline-offset-2 hover:opacity-80"
+      >
+        {url}
+      </a>,
+    );
+    last = match.index + url.length;
+  }
+  parts.push(text.slice(last));
+  return parts;
+}
+
 function PlainBody({ text }: { text: string }) {
   const [main, quote] = splitPlainQuote(text);
   const [open, setOpen] = useState(false);
   return (
     <div>
-      <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-foreground/90">
-        {main}
+      <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-foreground/90 [overflow-wrap:anywhere]">
+        <Linkified text={main} />
       </pre>
       {quote ? <QuoteToggle open={open} onToggle={() => setOpen((o) => !o)} /> : null}
       {quote && open ? (
-        <pre className="mt-2 whitespace-pre-wrap border-l-2 border-border pl-3 font-sans text-sm leading-relaxed text-muted-foreground">
-          {quote}
+        <pre className="mt-2 whitespace-pre-wrap border-l-2 border-border pl-3 font-sans text-sm leading-relaxed text-muted-foreground [overflow-wrap:anywhere]">
+          <Linkified text={quote} />
         </pre>
       ) : null}
     </div>
