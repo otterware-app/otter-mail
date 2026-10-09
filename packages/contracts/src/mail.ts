@@ -5,11 +5,14 @@
  * A mailbox is reached through a provider. Gmail signs in with Google and
  * talks to the Gmail API, with changes pushed through the relay. IMAP works
  * with any IMAP server, sends over SMTP and watches for new mail with IDLE.
+ * Outlook (Microsoft 365, outlook.com) signs in with Microsoft and talks to
+ * Microsoft Graph, with changes pushed through the relay like Gmail's.
  * Everything above the provider (the cache, lists, the UI) sees mail the same
- * way: messages carrying labels. For IMAP, a label is a folder.
+ * way: messages carrying labels. For IMAP, a label is a folder; for Outlook,
+ * a category or a folder (docs/outlook.md).
  */
 
-export type MailProviderKind = "gmail" | "imap";
+export type MailProviderKind = "gmail" | "imap" | "outlook";
 
 /** A mail server: TLS from the start ("tls", ports 993/465), or upgraded with STARTTLS (143/587). */
 export interface MailServer {
@@ -43,9 +46,9 @@ export interface MailCapabilities {
   labelColors: boolean;
   /** Signatures kept by the server (Gmail's settings) rather than on this device. */
   serverSignatures: boolean;
-  /** Invitations answered in the calendar (Google Calendar) rather than by email reply. */
+  /** Invitations answered in the calendar (Google Calendar, Outlook's) rather than by email reply. */
   calendar: boolean;
-  /** New mail arrives by push through the relay (Gmail); otherwise the device watches itself. */
+  /** New mail arrives by push through the relay (Gmail, Outlook); otherwise the device watches itself. */
   relayPush: boolean;
 }
 
@@ -54,6 +57,19 @@ export const GMAIL_CAPABILITIES: MailCapabilities = {
   multipleLabels: true,
   labelColors: true,
   serverSignatures: true,
+  calendar: true,
+  relayPush: true,
+};
+
+/**
+ * Outlook: categories are its labels (several per message, colored), folders
+ * move mail; signatures stay on the device (Graph doesn't expose Outlook's).
+ */
+export const OUTLOOK_CAPABILITIES: MailCapabilities = {
+  categories: false,
+  multipleLabels: true,
+  labelColors: true,
+  serverSignatures: false,
   calendar: true,
   relayPush: true,
 };

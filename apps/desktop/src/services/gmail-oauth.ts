@@ -31,6 +31,8 @@ import {
   type GoogleAuth,
 } from "@otter-mail/core";
 
+import { signInPage } from "@otter-mail/shared/sign-in-page";
+
 import { appInfo } from "../backend-protocol.js";
 import { requestMain } from "../main-link.js";
 import { getCredentials } from "./credentials-store.js";
@@ -178,12 +180,6 @@ function toStored(
   };
 }
 
-const CALLBACK_PAGE = (message: string) => `<!doctype html>
-<html><head><meta charset="utf-8"><title>Otter Mail</title>
-<style>body{font:15px -apple-system,BlinkMacSystemFont,sans-serif;display:grid;place-items:center;height:100vh;margin:0;color:#27272a}
-@media (prefers-color-scheme:dark){body{background:#18181b;color:#e4e4e7}}</style></head>
-<body><p>${message}</p></body></html>`;
-
 /** The sign-in waiting on the browser, if any. Only one runs at a time: they share the port. */
 let pendingSignIn: { cancel: () => void; done: Promise<unknown> } | null = null;
 
@@ -249,19 +245,19 @@ async function authorizeInBrowser(opts: {
         res.writeHead(404).end();
         return;
       }
-      const finish = (status: number, message: string) => {
+      const finish = (status: number, title: string, detail: string) => {
         res.writeHead(status, { "Content-Type": "text/html; charset=utf-8" });
-        res.end(CALLBACK_PAGE(message));
+        res.end(signInPage({ title, detail, ok: status === 200 }));
         clearTimeout(timer);
       };
       if (url.searchParams.get("state") !== state) {
-        finish(400, "This sign-in link is stale. Return to Otter Mail and try again.");
+        finish(400, "This sign-in link is stale", "Return to Otter Mail and try again.");
         reject(new Error("Google sign-in returned an unexpected state."));
       } else if (error) {
-        finish(400, "Sign-in was cancelled. You can close this tab.");
+        finish(400, "Sign-in cancelled", "You can close this tab.");
         reject(new Error(`Google sign-in failed: ${error}`));
       } else {
-        finish(200, "Signed in. You can close this tab and return to Otter Mail.");
+        finish(200, "Signed in", "You can close this tab and return to Otter Mail.");
         resolve(receivedCode!);
       }
     });

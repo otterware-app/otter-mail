@@ -9,6 +9,7 @@ import { registerAgentHandlers } from "./handlers/agent.js";
 import { registerCalendarHandlers } from "./handlers/calendar.js";
 import { registerGmailHandlers } from "./handlers/gmail.js";
 import { registerImapAccountHandlers } from "./handlers/imap-accounts.js";
+import { registerOutlookAccountHandlers } from "./handlers/outlook-accounts.js";
 import { registerOtterAccountHandlers } from "./handlers/otter-account.js";
 import { registerProjectHandlers } from "./handlers/projects.js";
 import { registerSearchHandlers } from "./handlers/search.js";
@@ -35,12 +36,14 @@ import { refreshSignatures } from "./services/signatures.js";
 export async function startCore(platform: Platform): Promise<void> {
   setPlatform(platform);
   await platform.google.load();
+  await platform.microsoft?.load();
   await loadImapPasswords();
   await loadOtterAccount();
 
   registerGmailHandlers();
   startMailSchedule();
   registerImapAccountHandlers();
+  registerOutlookAccountHandlers();
   registerSearchHandlers();
   registerCalendarHandlers();
   registerOtterAccountHandlers();
@@ -79,6 +82,7 @@ export async function startCore(platform: Platform): Promise<void> {
 export { broadcast, handle, registeredHandlers, type Handler } from "./ipc.js";
 export { fromBase64, toBase64 } from "./bytes.js";
 export { SIGNED_OUT_MESSAGE, SignInCancelledError } from "./google.js";
+export { GRAPH_ME_URL, OUTLOOK_SIGNED_OUT_MESSAGE, signInFromMe } from "./microsoft.js";
 export { readJson, writeJson } from "./json-file.js";
 export { logger } from "./logger.js";
 export type * from "./platform.js";

@@ -7,10 +7,11 @@ import { prepareTodoistPopup, closeTodoistPopup, authorizeTodoistPopup } from ".
  *
  * A few things belong to the page itself: window-level channels (settings
  * navigation, ⌘W), and whatever needs the user's click to be allowed (file
- * pickers, Google's sign-in popup). Those start right when the renderer
+ * pickers, Google's and Microsoft's sign-in popups). Those start right when the renderer
  * invokes the channel, and the backend's request picks up what they return.
  */
 
+import type { OutlookSignInResult } from "@otter-mail/contracts/relay";
 import type {
   DesktopBridge,
   NativeThemeInfo,
@@ -79,34 +80,45 @@ function pickFiles(): Promise<PageRequests["pickFiles"]["result"]> {
 
 let signInPopup: Window | null = null;
 
-type SignInMessage = { result?: GoogleSignInResult; error?: string };
+/** The relay's mailbox sign-ins: Gmail's (`/v1/gmail/…`) and Outlook's (`/v1/outlook/…`). */
+type SignInResults = { gmail: GoogleSignInResult; outlook: OutlookSignInResult };
+type SignInProvider = keyof SignInResults;
+const PROVIDER_NAMES: Record<SignInProvider, string> = { gmail: "Google", outlook: "Microsoft" };
+
+type SignInMessage = { result?: SignInResults[SignInProvider]; error?: string };
 
 /**
- * A sign-in finished in this tab: when the browser blocks the popup, Google's
- * consent opens here instead, and the relay sends the answer back in the URL.
+ * A sign-in finished in this tab: when the browser blocks the popup, the
+ * consent page opens here instead, and the relay sends the answer back in the
+ * URL (`#gmail-sign-in=…`, `#outlook-sign-in=…`).
  */
-let returnedSignIn: SignInMessage | null = (() => {
-  const match = /^#gmail-sign-in=(.+)$/.exec(location.hash);
+let returnedSignIn: (SignInMessage & { provider: SignInProvider }) | null = (() => {
+  const match = /^#(gmail|outlook)-sign-in=(.+)$/.exec(location.hash);
   if (!match) return null;
   history.replaceState(null, "", location.pathname + location.search);
   try {
-    return JSON.parse(decodeURIComponent(match[1]!)) as SignInMessage;
+    const message = JSON.parse(decodeURIComponent(match[2]!)) as SignInMessage;
+    return { ...message, provider: match[1] as SignInProvider };
   } catch {
     return null;
   }
 })();
 
-/** The relay's Gmail sign-in popup; resolves with what it posts back. */
-function googleSignIn(loginHint?: string): Promise<GoogleSignInResult> {
-  const returned = returnedSignIn;
-  returnedSignIn = null;
-  if (returned?.result) return Promise.resolve(returned.result);
-  if (returned) return Promise.reject(new Error(returned.error ?? "Google sign-in failed."));
+/** The relay's sign-in popup for a mailbox; resolves with what it posts back. */
+function signIn<P extends SignInProvider>(
+  provider: P,
+  loginHint?: string,
+): Promise<SignInResults[P]> {
+  const failed = `${PROVIDER_NAMES[provider]} sign-in failed.`;
+  const returned = returnedSignIn?.provider === provider ? returnedSignIn : null;
+  if (returned) returnedSignIn = null;
+  if (returned?.result) return Promise.resolve(returned.result as SignInResults[P]);
+  if (returned) return Promise.reject(new Error(returned.error ?? failed));
 
-  const url = new URL(`${RELAY_URL}/v1/gmail/authorize`);
+  const url = new URL(`${RELAY_URL}/v1/${provider}/authorize`);
   if (loginHint) url.searchParams.set("login_hint", loginHint);
   signInPopup?.close();
-  const popup = window.open(url, "otter-gmail-sign-in", "popup,width=520,height=680");
+  const popup = window.open(url, `otter-${provider}-sign-in`, "popup,width=520,height=680");
   if (!popup) {
     // Popup blocked: sign in in this tab; the answer comes back when it reloads.
     location.assign(url);
@@ -120,13 +132,16 @@ function googleSignIn(loginHint?: string): Promise<GoogleSignInResult> {
       if (signInPopup === popup) signInPopup = null;
     };
     const onMessage = (event: MessageEvent) => {
-      const data = event.data as { type?: string; result?: GoogleSignInResult; error?: string };
-      if (event.origin !== new URL(RELAY_URL).origin || data?.type !== "otter:gmail-sign-in") {
+      const data = event.data as { type?: string; result?: SignInResults[P]; error?: string };
+      if (
+        event.origin !== new URL(RELAY_URL).origin ||
+        data?.type !== `otter:${provider}-sign-in`
+      ) {
         return;
       }
       done();
       if (data.result) resolve(data.result);
-      else reject(new Error(data.error ?? "Google sign-in failed."));
+      else reject(new Error(data.error ?? failed));
     };
     const closedCheck = setInterval(() => {
       if (!popup || popup.closed) {
@@ -201,11 +216,12 @@ const backend = connectBackend({
       const { texts, source, target } = params as PageRequests["translate"]["params"];
       return translate(texts, source, target) as never;
     }
+    const loginHint = (params as { loginHint?: string } | undefined)?.loginHint;
     const action =
       started[kind] ??
       (kind === "pickFiles"
         ? pickFiles()
-        : googleSignIn((params as { loginHint?: string } | undefined)?.loginHint));
+        : signIn(kind === "outlookSignIn" ? "outlook" : "gmail", loginHint));
     delete started[kind];
     return action as never;
   },
@@ -253,7 +269,10 @@ async function invoke<T>(channel: string, params?: unknown): Promise<T> {
   if (channel === "todoist:signIn") prepareTodoistPopup();
   if (channel === "gmail:pickAttachments") started.pickFiles = pickFiles();
   if (channel === "gmail:addAccount" && !__DEMO__) {
-    started.googleSignIn = googleSignIn((params as { email?: string } | undefined)?.email);
+    started.googleSignIn = signIn("gmail", (params as { email?: string } | undefined)?.email);
+  }
+  if (channel === "gmail:addOutlookAccount" && !__DEMO__) {
+    started.outlookSignIn = signIn("outlook", (params as { email?: string } | undefined)?.email);
   }
   if (channel === "gmail:cancelAddAccount") signInPopup?.close();
 
@@ -386,9 +405,12 @@ export async function requireOtterAccount(): Promise<void> {
   if (__DEMO__) return;
   const state = await invoke<{ user: unknown }>("otter:getState");
   if (!state.user) await invoke("otter:signIn");
-  // Back from signing in to Gmail in this tab: finish adding the mailbox.
-  if (returnedSignIn?.result)
-    void invoke("gmail:addAccount", { email: returnedSignIn.result.email });
+  // Back from signing in to Gmail or Outlook in this tab: finish adding the mailbox.
+  if (returnedSignIn?.result) {
+    const channel =
+      returnedSignIn.provider === "outlook" ? "gmail:addOutlookAccount" : "gmail:addAccount";
+    void invoke(channel, { email: returnedSignIn.result.email });
+  }
   webBridge.on("otter:state", (next) => {
     if (!(next as { user: unknown }).user) location.assign("/");
   });

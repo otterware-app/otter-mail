@@ -2,9 +2,10 @@
  * Messages between the page (bridge.ts) and the mail backend's Web Worker
  * (worker.ts). The page invokes the backend's handlers and receives its
  * pushes, like the desktop's IPC; the backend asks the page for what only a
- * page can do (file pickers, Google sign-in popups, downloads, notifications).
+ * page can do (file pickers, Google and Microsoft sign-in popups, downloads, notifications).
  */
 
+import type { OutlookSignInResult } from "@otter-mail/contracts/relay";
 import type { LanguageDetection, PickedFile, TranslationResult } from "@otter-mail/core";
 
 /** The Gmail sign-in the relay's popup hands back (see infra/relay, /v1/gmail/callback). */
@@ -19,7 +20,7 @@ export type GoogleSignInResult = {
   clientId?: string;
 };
 
-/** The page's answer to `googleSignIn` when the user closes the popup or declines. */
+/** The page's answer to `googleSignIn` and `outlookSignIn` when the user closes the popup or declines. */
 export { GMAIL_SIGN_IN_CANCELLED as SIGN_IN_CANCELLED } from "@otter-mail/contracts/relay";
 
 /** What the backend asks of the page, and what the page answers. */
@@ -27,6 +28,7 @@ export type PageRequests = {
   todoistSignIn: { params: { url?: string; close?: boolean }; result: string };
   pickFiles: { params: undefined; result: PickedFile[] };
   googleSignIn: { params: { loginHint?: string }; result: GoogleSignInResult };
+  outlookSignIn: { params: { loginHint?: string }; result: OutlookSignInResult };
   detectLanguage: { params: { text: string }; result: LanguageDetection };
   translate: {
     params: { texts: string[]; source: string; target: string };

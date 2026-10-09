@@ -88,7 +88,10 @@ async function refreshOnce(): Promise<void> {
       const watch = findProvider(account)?.watchViaRelay;
       if (!watch || !linked.has(account.email.toLowerCase()) || !isSignedIn(account)) continue;
       try {
-        const clientId = pushTopics ? await platform().google.getClientId?.(account.id) : undefined;
+        const clientId =
+          pushTopics && account.provider !== "outlook"
+            ? await platform().google.getClientId?.(account.id)
+            : undefined;
         const topic = (clientId && pushTopics?.[clientId.split("-")[0]!]) || pushTopic;
         if (await watch(account.id, topic)) pushed.push(account.id);
       } catch (err) {

@@ -242,6 +242,33 @@ describe("IMAP mailboxes", () => {
     expect(body).toMatchObject({ idToken: "token-for-a@gmail.com", name: "A" });
     expect(body).not.toHaveProperty("provider");
   });
+
+  it("Outlook links with a Microsoft ID token, never its photo", async () => {
+    const body = await linkRequest(
+      {
+        id: "me@contoso.com",
+        email: "me@contoso.com",
+        name: "Me",
+        provider: "outlook",
+        picture: "data:image/jpeg;base64,AAAA",
+      },
+      async (id) => `token-for-${id}`,
+    );
+    expect(body).toEqual({
+      provider: "outlook",
+      idToken: "token-for-me@contoso.com",
+      name: "Me",
+      picture: null,
+      displayName: null,
+      color: null,
+    });
+  });
+
+  it("an Outlook mailbox from the relay stays Outlook", () => {
+    const account = accountFromRelay({ ...remote("me@contoso.com"), provider: "outlook" });
+    expect(account.provider).toBe("outlook");
+    expect(account.imap).toBeUndefined();
+  });
 });
 
 describe("accountEdited", () => {
@@ -260,7 +287,7 @@ describe("accountEdited", () => {
     expect(relayRequests).toEqual([
       [
         "PUT",
-        "/v1/accounts/a%40x.com?providers=gmail,imap",
+        "/v1/accounts/a%40x.com?providers=gmail,imap,outlook",
         { displayName: "Work", color: "#f00" },
       ],
     ]);

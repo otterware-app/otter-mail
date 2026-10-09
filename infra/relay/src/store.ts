@@ -132,15 +132,19 @@ export async function deleteAccount(
 }
 
 /**
- * Everyone who linked this address as a Gmail account (normally one Otter
- * account). An IMAP mailbox at a Gmail address doesn't count: linking it
- * proved nothing.
+ * Everyone who linked this address with `provider`, Gmail or Outlook
+ * (normally one Otter account). An IMAP mailbox at the same address doesn't
+ * count: linking it proved nothing.
  */
-export async function usersWithGmail(db: Db, email: string): Promise<string[]> {
+export async function usersWithMailbox(
+  db: Db,
+  email: string,
+  provider: "gmail" | "outlook",
+): Promise<string[]> {
   const rows = await db
     .select({ userId: linkedAccounts.userId })
     .from(linkedAccounts)
-    .where(and(eq(linkedAccounts.email, email), eq(linkedAccounts.provider, "gmail")));
+    .where(and(eq(linkedAccounts.email, email), eq(linkedAccounts.provider, provider)));
   return rows.map((row) => row.userId);
 }
 

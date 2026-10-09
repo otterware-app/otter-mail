@@ -319,7 +319,8 @@ function parseEntity(raw: string): Entity {
 const headerOf = (headers: Header[], name: string) =>
   headers.find((h) => h.name.toLowerCase() === name.toLowerCase())?.value ?? "";
 
-function parseMime(raw: string): Pick<Message, "headers" | "text" | "html" | "attachments"> {
+/** A raw RFC 822 message's headers, bodies and attachments (outlook.ts reads sendMail's with it too). */
+export function parseMime(raw: string): Pick<Message, "headers" | "text" | "html" | "attachments"> {
   const out = {
     text: null as string | null,
     html: null as string | null,

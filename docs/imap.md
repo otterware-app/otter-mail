@@ -1,8 +1,8 @@
 # IMAP mailboxes
 
 Otter Mail reads Gmail through the Gmail API, and every other mailbox through IMAP (sending over
-SMTP). The Otter account itself stays a Google sign-in (better-auth). This is how the two
-providers sit side by side, and where a third (Outlook, Microsoft Graph) would go.
+SMTP). The Otter account itself stays a Google sign-in (better-auth). This is how the
+providers sit side by side; Outlook, the third, is in [outlook.md](outlook.md).
 
 ## Layers
 
@@ -90,7 +90,7 @@ Its own Swift implementation of the same design: a `MailProvider` protocol with 
 Gmail client and an IMAP one (Network.framework, TLS by the system), IDLE while the app is in
 the foreground, and the same folder ↔ label mapping, so its lists and drawer work unchanged.
 
-## Adding a provider later
+## Outlook
 
-Outlook: an OAuth sign-in (like Google's) and either IMAP with XOAUTH2 (the IMAP provider with
-another way to log in) or a Microsoft Graph provider next to `gmail/` and `imap/`.
+A Microsoft Graph provider next to `gmail/` and `imap/`, with Microsoft's OAuth sign-in: see
+[outlook.md](outlook.md).

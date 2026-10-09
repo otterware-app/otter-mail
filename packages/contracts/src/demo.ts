@@ -32,6 +32,21 @@ export const demoGmailMailbox = z.object({
     .default({}),
 });
 
+export const demoOutlookMailbox = z.object({
+  provider: z.literal("outlook"),
+  email: z.email(),
+  /** For signing in by hand (Microsoft's page): `--login`. */
+  password: z.string().optional(),
+  /**
+   * Microsoft sign-ins, by the OAuth client they were made with (the Mac
+   * app's public client, or the relay's for the web app). `pnpm dev:demo
+   * --login` writes them. They lapse after 90 days unused: log in again.
+   */
+  refreshTokens: z
+    .object({ desktop: z.string().min(1).optional(), web: z.string().min(1).optional() })
+    .default({}),
+});
+
 export const demoImapMailbox = z.object({
   provider: z.literal("imap"),
   email: z.email(),
@@ -43,12 +58,13 @@ export const demoImapMailbox = z.object({
 });
 
 export const demoMailboxes = z.array(
-  z.discriminatedUnion("provider", [demoGmailMailbox, demoImapMailbox]),
+  z.discriminatedUnion("provider", [demoGmailMailbox, demoOutlookMailbox, demoImapMailbox]),
 );
 
 export type DemoGmailMailbox = z.infer<typeof demoGmailMailbox>;
+export type DemoOutlookMailbox = z.infer<typeof demoOutlookMailbox>;
 export type DemoImapMailbox = z.infer<typeof demoImapMailbox>;
-export type DemoMailbox = DemoGmailMailbox | DemoImapMailbox;
+export type DemoMailbox = DemoGmailMailbox | DemoOutlookMailbox | DemoImapMailbox;
 
 /** The variable's list; throws naming what's wrong with it. */
 export function parseDemoMailboxes(json: string): DemoMailbox[] {

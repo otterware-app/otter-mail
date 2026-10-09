@@ -10,6 +10,7 @@ import type { AsyncContext, FileInfo, Platform, SqlDatabase, SqlValue } from "@o
 
 import { webGoogleAuth } from "./google";
 import { connectMailSocket } from "./mail-socket";
+import { webMicrosoftAuth } from "./microsoft";
 import { webSecrets } from "./secrets";
 import type { PageEffect, PageRequests } from "./protocol";
 
@@ -115,9 +116,11 @@ const noContext = <T>(): AsyncContext<T> => ({ run: (_value, fn) => fn(), get: (
 
 export async function webPlatform(page: Page): Promise<Platform> {
   const database = await openDatabase();
-  // Demo mode: a pretend Gmail in front of fetch (left out of real builds).
+  // Demo mode: a pretend Gmail and Outlook in front of fetch (left out of real builds).
   const demo = __DEMO__ ? await import("./demo/gmail") : null;
+  const demoOutlook = __DEMO__ ? await import("./demo/outlook") : null;
   if (demo) await demo.installFakeGmail(files);
+  if (demoOutlook) await demoOutlook.installFakeOutlook(files);
   const relayUrl = demo
     ? demo.DEMO_RELAY_URL
     : import.meta.env.VITE_RELAY_URL || "https://relay.mail.otterware.app";
@@ -154,6 +157,9 @@ export async function webPlatform(page: Page): Promise<Platform> {
       }
     },
     google: demo ? demo.demoGoogleAuth() : webGoogleAuth({ relayUrl, page, files }),
+    microsoft: demoOutlook
+      ? demoOutlook.demoMicrosoftAuth()
+      : webMicrosoftAuth({ relayUrl, page, files }),
     relayUrl,
     agentServerUrl: demo ? `${self.location.origin}/api/agent` : undefined,
     relaySession: "cookie",

@@ -6,8 +6,8 @@ import pkg from "./package.json" with { type: "json" };
 
 /**
  * Build-time config from the environment, falling back to the repo's
- * gitignored .env.local and .env (KEY=VALUE lines). Holds the Google OAuth
- * client, which must not be committed.
+ * gitignored .env.local and .env (KEY=VALUE lines). Holds the Google and
+ * Microsoft OAuth clients, which must not be committed.
  */
 function buildEnv(key: string): string {
   const fromEnv = process.env[key]?.trim();
@@ -41,6 +41,7 @@ const shared = {
     __GOOGLE_LEGACY_CLIENT_SECRET__: JSON.stringify(
       buildEnv("OTTER_MAIL_GOOGLE_LEGACY_CLIENT_SECRET"),
     ),
+    __MICROSOFT_CLIENT_ID__: JSON.stringify(buildEnv("OTTER_MAIL_MICROSOFT_CLIENT_ID")),
   },
   deps: {
     alwaysBundle: (id: string) => !id.startsWith("node:") && !isExternal(id),

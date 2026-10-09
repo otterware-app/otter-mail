@@ -24,7 +24,12 @@ import {
   type ProvidersState,
   type SyncSettings,
 } from "../gmail/api";
-import { ImapAccountDialog, readableError } from "../gmail/add-mailbox";
+import {
+  ImapAccountDialog,
+  MicrosoftMark,
+  readableError,
+  useAddOutlook,
+} from "../gmail/add-mailbox";
 import { getAccountDisplayName } from "../gmail/account-style";
 import { AccountPicture } from "../gmail/account-picture";
 import {
@@ -46,6 +51,7 @@ import {
   useAccounts,
   useAddAccount,
   useGlobalSyncStatus,
+  useMailProviders,
 } from "../gmail/hooks";
 import { toast } from "../gmail/toast";
 import type { GmailAccount } from "../gmail/types";
@@ -395,6 +401,9 @@ function GoogleMark() {
 
 function MailboxStep({ accounts }: { accounts: GmailAccount[] }) {
   const addAccount = useAddAccount();
+  const outlook = useAddOutlook();
+  const hasOutlook = useMailProviders().data?.outlook ?? false;
+  const waitingFor = addAccount.isPending ? "Google" : outlook.pending ? "Microsoft" : null;
   const [imapOpen, setImapOpen] = useState(false);
   const addGmail = async () => {
     console.log("[Setup:addGmail]");
@@ -411,7 +420,7 @@ function MailboxStep({ accounts }: { accounts: GmailAccount[] }) {
         title={accounts.length > 0 ? "Your mail is connected" : "Connect your mail"}
         description="Otter Mail talks to your mail provider directly and keeps a copy on this device. If you use an agent, the mail and calendar data its tools return are shared with that agent."
       />
-      <div className="grid grid-cols-2 gap-3">
+      <div className={cn("grid gap-3", hasOutlook ? "grid-cols-3" : "grid-cols-2")}>
         <ChoiceCard
           icon={<GoogleMark />}
           title="Gmail"
@@ -420,20 +429,37 @@ function MailboxStep({ accounts }: { accounts: GmailAccount[] }) {
               ? "Finish signing in with Google…"
               : "Sign in with Google. Labels, categories and push included."
           }
-          disabled={addAccount.isPending}
+          disabled={waitingFor !== null}
           onClick={() => void addGmail()}
         />
+        {hasOutlook ? (
+          <ChoiceCard
+            icon={<MicrosoftMark />}
+            title="Outlook"
+            description={
+              outlook.pending
+                ? "Finish signing in with Microsoft…"
+                : "Sign in with Microsoft. Folders, categories, calendar and push included."
+            }
+            disabled={waitingFor !== null}
+            onClick={outlook.start}
+          />
+        ) : null}
         <ChoiceCard
           icon={<ServerIcon />}
           title="Other mail"
-          description="iCloud, Fastmail, Outlook or any IMAP server, found from your address."
+          description={
+            hasOutlook
+              ? "iCloud, Fastmail or any IMAP server, found from your address."
+              : "iCloud, Fastmail, Outlook or any IMAP server, found from your address."
+          }
           onClick={() => setImapOpen(true)}
         />
       </div>
-      {addAccount.isPending ? (
+      {waitingFor ? (
         <p className="mt-3 text-center text-[13px] text-muted-foreground">
           <LoaderIcon className="mr-1.5 inline size-3.5 animate-spin align-[-2px]" />
-          Waiting for Google.{" "}
+          Waiting for {waitingFor}.{" "}
           <button
             type="button"
             className="cursor-pointer text-foreground underline-offset-2 hover:underline"

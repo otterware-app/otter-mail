@@ -1174,3 +1174,449 @@ const work: SeedAccount = {
 };
 
 export const DEMO_ACCOUNTS: SeedAccount[] = [personal, work];
+
+// ── Outlook ──────────────────────────────────────────────────────────────────
+// A mailbox for the web demo's pretend Microsoft Graph (apps/web/src/web/demo/outlook.ts):
+// folders rather than labels, categories, flags and importance. Not in the
+// iPhone app's bundle (that's DEMO_ACCOUNTS).
+
+/** A folder of the Outlook seed: one of Outlook's own, or a folder of yours. */
+export type OutlookSeedFolder =
+  | "inbox"
+  | "archive"
+  | "sentitems"
+  | "drafts"
+  | "junkemail"
+  | "deleteditems"
+  | "clients"
+  | "acme";
+
+export type OutlookSeedMessage = {
+  folder: OutlookSeedFolder;
+  /** Messages with the same key are one conversation, each replying to the one before. */
+  conversation: string;
+  subject: string;
+  /** Omitted: the mailbox itself. */
+  from?: Person;
+  /** Omitted: the mailbox (mail to it), or the conversation's first sender (mail from it). */
+  to?: Person[];
+  cc?: Person[];
+  hoursAgo: number;
+  text: string;
+  html?: string;
+  attachments?: SeedAttachment[];
+  unread?: boolean;
+  flagged?: boolean;
+  importance?: "low" | "high";
+  categories?: string[];
+  headers?: Record<string, string>;
+};
+
+export type OutlookSeedEvent = {
+  uid: string;
+  subject: string;
+  start: number;
+  minutes: number;
+  allDay?: boolean;
+  location: string;
+  description: string;
+  organizer: Person;
+  attendees: Person[];
+  /** Your answer so far (Graph's words); the organizer's own events are "organizer". */
+  response: "notResponded" | "accepted" | "tentativelyAccepted" | "organizer";
+};
+
+export type OutlookSeedAccount = {
+  email: string;
+  name: string;
+  displayName: string;
+  color: string;
+  picture?: string;
+  /** Your own folders: "Clients", and "Acme" in it. */
+  folders: { key: OutlookSeedFolder; name: string; parent?: OutlookSeedFolder }[];
+  /** Outlook's categories, colored with its presets. */
+  categories: { name: string; color: string }[];
+  messages: (seededAt: number) => OutlookSeedMessage[];
+  events: (seededAt: number) => OutlookSeedEvent[];
+};
+
+const jordan = p("Jordan Lee", "jordan.lee@contoso.example");
+const ava = p("Ava Thompson", "ava.thompson@contoso.example");
+const diego = p("Diego Ramírez", "diego.ramirez@contoso.example");
+const mei = p("Mei Tanaka", "mei.tanaka@contoso.example");
+const contosoIt = p("Contoso IT", "it@contoso.example");
+const samPark = p("Sam Park", "sam@acme.example");
+
+export const DEMO_OUTLOOK_ACCOUNT: OutlookSeedAccount = {
+  email: jordan.email,
+  name: jordan.name,
+  displayName: "Contoso",
+  color: "#0078d4",
+  picture: portrait("#93c5fd", "#e0ac69", "#2b1d14"),
+  folders: [
+    { key: "clients", name: "Clients" },
+    { key: "acme", name: "Acme", parent: "clients" },
+  ],
+  categories: [
+    { name: "Finance", color: "preset4" },
+    { name: "Travel", color: "preset7" },
+    { name: "Urgent", color: "preset0" },
+    { name: "Follow up", color: "preset1" },
+  ],
+  messages: (seededAt) => {
+    const reviewStart = slot(seededAt, 2, 15);
+    return [
+      {
+        folder: "inbox",
+        conversation: "welcome",
+        subject: "Welcome to your Outlook demo mailbox",
+        from: p("Otter Mail", "team@otter.example"),
+        hoursAgo: 24 * 18,
+        text: "Hi Jordan,\n\nThis mailbox pretends to be Outlook: folders instead of labels, categories, flags and importance, all answered by a made-up Microsoft Graph in your browser. Nothing here reaches Microsoft.\n\nMove mail between folders, flag it, give it categories, reply, draft, search: sync catches up the way it does with the real one.\n\nThe Otter Mail team",
+      },
+      {
+        folder: "inbox",
+        conversation: "offsite",
+        subject: "Contoso offsite: venue shortlist",
+        from: ava,
+        to: [jordan, diego],
+        hoursAgo: 24 * 3,
+        categories: ["Travel"],
+        text: "Hi both,\n\nThree venues made the shortlist for the offsite next month:\n\n1. The Boathouse, Lake Union (fits 40, has a dock)\n2. Cedar Hall, Bainbridge (ferry ride, great food)\n3. The Foundry, downtown (easiest to get to)\n\nAny strong feelings before I book on Friday?\n\nAva",
+      },
+      {
+        folder: "sentitems",
+        conversation: "offsite",
+        subject: "Contoso offsite: venue shortlist",
+        to: [ava, diego],
+        hoursAgo: 24 * 2 + 5,
+        text: "Cedar Hall gets my vote: the ferry ride is half the fun. The Boathouse is a close second.\n\nJordan",
+      },
+      {
+        folder: "inbox",
+        conversation: "offsite",
+        subject: "Contoso offsite: venue shortlist",
+        from: ava,
+        to: [jordan, diego],
+        hoursAgo: 3,
+        unread: true,
+        categories: ["Travel"],
+        text: "Cedar Hall it is! I've put a hold on the dates (it's in your calendar). Jordan, could you sketch an agenda for the design track?",
+      },
+      {
+        folder: "inbox",
+        conversation: "certificate",
+        subject: "Action needed: renew your VPN certificate by Friday",
+        from: contosoIt,
+        hoursAgo: 9,
+        unread: true,
+        flagged: true,
+        importance: "high",
+        categories: ["Urgent"],
+        text: "Hi Jordan,\n\nYour VPN certificate expires on Friday. To renew it, open the Company Portal and choose Devices → Renew certificate. It takes about two minutes.\n\nAfter Friday you won't be able to reach internal sites from outside the office.\n\nContoso IT",
+      },
+      {
+        folder: "inbox",
+        conversation: "invoice",
+        subject: "Invoice INV-2041 from Fabrikam Print",
+        from: p("Fabrikam Print", "billing@fabrikam.example"),
+        hoursAgo: 26,
+        unread: true,
+        categories: ["Finance"],
+        text: "Hello,\n\nPlease find attached invoice INV-2041 for the workshop posters (40 × A2, matte).\n\nAmount due: $612.00, by 30 days from today.\n\nThank you for your business,\nFabrikam Print",
+        attachments: [
+          {
+            filename: "INV-2041.pdf",
+            mimeType: "application/pdf",
+            content: pdf("Invoice INV-2041", [
+              "Fabrikam Print, 200 Press Street",
+              "Bill to: Jordan Lee, Contoso",
+              "40 x A2 posters, matte ........ $560.00",
+              "Delivery ...................... $52.00",
+              "Total due ..................... $612.00",
+            ]),
+          },
+        ],
+      },
+      {
+        folder: "inbox",
+        conversation: "invite",
+        subject: `Sprint review: reader redesign @ ${when(reviewStart)}`,
+        from: priya,
+        to: [jordan, samPark],
+        hoursAgo: 14,
+        unread: true,
+        text: `Priya Natarajan has invited you to a meeting.\n\nSprint review: reader redesign\nWhen: ${when(reviewStart)}\nWhere: Video call\n\nWalkthrough of the phase 1 screens with the Acme team.`,
+        attachments: [
+          invite({
+            uid: "sprint-review-demo@acme.example",
+            summary: "Sprint review: reader redesign",
+            start: reviewStart,
+            minutes: 45,
+            location: "Video call",
+            organizer: priya,
+            attendees: [priya, samPark, jordan],
+          }),
+        ],
+      },
+      {
+        folder: "inbox",
+        conversation: "design-weekly",
+        subject: "Design Weekly #58: Calm interfaces",
+        from: p("Design Weekly", "letters@designweekly.example"),
+        hoursAgo: 30,
+        headers: unsubscribe("designweekly.example"),
+        text: "Design Weekly #58.\n\nCalm interfaces: what an inbox can learn from a library.\n\nType at small sizes: five fonts that hold up at 12px.\n\nThe case for fewer settings.",
+        html: newsletter({
+          brand: "Design Weekly",
+          accent: "#7c3aed",
+          heroCid: "hero-calm",
+          intro:
+            "This week: calm interfaces, small type that holds up, and the case for fewer settings.",
+          sections: [
+            {
+              title: "What an inbox can learn from a library",
+              body: "Quiet rooms, clear signs, and nothing blinking. A tour of interfaces that get out of the way.",
+              cta: "Read the essay",
+            },
+            {
+              title: "Type at small sizes",
+              body: "Five typefaces that stay legible at 12px, tested on three screens and one very old phone.",
+            },
+            {
+              title: "The case for fewer settings",
+              body: "Every toggle is a question you ask the user. Ask fewer.",
+              cta: "Continue reading",
+            },
+          ],
+          footer:
+            "You're receiving this because you subscribed at designweekly.example. Design Weekly, 9 Grid Street, Portland.",
+        }),
+        attachments: [
+          {
+            filename: "calm.svg",
+            mimeType: "image/svg+xml",
+            contentId: "hero-calm",
+            content: picture("Calm interfaces", "#ddd6fe", "#4c1d95"),
+          },
+        ],
+      },
+      {
+        folder: "inbox",
+        conversation: "workshop-photos",
+        subject: "Photos from Tuesday's workshop",
+        from: mei,
+        hoursAgo: 40,
+        text: "Here's the whiteboard from the end of the day, before the cleaners got to it.",
+        html: `<div style="font-family:system-ui,sans-serif"><p>Here's the whiteboard from the end of the day, before the cleaners got to it.</p><p><img src="cid:whiteboard" alt="The whiteboard" width="480"></p><p>Mei</p></div>`,
+        attachments: [
+          {
+            filename: "whiteboard.svg",
+            mimeType: "image/svg+xml",
+            contentId: "whiteboard",
+            content: picture("Workshop whiteboard", "#fef3c7", "#b45309"),
+          },
+        ],
+      },
+      {
+        folder: "inbox",
+        conversation: "lunch",
+        subject: "Lunch on Thursday?",
+        from: diego,
+        hoursAgo: 5,
+        unread: true,
+        text: "The new ramen place on 3rd finally opened. Thursday at 12:30?\n\nDiego",
+      },
+      {
+        folder: "drafts",
+        conversation: "lunch",
+        subject: "RE: Lunch on Thursday?",
+        to: [diego],
+        hoursAgo: 4,
+        text: "Thursday works, but can we make it 1:00? I have a call until 12:45.",
+      },
+      {
+        folder: "inbox",
+        conversation: "expenses",
+        subject: "Expense report EXP-388 approved",
+        from: p("Contoso Expenses", "expenses@contoso.example"),
+        hoursAgo: 24 * 4,
+        categories: ["Finance"],
+        text: "Your expense report EXP-388 (Seattle client visit, $1,284.50) was approved by Ava Thompson. It will be paid with your next salary.",
+      },
+      {
+        folder: "inbox",
+        conversation: "kudos",
+        subject: "Thanks for the onboarding deck",
+        from: p("Kim Abercrombie", "kim.abercrombie@contoso.example"),
+        hoursAgo: 24 * 6,
+        flagged: true,
+        categories: ["Follow up"],
+        text: "The new hires loved it. Could you share the source file so we can keep it up to date?",
+      },
+      {
+        folder: "archive",
+        conversation: "seattle",
+        subject: "Your trip to Seattle: itinerary",
+        from: p("Contoso Travel", "travel@contoso.example"),
+        hoursAgo: 24 * 12,
+        categories: ["Travel"],
+        text: "Jordan Lee, your trip is booked.\n\nFlight AS 331 · Mon 08:10 → 10:45\nHotel: The Marqueen, 2 nights\nReturn AS 338 · Wed 18:20 → 20:55",
+      },
+      {
+        folder: "archive",
+        conversation: "logo",
+        subject: "Logo files",
+        from: mei,
+        hoursAgo: 24 * 15,
+        text: "Final logo files are on the shared drive under Brand/2026. The SVGs are the ones to use.",
+      },
+      {
+        folder: "archive",
+        conversation: "all-hands",
+        subject: "Recording: Q3 all-hands",
+        from: p("Contoso Communications", "comms@contoso.example"),
+        hoursAgo: 24 * 20,
+        text: "Missed the all-hands? The recording and slides are on the intranet for the next 30 days.",
+      },
+      {
+        folder: "clients",
+        conversation: "northwind",
+        subject: "Northwind intro call: notes",
+        from: olu,
+        hoursAgo: 24 * 8,
+        flagged: true,
+        text: "Thanks for the call, Jordan. As discussed: a two-week discovery in November, then a proposal for the ordering app. I'll send our brand assets over this week.\n\nOluwaseun",
+      },
+      {
+        folder: "clients",
+        conversation: "wingtip",
+        subject: "Referral: Wingtip Toys",
+        from: p("Kim Abercrombie", "kim.abercrombie@contoso.example"),
+        hoursAgo: 24 * 10,
+        text: "Wingtip Toys are looking for help with their store's checkout. I said you might be interested; their contact is Lena at wingtip.example.",
+      },
+      {
+        folder: "acme",
+        conversation: "acme-scope",
+        subject: "Reader redesign: phase 2 scope",
+        from: samPark,
+        to: [jordan],
+        cc: [priya],
+        hoursAgo: 24 * 2 + 2,
+        text: "Hi Jordan,\n\nPhase 1 landed well. For phase 2 we'd like to cover the conversation view and the compose window. Could you send a rough estimate by Friday?\n\nSam",
+      },
+      {
+        folder: "sentitems",
+        conversation: "acme-scope",
+        subject: "Reader redesign: phase 2 scope",
+        to: [samPark],
+        cc: [priya],
+        hoursAgo: 24 + 6,
+        text: "Hi Sam,\n\nGreat to hear. Rough estimate: three weeks for the conversation view, two for compose, with a review at the end of each. Proposal attached.\n\nJordan",
+        attachments: [
+          {
+            filename: "Acme-phase-2-proposal.pdf",
+            mimeType: "application/pdf",
+            content: pdf("Reader redesign - phase 2", [
+              "Conversation view: 3 weeks",
+              "Compose window: 2 weeks",
+              "Reviews at the end of each",
+              "Contoso Design, Jordan Lee",
+            ]),
+          },
+        ],
+      },
+      {
+        folder: "acme",
+        conversation: "acme-scope",
+        subject: "Reader redesign: phase 2 scope",
+        from: samPark,
+        to: [jordan],
+        cc: [priya],
+        hoursAgo: 2,
+        unread: true,
+        flagged: true,
+        categories: ["Urgent"],
+        text: "Looks good. Legal needs the signed SOW before we start: can you get it to me by Wednesday?",
+      },
+      {
+        folder: "acme",
+        conversation: "acme-brand",
+        subject: "Acme brand guidelines v3",
+        from: hanna,
+        hoursAgo: 24 * 5,
+        text: "Here are the updated brand guidelines. The main change: the accent orange is now a little warmer.",
+        attachments: [
+          {
+            filename: "acme-brand-guidelines.txt",
+            mimeType: "text/plain",
+            content:
+              "Acme brand guidelines, v3\n\nPrimary: #f97316 (warmer than v2)\nText: #1f2937\nType: Inter for UI, Georgia for long reads\nLogo: keep 16px clear space on every side\n",
+          },
+        ],
+      },
+      {
+        folder: "junkemail",
+        conversation: "prize",
+        subject: "You've won a $500 gift card!!!",
+        from: p("Rewards Center", "winner@prizes.example"),
+        hoursAgo: 24 * 2,
+        unread: true,
+        text: "Congratulations! Click here to claim your $500 gift card before it expires tonight!",
+      },
+      {
+        folder: "junkemail",
+        conversation: "phish",
+        subject: "Your mailbox is almost full: verify now",
+        from: p("Mail Support", "no-reply@mailbox-support.example"),
+        hoursAgo: 24 * 4,
+        text: "Your mailbox will be closed in 24 hours. Verify your password to keep receiving mail.",
+      },
+      {
+        folder: "deleteditems",
+        conversation: "digest",
+        subject: "Weekly digest: 12 new comments",
+        from: p("Tasks", "notifications@tasks.example"),
+        hoursAgo: 24 * 7,
+        text: "12 new comments on 4 tasks this week. Open Tasks to catch up.",
+      },
+    ];
+  },
+  events: (seededAt) => [
+    {
+      uid: "sprint-review-demo@acme.example",
+      subject: "Sprint review: reader redesign",
+      start: slot(seededAt, 2, 15),
+      minutes: 45,
+      location: "Video call",
+      description: "Walkthrough of the phase 1 screens with the Acme team.",
+      organizer: priya,
+      attendees: [priya, samPark, jordan],
+      response: "notResponded",
+    },
+    {
+      uid: "design-sync-demo@contoso.example",
+      subject: "Design sync",
+      start: slot(seededAt, 1, 17),
+      minutes: 30,
+      location: "Room Puget",
+      description: "Weekly design team sync.",
+      organizer: jordan,
+      attendees: [jordan, mei, diego],
+      response: "organizer",
+    },
+    {
+      uid: "offsite-demo@contoso.example",
+      subject: "Contoso offsite",
+      start: slot(seededAt, 34, 0),
+      minutes: 2 * 24 * 60,
+      allDay: true,
+      location: "Cedar Hall, Bainbridge",
+      description: "Two days on the island. Agenda to follow.",
+      organizer: ava,
+      attendees: [ava, jordan, diego, mei],
+      response: "tentativelyAccepted",
+    },
+  ],
+};

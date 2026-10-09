@@ -11,7 +11,8 @@
     "./demo-mailboxes": "./src/demo-mailboxes.ts",
     "./support": "./src/support.ts",
     "./changelog": "./src/changelog.ts",
-    "./view-marks": "./src/view-marks.ts"
+    "./view-marks": "./src/view-marks.ts",
+    "./sign-in-page": "./src/sign-in-page.ts"
   },
   "scripts": {
     "test": "vp test run",

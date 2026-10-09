@@ -1,8 +1,9 @@
 /**
  * The Otter Mail relay's HTTP API (infra/relay), shared by the Worker and the
  * apps. The relay knows who an Otter account is, which mailboxes it has
- * linked (Gmail, IMAP), the account's preferences, and when Gmail says one of
- * them changed. It never sees mail or keeps Gmail tokens or IMAP passwords.
+ * linked (Gmail, IMAP, Outlook), the account's preferences, and when Gmail or
+ * Outlook says one of them changed. It never sees mail or keeps Gmail or
+ * Microsoft tokens or IMAP passwords.
  *
  * Otter accounts are better-auth's, under `/v1/auth` (the app uses
  * better-auth's client): `sign-in/social` with `{ provider: "google",
@@ -29,7 +30,7 @@ import type { ImapSettings, MailProviderKind } from "./mail.js";
 export interface RelayAccount {
   email: string;
   provider: MailProviderKind;
-  /** Where an IMAP mailbox lives (null for Gmail). Its password stays on each device. */
+  /** Where an IMAP mailbox lives (null for Gmail and Outlook). Its password stays on each device. */
   imap: ImapSettings | null;
   name: string | null;
   picture: string | null;
@@ -52,6 +53,53 @@ export interface MeResponse {
   pushTopic: string;
   /** Topics keyed by the Google project number in a mailbox's OAuth client ID. */
   pushTopics?: Record<string, string>;
+  /** The relay can sign the web app in to Outlook (it has a Microsoft OAuth client). */
+  outlook?: boolean;
+}
+
+/**
+ * Outlook for the web app, like Gmail's: a browser can't keep a Microsoft
+ * refresh token for long (single-page apps' expire in a day), so the relay
+ * does the exchange with its confidential client and seals the refresh token
+ * for the signed-in Otter user; the browser keeps the sealed token.
+ *
+ * - `GET /v1/outlook/authorize?login_hint=…` (a popup) → Microsoft's consent.
+ * - `GET /v1/outlook/callback` posts `{ type: "otter:outlook-sign-in", result }`
+ *   (an `OutlookSignInResult`) or `{ …, error }` to the opener and closes;
+ *   `GMAIL_SIGN_IN_CANCELLED` when the user said no.
+ * - `POST /v1/outlook/token` with `{ sealed }` → `OutlookTokenResponse`, 410 once
+ *   Microsoft revoked the sign-in. Microsoft rotates refresh tokens: keep the
+ *   `sealed` it answers in place of the one sent.
+ */
+export interface OutlookSignInResult {
+  /** The mailbox's address, lowercased. */
+  email: string;
+  name: string;
+  /** The refresh token, sealed by the relay: only it can use it, for this Otter user. */
+  sealed: string;
+  accessToken: string;
+  expiresIn: number;
+}
+
+export interface OutlookTokenResponse {
+  accessToken: string;
+  expiresIn: number;
+  /** A Microsoft ID token for the mailbox, to link it (`PUT /v1/accounts/:email`). */
+  idToken: string | null;
+  sealed: string;
+}
+
+/**
+ * `POST /v1/outlook/watch` with `{ email }`, for a linked Outlook mailbox:
+ * where Microsoft Graph should send its change notifications (a
+ * subscription's `notificationUrl` and `clientState`). Every device signed in
+ * to the mailbox may keep a subscription there; the relay passes each
+ * notification on as a `mail` event (`POST /push/outlook/:email`, checked
+ * against `clientState`). 404 when the mailbox isn't linked as Outlook.
+ */
+export interface OutlookWatchResponse {
+  notificationUrl: string;
+  clientState: string;
 }
 
 /** `PUT /v1/push/device`: replaces this authenticated session's iPhone registration.
@@ -91,8 +139,9 @@ export interface ListAccountsResponse {
 /**
  * `PUT /v1/accounts/:email`: link a mailbox or update its profile.
  * Linking a Gmail account needs `idToken`, a Google ID token for that address
- * proving the caller signed in to it; updating an already linked account
- * doesn't. Linking an IMAP mailbox needs `provider: "imap"` and `imap`; the
+ * proving the caller signed in to it; an Outlook one, `provider: "outlook"`
+ * and a Microsoft ID token for that address. Updating an already linked
+ * account needs neither. Linking an IMAP mailbox needs `provider: "imap"` and `imap`; the
  * relay can't check the sign-in, which is fine: it sends nothing for IMAP
  * mailboxes but their settings back to the same Otter account (Gmail pushes
  * only go to Gmail links).
@@ -194,7 +243,7 @@ export const TUNNEL_CLOSE = {
  * `ping`; the relay answers `pong`.
  */
 export type RelayEvent =
-  /** Gmail changed this mailbox: sync it (`historyId` is Gmail's new cursor). */
+  /** Gmail or Outlook changed this mailbox: sync it (`historyId` is Gmail's new cursor; "" for Outlook). */
   | { type: "mail"; email: string; historyId: string }
   /** The linked accounts changed (another device linked, unlinked or edited one). */
   | { type: "accounts" }

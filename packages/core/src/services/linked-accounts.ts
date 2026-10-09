@@ -4,8 +4,8 @@
  * Keeps this device's mailboxes and the Otter account's linked accounts in
  * step, so signing in on another device brings every account along. The relay
  * only learns addresses, profiles and IMAP server settings; each device signs
- * in itself (Gmail with Google, IMAP with the password, which never leaves
- * the device), so an account that arrives from the relay shows up signed out
+ * in itself (Gmail with Google, Outlook with Microsoft, IMAP with the
+ * password, which never leaves the device), so an account that arrives from the relay shows up signed out
  * here until the user signs in to it (one click, or the password).
  *
  * Reconciling compares the local accounts, the relay's list, and the
@@ -39,7 +39,7 @@ export type LocalAccount = Pick<
 };
 
 export type ReconcilePlan = {
-  /** On this device only, and new: link them (Gmail needs a sign-in to prove it). */
+  /** On this device only, and new: link them (Gmail and Outlook need a sign-in to prove it). */
   link: string[];
   /** Removed on this device since the last reconcile: unlink them. */
   unlink: string[];
@@ -80,9 +80,10 @@ export function planReconcile(
       if (snapshot.has(key(account.email))) plan.unlink.push(account.email);
       else plan.add.push(account);
     } else {
-      // A signed-in Gmail account refreshes its name and picture from Google
-      // itself; the relay's copy could be staler, so even an update for its
-      // label or color leaves them alone. A null one never blanks ours.
+      // A signed-in Gmail or Outlook account refreshes its name and picture
+      // from Google or Microsoft itself; the relay's copy could be staler, so
+      // even an update for its label or color leaves them alone. A null one
+      // never blanks ours.
       const fromGoogle = here.signedIn && !here.imap;
       if (
         (here.displayName ?? null) !== account.displayName ||
@@ -135,21 +136,23 @@ export function linkedAccountIds(): Set<string> {
 
 // ── Relay calls ─────────────────────────────────────────────────────────────
 
-/** `providers`: this build knows IMAP mailboxes (contracts' ListAccountsResponse). */
-const PROVIDERS = "?providers=gmail,imap";
+/** `providers`: this build knows IMAP and Outlook mailboxes (contracts' ListAccountsResponse). */
+const PROVIDERS = "?providers=gmail,imap,outlook";
 const accountRoute = (email: string) =>
   `/v1/accounts/${encodeURIComponent(key(email))}${PROVIDERS}`;
 
 const profile = (account: GmailAccount) => ({
   name: account.name,
-  picture: account.picture ?? null,
+  // Outlook's photo is a data URL, too big for the relay and only this device's to read.
+  picture: account.picture?.startsWith("data:") ? null : (account.picture ?? null),
   displayName: account.displayName ?? null,
   color: account.color ?? null,
 });
 
 /**
- * What links an account: Gmail proves the sign-in with an ID token; IMAP
- * sends its server settings (never the password).
+ * What links an account: Gmail proves the sign-in with a Google ID token,
+ * Outlook with a Microsoft one; IMAP sends its server settings (never the
+ * password).
  */
 export async function linkRequest(
   account: GmailAccount,
@@ -158,12 +161,19 @@ export async function linkRequest(
   if (account.provider === "imap") {
     return { provider: "imap", imap: account.imap, ...profile(account) };
   }
+  if (account.provider === "outlook") {
+    return { provider: "outlook", idToken: await idToken(account.id), ...profile(account) };
+  }
   return { idToken: await idToken(account.id), ...profile(account) };
 }
 
 /** Links a signed-in account to the Otter account. */
 async function link(account: GmailAccount): Promise<void> {
-  const body = await linkRequest(account, (id) => platform().google.getIdToken(id));
+  const body = await linkRequest(account, (id) => {
+    const auth = account.provider === "outlook" ? platform().microsoft : platform().google;
+    if (!auth) throw new Error("This app can't sign in to Outlook.");
+    return auth.getIdToken(id);
+  });
   await relayRequest("PUT", accountRoute(account.email), body);
 }
 
@@ -175,6 +185,9 @@ export function accountFromRelay(account: RelayAccount): GmailAccount {
     email: account.email,
     name: account.name ?? account.email,
     ...(imap ? { provider: "imap", imap, signature: syncedSignature(account.email) } : {}),
+    ...(account.provider === "outlook"
+      ? { provider: "outlook", signature: syncedSignature(account.email) }
+      : {}),
     picture: account.picture ?? undefined,
     displayName: account.displayName ?? undefined,
     color: account.color ?? undefined,

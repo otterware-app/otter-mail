@@ -2,7 +2,8 @@
  * The relay end to end, as a device and Pub/Sub see it: the real Worker in
  * workerd (wrangler's local runtime) with a local D1 and Durable Object.
  * Google is played by a local server: its key signs the ID tokens and push
- * tokens, and its token endpoint serves the web app's Gmail sign-ins.
+ * tokens, and its token endpoint serves the web app's Gmail sign-ins. The
+ * same server plays Microsoft (ID tokens, token endpoint, Graph's /me).
  */
 
 import { execFileSync } from "node:child_process";
@@ -38,12 +39,20 @@ import type {
   RelayEvent,
 } from "@otter-mail/contracts/relay";
 import { TUNNEL_CLOSE } from "@otter-mail/contracts/relay";
+import type {
+  OutlookSignInResult,
+  OutlookTokenResponse,
+  OutlookWatchResponse,
+} from "@otter-mail/contracts/relay";
 
 const CLIENT_ID = "test-client.apps.googleusercontent.com";
 const WEB_CLIENT_ID = "997327858649-test-web.apps.googleusercontent.com";
 const LEGACY_WEB_CLIENT_ID = "187875144740-test-web.apps.googleusercontent.com";
 const IOS_CLIENT_ID = "test-ios-client.apps.googleusercontent.com";
 const IOS_STORE_CLIENT_ID = "test-ios-store-client.apps.googleusercontent.com";
+const MS_CLIENT_ID = "11111111-0000-0000-0000-00000000web0";
+const MS_DESKTOP_CLIENT_ID = "11111111-0000-0000-0000-0000desktop0";
+const MS_TENANT = "aaaaaaaa-0000-0000-0000-000000000000";
 const APP_ORIGIN = "http://app.test";
 const PUSH_AUDIENCE = "https://relay.test/push/gmail";
 const PUSH_SERVICE_ACCOUNT = "push@test.iam.gserviceaccount.com";
@@ -101,13 +110,20 @@ beforeAll(async () => {
   const publicJwk = { ...(await exportJWK(pair.publicKey)), kid: "test", alg: "RS256" };
   jwks = http.createServer((req, res) => {
     res.setHeader("content-type", "application/json");
-    if (req.url === "/token") {
+    if (req.url?.startsWith("/graph/v1.0/me")) {
+      const email = /^Bearer mat:([^:]+):/.exec(req.headers.authorization ?? "")?.[1];
+      res.writeHead(email ? 200 : 401);
+      res.end(JSON.stringify({ mail: email?.toUpperCase(), displayName: "Outlook User" }));
+      return;
+    }
+    if (req.url === "/token" || req.url === "/microsoft/token") {
+      const respond = req.url === "/token" ? googleToken : microsoftToken;
       let body = "";
       req.on("data", (chunk) => (body += chunk));
       req.on(
         "end",
         () =>
-          void googleToken(new URLSearchParams(body)).then(([status, json]) => {
+          void respond(new URLSearchParams(body)).then(([status, json]) => {
             res.writeHead(status);
             res.end(JSON.stringify(json));
           }),
@@ -175,6 +191,15 @@ beforeAll(async () => {
       },
       GOOGLE_JWKS_URL: { type: "plain_text", value: `http://127.0.0.1:${port}/certs` },
       GOOGLE_TOKEN_URL: { type: "plain_text", value: `http://127.0.0.1:${port}/token` },
+      MICROSOFT_CLIENT_ID: { type: "plain_text", value: MS_CLIENT_ID },
+      MICROSOFT_CLIENT_SECRET: { type: "plain_text", value: "ms-secret" },
+      MICROSOFT_DESKTOP_CLIENT_IDS: { type: "plain_text", value: MS_DESKTOP_CLIENT_ID },
+      MICROSOFT_JWKS_URL: { type: "plain_text", value: `http://127.0.0.1:${port}/ms-keys` },
+      MICROSOFT_TOKEN_URL: {
+        type: "plain_text",
+        value: `http://127.0.0.1:${port}/microsoft/token`,
+      },
+      MICROSOFT_GRAPH_URL: { type: "plain_text", value: `http://127.0.0.1:${port}/graph` },
       GOOGLE_WEB_CLIENT_ID: { type: "plain_text", value: LEGACY_WEB_CLIENT_ID },
       GOOGLE_WEB_CLIENT_SECRET: { type: "plain_text", value: "legacy-secret" },
       GOOGLE_GMAIL_CLIENT_ID: { type: "plain_text", value: WEB_CLIENT_ID },
@@ -275,6 +300,52 @@ async function googleToken(form: URLSearchParams): Promise<[number, unknown]> {
       expires_in: 3599,
       id_token: await idToken(email, { aud: clientId! }),
       ...(grant === "authorization_code" ? { refresh_token: `rt:${email}` } : {}),
+    },
+  ];
+}
+
+/** A Microsoft ID token: a work account at `email` in MS_TENANT, from the desktop app's client. */
+function msIdToken(email: string, claims: Record<string, unknown> = {}) {
+  const tid = (claims.tid as string | undefined) ?? MS_TENANT;
+  return new SignJWT({ tid, preferred_username: email, ...claims })
+    .setProtectedHeader({ alg: "RS256", kid: "test" })
+    .setIssuer(`https://login.microsoftonline.com/${tid}/v2.0`)
+    .setAudience((claims.aud as string | undefined) ?? MS_DESKTOP_CLIENT_ID)
+    .setSubject(`ms-sub-${nextSub++}`)
+    .setIssuedAt()
+    .setExpirationTime("1h")
+    .sign(signingKey);
+}
+
+/**
+ * Microsoft's token endpoint for the web client: codes are "mcode:<email>",
+ * refresh tokens "mrt:<email>:<n>" (rotated on each refresh), and anything
+ * for revoked@ is invalid_grant.
+ */
+async function microsoftToken(form: URLSearchParams): Promise<[number, unknown]> {
+  if (form.get("client_id") !== MS_CLIENT_ID || form.get("client_secret") !== "ms-secret") {
+    return [401, { error: "invalid_client" }];
+  }
+  if (!form.get("scope")?.includes("offline_access")) return [400, { error: "invalid_scope" }];
+  const grant = form.get("grant_type");
+  const [email, n] =
+    grant === "authorization_code"
+      ? [form.get("code")?.replace(/^mcode:/, ""), 0]
+      : (form
+          .get("refresh_token")
+          ?.replace(/^mrt:/, "")
+          .split(":")
+          .map((part, i) => (i ? Number(part) : part)) ?? []);
+  if (!email || (grant === "refresh_token" && String(email).startsWith("revoked@"))) {
+    return [400, { error: "invalid_grant" }];
+  }
+  return [
+    200,
+    {
+      access_token: `mat:${email}:${Date.now()}`,
+      expires_in: 3599,
+      refresh_token: `mrt:${email}:${Number(n) + 1}`,
+      id_token: await msIdToken(String(email), { aud: MS_CLIENT_ID }),
     },
   ];
 }
@@ -398,6 +469,7 @@ describe("sign-in", () => {
       "997327858649": "projects/otterware/topics/gmail-push",
       "187875144740": "projects/otter-mail/topics/gmail-push",
     });
+    expect(me.outlook).toBe(true);
   });
 
   it("signing in again (another Mac) is the same user, with its own session", async () => {
@@ -715,6 +787,187 @@ describe("IMAP mailboxes", () => {
     await new Promise((resolve) => setTimeout(resolve, 100));
     expect(device.events).toEqual([]);
     device.socket.close();
+  });
+});
+
+describe("Outlook mailboxes", () => {
+  const put = (token: string, email: string, body: unknown) =>
+    call("PUT", `/v1/accounts/${encodeURIComponent(email)}`, token, body);
+  const linkOutlook = async (token: string, email: string) =>
+    put(token, email, { provider: "outlook", idToken: await msIdToken(email) });
+  const watch = (token: string, email: string) =>
+    call("POST", "/v1/outlook/watch", token, { email });
+  /** Graph's notification of a change to the mailbox, as it posts one. */
+  const notify = (email: string, clientState: string) =>
+    call("POST", `/push/outlook/${encodeURIComponent(email)}`, undefined, {
+      value: [{ subscriptionId: "s1", changeType: "created", clientState, resource: "x" }],
+    });
+
+  it("links with a Microsoft ID token that proves the address", async () => {
+    const { token } = await signIn("outlook-owner@example.com");
+    expect((await linkOutlook(token, "Me@Contoso.test")).status).toBe(204);
+    // A personal account's email claim counts; a work account's needs xms_edov.
+    const personal = await msIdToken("+15555550100", {
+      tid: "9188040d-6c67-4c5b-b112-36a304b66dad",
+      email: "me@outlook.test",
+    });
+    expect(
+      (await put(token, "me@outlook.test", { provider: "outlook", idToken: personal })).status,
+    ).toBe(204);
+    const verified = await msIdToken("upn@contoso.test", {
+      email: "alias@contoso.test",
+      xms_edov: true,
+    });
+    expect(
+      (await put(token, "alias@contoso.test", { provider: "outlook", idToken: verified })).status,
+    ).toBe(204);
+    expect(await listAccounts(token, "?providers=gmail,imap,outlook")).toEqual(
+      ["me@contoso.test", "me@outlook.test", "alias@contoso.test"].map((email) => ({
+        email,
+        provider: "outlook",
+        imap: null,
+        name: null,
+        picture: null,
+        displayName: null,
+        color: null,
+      })),
+    );
+    // Builds that don't know Outlook don't see it.
+    expect(await listAccounts(token)).toEqual([]);
+    expect(await listAccounts(token, "")).toEqual([]);
+  });
+
+  it("refuses to link without proof of the address", async () => {
+    const { token } = await signIn("outlook-liar@example.com");
+    const body = (idToken?: string) => ({ provider: "outlook", ...(idToken ? { idToken } : {}) });
+    expect((await put(token, "v@contoso.test", body())).status).toBe(403);
+    expect(
+      (await put(token, "v@contoso.test", body(await msIdToken("me@contoso.test")))).status,
+    ).toBe(403);
+    // A work account's email claim is whatever its admin typed.
+    const unverified = await msIdToken("me@evil.test", { email: "v@contoso.test" });
+    expect((await put(token, "v@contoso.test", body(unverified))).status).toBe(403);
+    // A Google ID token, or one for another Microsoft app, isn't Microsoft's for Otter Mail.
+    expect((await put(token, "v@contoso.test", body(await idToken("v@contoso.test")))).status).toBe(
+      401,
+    );
+    const otherApp = await msIdToken("v@contoso.test", { aud: "someone-else" });
+    expect((await put(token, "v@contoso.test", body(otherApp))).status).toBe(401);
+    // An issuer for another tenant than the token's own.
+    const forged = await new SignJWT({ tid: MS_TENANT, preferred_username: "v@contoso.test" })
+      .setProtectedHeader({ alg: "RS256", kid: "test" })
+      .setIssuer("https://login.microsoftonline.com/common/v2.0")
+      .setAudience(MS_DESKTOP_CLIENT_ID)
+      .setIssuedAt()
+      .setExpirationTime("1h")
+      .sign(signingKey);
+    expect((await put(token, "v@contoso.test", body(forged))).status).toBe(401);
+    expect(await listAccounts(token, "?providers=gmail,imap,outlook")).toEqual([]);
+  });
+
+  it("takes no IMAP settings, and doesn't switch providers without unlinking", async () => {
+    const { token } = await signIn("outlook-switch@example.com");
+    const imap = {
+      username: "x",
+      imap: { host: "outlook.office365.com", port: 993, security: "tls" },
+      smtp: { host: "smtp.office365.com", port: 587, security: "starttls" },
+    };
+    const withImap = { provider: "outlook", idToken: await msIdToken("s@contoso.test"), imap };
+    expect((await put(token, "s@contoso.test", withImap)).status).toBe(400);
+    await link(token, "g@contoso.test");
+    expect((await linkOutlook(token, "g@contoso.test")).status).toBe(409);
+    await linkOutlook(token, "o@contoso.test");
+    expect((await link(token, "o@contoso.test")).status).toBe(204); // an edit: stays Outlook
+    expect((await put(token, "o@contoso.test", { provider: "gmail" })).status).toBe(409);
+    expect((await put(token, "o@contoso.test", { provider: "imap", imap })).status).toBe(409);
+
+    // Unlinking needs a build that knows Outlook.
+    expect((await call("DELETE", "/v1/accounts/o%40contoso.test", token)).status).toBe(204);
+    expect((await listAccounts(token, "?providers=outlook")).length).toBe(1);
+    await call("DELETE", "/v1/accounts/o%40contoso.test?providers=gmail,imap,outlook", token);
+    expect(await listAccounts(token, "?providers=outlook")).toEqual([]);
+  });
+
+  it("tells a device where Graph should notify, only for its Outlook mailboxes", async () => {
+    const { token } = await signIn("outlook-watcher@example.com");
+    await link(token, "gmail@contoso.test");
+    await linkOutlook(token, "watched@contoso.test");
+    expect((await watch(token, "nobody@contoso.test")).status).toBe(404);
+    expect((await watch(token, "gmail@contoso.test")).status).toBe(404);
+    expect(
+      (await call("POST", "/v1/outlook/watch", undefined, { email: "watched@contoso.test" }))
+        .status,
+    ).toBe(401);
+
+    const response = await watch(token, "Watched@Contoso.test");
+    expect(response.status).toBe(200);
+    const { notificationUrl, clientState } = (await response.json()) as OutlookWatchResponse;
+    expect(notificationUrl).toMatch(/\/push\/outlook\/watched%40contoso\.test$/);
+    expect(clientState.length).toBeLessThanOrEqual(128);
+    // The same for every device, and another mailbox's differs.
+    const again = (await (
+      await watch(token, "watched@contoso.test")
+    ).json()) as OutlookWatchResponse;
+    expect(again.clientState).toBe(clientState);
+    await linkOutlook(token, "other@contoso.test");
+    const other = (await (await watch(token, "other@contoso.test")).json()) as OutlookWatchResponse;
+    expect(other.clientState).not.toBe(clientState);
+  });
+
+  it("answers Graph's validation of a new subscription with its token", async () => {
+    const response = await fetch(
+      `${base}/push/outlook/a%40contoso.test?validationToken=Validation%3A%20Testing+client`,
+      { method: "POST", headers: { "content-type": "text/plain" } },
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toMatch(/^text\/plain/);
+    expect(await response.text()).toBe("Validation: Testing client");
+  });
+
+  it("passes notifications with the mailbox's clientState on to whoever linked it as Outlook", async () => {
+    const alice = await signIn("outlook-alice@example.com");
+    const bob = await signIn("outlook-bob@example.com");
+    const mallory = await signIn("outlook-mallory@example.com");
+    await linkOutlook(alice.token, "team@contoso.test");
+    await linkOutlook(bob.token, "team@contoso.test");
+    await linkOutlook(mallory.token, "mallory@contoso.test");
+    // An IMAP mailbox at the address proves nothing, and gets nothing.
+    await put(mallory.token, "team@contoso.test", {
+      provider: "imap",
+      imap: {
+        username: "team@contoso.test",
+        imap: { host: "outlook.office365.com", port: 993, security: "tls" },
+        smtp: { host: "smtp.office365.com", port: 587, security: "starttls" },
+      },
+    });
+    const devices = await Promise.all([alice, bob, mallory].map((u) => connect(u.token)));
+    const { clientState } = (await (
+      await watch(alice.token, "team@contoso.test")
+    ).json()) as OutlookWatchResponse;
+    const { clientState: mallorys } = (await (
+      await watch(mallory.token, "mallory@contoso.test")
+    ).json()) as OutlookWatchResponse;
+
+    // Forged, another mailbox's, or no clientState: acknowledged, and dropped.
+    expect((await notify("team@contoso.test", "forged")).status).toBe(202);
+    expect((await notify("team@contoso.test", mallorys)).status).toBe(202);
+    expect(
+      (await call("POST", "/push/outlook/team%40contoso.test", undefined, { value: [{}] })).status,
+    ).toBe(202);
+    expect((await call("POST", "/push/outlook/team%40contoso.test")).status).toBe(202);
+    expect((await call("POST", "/push/outlook/not-an-address", undefined, {})).status).toBe(202);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(devices.map((d) => d.events)).toEqual([[], [], []]);
+
+    expect((await notify("Team@Contoso.test", clientState)).status).toBe(202);
+    const event = { type: "mail", email: "team@contoso.test", historyId: "" };
+    await until(
+      () => devices[0]!.events.length > 0 && devices[1]!.events.length > 0,
+      "the mail events",
+    );
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(devices.map((d) => d.events)).toEqual([[event], [event], []]);
+    for (const device of devices) device.socket.close();
   });
 });
 
@@ -1130,6 +1383,100 @@ describe("web app", () => {
     const state = await authorize(alice.token);
     const hijacked = await popupMessage(
       await callback(bob.token, `code=code:x%40example.com&state=${state}`),
+    );
+    expect(hijacked.result).toBeUndefined();
+    expect(hijacked.error).toBeTruthy();
+    const declined = await popupMessage(await callback(alice.token, "error=access_denied"));
+    expect(declined.error).toBe("sign-in-cancelled");
+  });
+});
+
+describe("web app's Outlook", () => {
+  async function popupMessage(response: Response) {
+    const html = await response.text();
+    expect(html).toContain("#outlook-sign-in=");
+    return JSON.parse(/const message = (\{.*?\});\n/s.exec(html)![1]!) as {
+      type: string;
+      result?: OutlookSignInResult;
+      error?: string;
+    };
+  }
+
+  async function authorize(token: string) {
+    const response = await fetch(`${base}/v1/outlook/authorize?login_hint=x%40contoso.test`, {
+      headers: { authorization: `Bearer ${token}` },
+      redirect: "manual",
+    });
+    expect(response.status).toBe(302);
+    const url = new URL(response.headers.get("location")!);
+    expect(`${url.origin}${url.pathname}`).toBe(
+      "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
+    );
+    expect(url.searchParams.get("client_id")).toBe(MS_CLIENT_ID);
+    expect(url.searchParams.get("response_type")).toBe("code");
+    expect(url.searchParams.get("scope")).toContain("offline_access");
+    expect(url.searchParams.get("redirect_uri")).toMatch(/\/v1\/outlook\/callback$/);
+    expect(url.searchParams.get("login_hint")).toBe("x@contoso.test");
+    return url.searchParams.get("state")!;
+  }
+
+  const callback = (token: string, query: string) =>
+    fetch(`${base}/v1/outlook/callback?${query}`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+  it("signs in by popup, seals the rotating refresh token, and refreshes it for its owner only", async () => {
+    const owner = await signIn("outlook-popup@example.com");
+    const state = await authorize(owner.token);
+    const message = await popupMessage(
+      await callback(owner.token, `code=mcode:web%40contoso.test&state=${state}`),
+    );
+    expect(message.type).toBe("otter:outlook-sign-in");
+    expect(message.result).toMatchObject({ email: "web@contoso.test", name: "Outlook User" });
+    expect(message.result!.accessToken).toMatch(/^mat:web@contoso.test:/);
+    expect(message.result!.sealed).not.toContain("mrt:");
+
+    const refresh = async (sealed: string) => {
+      const response = await call("POST", "/v1/outlook/token", owner.token, { sealed });
+      expect(response.status).toBe(200);
+      return (await response.json()) as OutlookTokenResponse;
+    };
+    const first = await refresh(message.result!.sealed);
+    expect(first.accessToken).toMatch(/^mat:web@contoso.test:/);
+    expect(first.sealed).not.toBe(message.result!.sealed); // Microsoft rotated the refresh token
+    expect((await refresh(first.sealed)).idToken).toBeTruthy();
+
+    // The ID token links the mailbox.
+    const link = await call("PUT", "/v1/accounts/web%40contoso.test", owner.token, {
+      provider: "outlook",
+      idToken: first.idToken,
+    });
+    expect(link.status).toBe(204);
+
+    const stranger = await signIn("outlook-stranger@example.com");
+    const stolen = await call("POST", "/v1/outlook/token", stranger.token, {
+      sealed: first.sealed,
+    });
+    expect(stolen.status).toBe(400);
+  });
+
+  it("says when Microsoft revoked the sign-in", async () => {
+    const owner = await signIn("outlook-revoker@example.com");
+    const state = await authorize(owner.token);
+    const { result } = await popupMessage(
+      await callback(owner.token, `code=mcode:revoked%40contoso.test&state=${state}`),
+    );
+    expect(
+      (await call("POST", "/v1/outlook/token", owner.token, { sealed: result!.sealed })).status,
+    ).toBe(410);
+  });
+
+  it("refuses a sign-in state issued to someone else, and reports declined consent", async () => {
+    const alice = await signIn("outlook-state-alice@example.com");
+    const bob = await signIn("outlook-state-bob@example.com");
+    const state = await authorize(alice.token);
+    const hijacked = await popupMessage(
+      await callback(bob.token, `code=mcode:x%40contoso.test&state=${state}`),
     );
     expect(hijacked.result).toBeUndefined();
     expect(hijacked.error).toBeTruthy();

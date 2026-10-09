@@ -6,15 +6,17 @@ import { Dialog } from "~/components/ui/dialog";
 import { Field } from "~/components/ui/field";
 import { Input } from "~/components/ui/input";
 import { gmailApi } from "./api";
-import { useAddImapAccount, useSignInImap } from "./hooks";
+import { useAddAccount, useAddImapAccount, useMailProviders, useSignInImap } from "./hooks";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./select";
+import { toast } from "./toast";
 import type { GmailAccount } from "./types";
 import { cn } from "./ui";
 
 /**
- * Adding a mailbox: Gmail (Google's sign-in in the browser) or any other
- * mail over IMAP (address and password, the servers found from the domain).
+ * Adding a mailbox: Gmail (Google's sign-in in the browser), Outlook
+ * (Microsoft's, where this app has an OAuth client for it), or any other mail
+ * over IMAP (address and password, the servers found from the domain).
  */
 
 /** The reason from a rejected invoke, without the IPC bridge's wrapping. */
@@ -23,7 +25,33 @@ export function readableError(err: unknown): string {
   return raw.replace(/^Error invoking remote method '[^']*':\s*/, "").replace(/^Error:\s*/, "");
 }
 
-/** "Add mailbox" as a menu: Gmail, or other mail (the IMAP dialog). */
+/** Microsoft's four squares, for Outlook. */
+export function MicrosoftMark({ className = "size-4" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 21 21" className={className} aria-hidden>
+      <path fill="#f25022" d="M1 1h9v9H1z" />
+      <path fill="#7fba00" d="M11 1h9v9h-9z" />
+      <path fill="#00a4ef" d="M1 11h9v9H1z" />
+      <path fill="#ffb900" d="M11 11h9v9h-9z" />
+    </svg>
+  );
+}
+
+/** Adds an Outlook mailbox; answers it (null when cancelled), or toasts why it couldn't. */
+export function useAddOutlook(onAdded?: (account: GmailAccount) => void) {
+  const add = useAddAccount("outlook");
+  const start = () =>
+    void add.mutateAsync(undefined).then(
+      (account) => {
+        if (account) onAdded?.(account);
+      },
+      (err: unknown) =>
+        toast.error("Couldn't add the mailbox", { description: readableError(err) }),
+    );
+  return { start, pending: add.isPending };
+}
+
+/** "Add mailbox" as a menu: Gmail, Outlook, or other mail (the IMAP dialog). */
 export function AddMailboxMenu({
   onGmail,
   onAdded,
@@ -31,13 +59,15 @@ export function AddMailboxMenu({
   children,
 }: {
   onGmail: () => void;
-  /** The IMAP mailbox just added. */
+  /** The Outlook or IMAP mailbox just added. */
   onAdded?: (account: GmailAccount) => void;
   align?: "start" | "end";
   /** The trigger (rendered via asChild). */
   children: ReactNode;
 }) {
   const [imapOpen, setImapOpen] = useState(false);
+  const outlook = useAddOutlook(onAdded);
+  const providers = useMailProviders().data;
   return (
     <>
       <DropdownMenu>
@@ -46,6 +76,11 @@ export function AddMailboxMenu({
           <DropdownMenuItem icon={<MailIcon />} onSelect={onGmail}>
             Gmail
           </DropdownMenuItem>
+          {providers?.outlook ? (
+            <DropdownMenuItem icon={<MicrosoftMark />} onSelect={outlook.start}>
+              Outlook
+            </DropdownMenuItem>
+          ) : null}
           <DropdownMenuItem icon={<ServerIcon />} onSelect={() => setImapOpen(true)}>
             Other mail (IMAP)
           </DropdownMenuItem>
@@ -75,6 +110,10 @@ const APP_PASSWORDS: { host: RegExp; hint: string }[] = [
     hint: "AOL needs an app password, made in your AOL account's security settings.",
   },
   { host: /(^|\.)gmx\.(com|net|de)$/, hint: "GMX needs IMAP turned on in its web settings first." },
+  {
+    host: /(^|\.)(office365|outlook)\.com$/,
+    hint: "Outlook and Microsoft 365 don't take passwords over IMAP: add the mailbox as Outlook instead.",
+  },
 ];
 
 function appPasswordHint(settings: ImapSettings | null): string | undefined {
