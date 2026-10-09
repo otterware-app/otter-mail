@@ -7,6 +7,7 @@
 
 export * from "./google.js";
 export * from "./mail.js";
+export * from "./microsoft.js";
 export * from "./settings.js";
 
 export type ThemeSource = "system" | "light" | "dark";

@@ -416,6 +416,11 @@ export const gmailApi = {
   refreshSignatures: (): Promise<void> => ipc("gmail:refreshSignatures"),
   /** Stops waiting for the browser sign-in; the pending addAccount resolves null. */
   cancelAddAccount: (): Promise<void> => ipc("gmail:cancelAddAccount"),
+  /** Microsoft's sign-in in the browser; `email` signs an Outlook mailbox back in. Null: cancelled. */
+  addOutlookAccount: (email?: string): Promise<GmailAccount | null> =>
+    ipc("gmail:addOutlookAccount", email ? { email } : undefined),
+  /** Which kinds of mailbox this app can add besides Gmail and IMAP. */
+  mailProviders: (): Promise<{ outlook: boolean }> => ipc("gmail:mailProviders"),
 
   /** The servers an address's mail lives on, from its domain; null when unknown. */
   discoverImap: (email: string): Promise<ImapSettings | null> =>

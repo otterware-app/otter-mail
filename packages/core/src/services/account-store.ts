@@ -23,6 +23,15 @@ export function providerKindOf(accountId: string): MailProviderKind {
   return providerKinds.get(accountId) ?? "gmail";
 }
 
+/**
+ * Whether the account's signature lives on the device (synced as a
+ * preference) rather than on the server: Gmail keeps its own; Graph doesn't
+ * expose Outlook's, and IMAP has none.
+ */
+export function keepsSignatureOnDevice(account: GmailAccount): boolean {
+  return (account.provider ?? "gmail") !== "gmail";
+}
+
 async function readAccounts(): Promise<GmailAccount[]> {
   return rememberProviders((await readJson<GmailAccount[]>("accounts.json")) ?? []);
 }

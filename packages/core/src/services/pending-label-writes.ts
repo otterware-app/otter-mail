@@ -59,6 +59,22 @@ export function trackLabelWrite(
   };
 }
 
+/**
+ * A label's id changed (Outlook's categories are named by their id): pending
+ * changes carry the new one, so they don't bring the old one back.
+ */
+export function renamePendingLabel(accountId: string, from: string, to: string): void {
+  const prefix = `${accountId}:`;
+  const swap = (ids: string[]) => ids.map((id) => (id === from ? to : id));
+  for (const [key, changes] of pending) {
+    if (!key.startsWith(prefix)) continue;
+    for (const change of changes) {
+      change.add = swap(change.add);
+      change.remove = swap(change.remove);
+    }
+  }
+}
+
 /** Whether any label write for the account is still pending. */
 export function hasPendingLabelWrites(accountId: string): boolean {
   const prefix = `${accountId}:`;

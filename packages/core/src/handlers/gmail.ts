@@ -16,7 +16,7 @@ import {
   futureTime,
 } from "../services/mail-schedule.js";
 
-import { GMAIL_CAPABILITIES, IMAP_CAPABILITIES } from "@otter-mail/contracts";
+import { GMAIL_CAPABILITIES } from "@otter-mail/contracts";
 
 import { fromBase64 } from "../bytes.js";
 import { SignInCancelledError } from "../google.js";
@@ -253,7 +253,7 @@ export function registerGmailHandlers(): void {
       const accounts = await listAccounts();
       return accounts.map((account) => ({
         ...account,
-        capabilities: account.provider === "imap" ? IMAP_CAPABILITIES : GMAIL_CAPABILITIES,
+        capabilities: findProvider(account)?.capabilities ?? GMAIL_CAPABILITIES,
         ...(isSignedIn(account) ? {} : { signedOut: true }),
       }));
     } catch (err) {
@@ -291,6 +291,7 @@ export function registerGmailHandlers(): void {
 
   handle("gmail:cancelAddAccount", async () => {
     platform().google.cancelSignIn();
+    platform().microsoft?.cancelSignIn();
   });
 
   // gmail:removeAccount

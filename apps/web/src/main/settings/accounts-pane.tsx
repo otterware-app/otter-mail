@@ -18,7 +18,12 @@ import {
 } from "../gmail/hooks";
 import { RichTextArea, type RichTextRef } from "../gmail/rich-text";
 import { AddMailboxMenu, ImapPasswordForm } from "../gmail/add-mailbox";
-import { capabilitiesOf, mailServerName, signsInWithPassword } from "../gmail/capabilities";
+import {
+  capabilitiesOf,
+  mailServerName,
+  signInProvider,
+  signsInWithPassword,
+} from "../gmail/capabilities";
 import {
   ACCOUNT_COLOR_PALETTE,
   getAccountColor,
@@ -218,11 +223,20 @@ function AccountAvatar({
 }
 
 /**
- * Sign in again with Google (signed-out account) or add a mailbox: Gmail, or
- * other mail over IMAP. Cancellable while Google is open.
+ * Sign in again with Google or Microsoft (signed-out account), or add a
+ * mailbox: Gmail, Outlook, or other mail over IMAP. Cancellable while the
+ * sign-in is open in the browser.
  */
-function SignInButton({ email, label }: { email?: string; label: string }) {
-  const signIn = useAddAccount();
+function SignInButton({
+  email,
+  provider = "gmail",
+  label,
+}: {
+  email?: string;
+  provider?: "gmail" | "outlook";
+  label: string;
+}) {
+  const signIn = useAddAccount(provider);
   if (signIn.isPending) {
     return (
       <Btn size="sm" onClick={() => void gmailApi.cancelAddAccount()}>
@@ -481,7 +495,11 @@ function AccountEditor({ account }: { account: GmailAccount }) {
             account.signedOut && signsInWithPassword(account) ? (
               <ImapPasswordForm account={account} />
             ) : account.signedOut ? (
-              <SignInButton email={account.email} label="Sign in" />
+              <SignInButton
+                email={account.email}
+                provider={signInProvider(account)}
+                label="Sign in"
+              />
             ) : (
               <Btn size="sm" disabled={syncing || sync.data?.syncing} onClick={syncNow}>
                 <RotateCwIcon

@@ -115,6 +115,8 @@ jobs:
           OTTER_MAIL_GOOGLE_CLIENT_SECRET: ${{ secrets.OTTER_MAIL_GOOGLE_CLIENT_SECRET }}
           OTTER_MAIL_GOOGLE_LEGACY_CLIENT_ID: ${{ vars.OTTER_MAIL_GOOGLE_LEGACY_CLIENT_ID }}
           OTTER_MAIL_GOOGLE_LEGACY_CLIENT_SECRET: ${{ secrets.OTTER_MAIL_GOOGLE_LEGACY_CLIENT_SECRET }}
+          # Outlook's sign-in (a public client: no secret); without it the app offers no Outlook.
+          OTTER_MAIL_MICROSOFT_CLIENT_ID: ${{ vars.OTTER_MAIL_MICROSOFT_CLIENT_ID }}
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
@@ -182,6 +184,8 @@ jobs:
           OTTER_MAIL_GOOGLE_CLIENT_SECRET: ${{ secrets.OTTER_MAIL_GOOGLE_CLIENT_SECRET }}
           OTTER_MAIL_GOOGLE_LEGACY_CLIENT_ID: ${{ vars.OTTER_MAIL_GOOGLE_LEGACY_CLIENT_ID }}
           OTTER_MAIL_GOOGLE_LEGACY_CLIENT_SECRET: ${{ secrets.OTTER_MAIL_GOOGLE_LEGACY_CLIENT_SECRET }}
+          # Outlook's sign-in (a public client: no secret); without it the app offers no Outlook.
+          OTTER_MAIL_MICROSOFT_CLIENT_ID: ${{ vars.OTTER_MAIL_MICROSOFT_CLIENT_ID }}
         run: |
           set -euo pipefail
           if [[ -z "$OTTER_MAIL_GOOGLE_CLIENT_ID" || -z "$OTTER_MAIL_GOOGLE_CLIENT_SECRET" ]]; then

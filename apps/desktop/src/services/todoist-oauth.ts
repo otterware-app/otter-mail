@@ -1,4 +1,6 @@
 import { createServer } from "node:http";
+import { signInPage } from "@otter-mail/shared/sign-in-page";
+
 import { requestMain } from "../main-link.js";
 
 /** A loopback callback owned by this attempt; no token enters the renderer. */
@@ -27,7 +29,11 @@ export async function todoistSignIn(
         "Referrer-Policy": "no-referrer",
       })
       .end(
-        "<!doctype html><title>Otter Mail</title><p>You can close this window and return to Otter Mail.</p>",
+        signInPage({
+          title: "Connected to Todoist",
+          detail: "You can close this window and return to Otter Mail.",
+          ok: true,
+        }),
       );
     finish(req.url!);
   });

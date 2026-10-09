@@ -46,7 +46,8 @@
       "simple": { "limit": 6, "period": 60 },
     },
   ],
-  // Secrets: BETTER_AUTH_SECRET, GOOGLE_GMAIL_CLIENT_SECRET, GOOGLE_WEB_CLIENT_SECRET.
+  // Secrets: BETTER_AUTH_SECRET, GOOGLE_GMAIL_CLIENT_SECRET, GOOGLE_WEB_CLIENT_SECRET,
+  // MICROSOFT_CLIENT_SECRET (Outlook for the web app; README.md).
   "vars": {
     "IDENTITY_MODE": "accounts",
     "ACCOUNTS_ORIGIN": "https://accounts.otterware.app",
@@ -69,6 +70,11 @@
     "PUSH_SERVICE_ACCOUNT_LEGACY": "gmail-push-relay@otter-mail.iam.gserviceaccount.com",
     "APNS_SANDBOX_TOPIC": "dev.otterware.mail.dev",
     "APNS_PRODUCTION_TOPIC": "dev.otterware.mail",
+    // Outlook (README.md, "Microsoft setup"): the web app's Microsoft client,
+    // with MICROSOFT_CLIENT_SECRET, and the apps' clients whose ID tokens
+    // link Outlook mailboxes. Empty, the web app has no Outlook.
+    "MICROSOFT_CLIENT_ID": "b0c4e8bf-e651-456e-9bc6-408a741b36f9",
+    "MICROSOFT_DESKTOP_CLIENT_IDS": "",
   },
   "observability": { "enabled": true },
 }

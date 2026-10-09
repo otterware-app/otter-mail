@@ -1,6 +1,6 @@
 /**
  * Where a mailbox's mail comes from. Handlers and the sync engine talk to a
- * MailProvider, never to Gmail or IMAP themselves; everything above it (the
+ * MailProvider, never to Gmail, IMAP or Outlook themselves; everything above it (the
  * cache, lists, the UI) sees mail the same way: messages carrying labels
  * (contracts' mail.ts, docs/imap.md).
  *
@@ -113,7 +113,7 @@ export interface MailProvider {
   readonly capabilities: MailCapabilities;
 
   // ── Sign-in ──────────────────────────────────────────────────────────────
-  /** Whether this device can reach the mailbox (Gmail: a Google sign-in; IMAP: a password). */
+  /** Whether this device can reach the mailbox (Gmail: a Google sign-in; IMAP: a password; Outlook: Microsoft's). */
   isSignedIn(accountId: string): boolean;
   /** What the status line says while it can't. */
   readonly signedOutMessage: string;
@@ -235,6 +235,9 @@ export interface MailProvider {
   getDraftVersion(accountId: string, draftId: string): Promise<string | null>;
   /** The draft owning a message (else one in the same thread), or null. */
   findDraftId(accountId: string, messageId: string, threadId?: string): Promise<string | null>;
+
+  /** The mailbox's name and picture as its provider has them now (Gmail's come from Google's userinfo). */
+  readProfile?(accountId: string): Promise<{ name?: string; picture?: string }>;
 
   /** Signatures the server keeps (`capabilities.serverSignatures`), one per address. */
   signatures?: {

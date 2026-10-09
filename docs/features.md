@@ -2,7 +2,8 @@
 
 Every user-facing feature and where it works, checked against the code. Mac and Web are the
 same renderer (`apps/web`) over core, so they match unless noted; the iPhone app is its own
-Swift code (`apps/ios`). Gmail and IMAP are noted where they differ.
+Swift code (`apps/ios`). Gmail, IMAP and Outlook are noted where they differ
+([Outlook](outlook.md): Microsoft Graph, on Mac, Linux and web).
 The Mac app supports Apple Silicon Macs (arm64).
 The Linux app is the same desktop app; it matches the Mac column except where
 [Linux](#linux) says otherwise.
@@ -43,6 +44,7 @@ from GitHub Releases. Everything in the Mac column works the same, except:
 | ------------------------------------------- | ------------------ | ----------------------------------- | ----------------------- |
 | Add a Gmail mailbox (Google sign-in)        | ✓ (loopback OAuth) | ✓ (popup; tokens kept by the relay) | ✓ (PKCE)                |
 | Add an IMAP mailbox, servers discovered     | ✓                  | ✓ (no domain autoconfig file: CORS) | ✓                       |
+| Add an Outlook mailbox (Microsoft sign-in)  | ✓ (loopback OAuth) | ✓ (popup; tokens kept by the relay) | —                       |
 | IMAP through the relay tunnel               | — (direct)         | ✓ (TLS 1.3 servers only)            | — (direct)              |
 | Several mailboxes: on/off, reorder          | ✓                  | ✓                                   | ✓                       |
 | Rail: switch, unread dots (a setting)       | ✓                  | ✓                                   | — (drawer)              |
@@ -71,28 +73,28 @@ from GitHub Releases. Everything in the Mac column works the same, except:
 | Conversation summary (people, files, list)                              | ✓                                                             | ✓                                            | —                        |
 | Sender hover card (write, search, ask)                                  | ✓                                                             | ✓                                            | —                        |
 | Gmail category chips                                                    | Gmail                                                         | Gmail                                        | —                        |
-| Folders: Inbox, Starred, Sent, Drafts, Important, All, Junk, Trash      | ✓ (Important: Gmail)                                          | ✓                                            | ✓ (Important: Gmail)     |
+| Folders: Inbox, Starred, Sent, Drafts, Important, All, Junk, Trash      | ✓ (Important: Gmail; Outlook: high importance)                | ✓                                            | ✓ (Important: Gmail)     |
 | Print, show original                                                    | —                                                             | —                                            | —                        |
 
 ## Organizing
 
-| Feature                                  | Mac                            | Web                             | iPhone                                   |
-| ---------------------------------------- | ------------------------------ | ------------------------------- | ---------------------------------------- |
-| Archive, trash, restore, junk / not junk | ✓                              | ✓                               | ✓                                        |
-| Delete forever                           | ✓                              | ✓                               | ✓                                        |
-| Empty Trash / Empty Junk                 | ✓                              | ✓                               | —                                        |
-| Star (flag), read / unread               | ✓                              | ✓                               | ✓                                        |
-| Mark all as read                         | —                              | —                               | ✓                                        |
-| Multi-select and bulk actions            | ✓ (⌘/⇧-click, ⇧↑/⇧↓)           | ✓                               | ✓ (archive, trash, read, labels/folders) |
-| Undo and redo (z ⌘Z, ⇧Z ⇧⌘Z)             | ✓                              | ✓                               | Undo archive/trash (6 seconds)           |
-| Apply / remove labels                    | ✓ (IMAP: move to folder)       | ✓                               | ✓ (IMAP: move)                           |
-| Create, rename, delete labels            | ✓ (IMAP: folders)              | ✓                               | —                                        |
-| Label colors                             | edit (Gmail)                   | edit (Gmail)                    | shown (Gmail)                            |
-| Nested labels                            | ✓                              | ✓                               | —                                        |
-| Drag conversations onto labels           | ✓                              | ✓                               | —                                        |
-| Swipe actions                            | —                              | —                               | ✓ (fixed)                                |
-| After archive: next / previous           | ✓                              | ✓                               | ✓                                        |
-| Snooze                                   | ✓ (on this device, while open) | ✓ (on this browser, while open) | —                                        |
+| Feature                                  | Mac                                                                | Web                             | iPhone                                   |
+| ---------------------------------------- | ------------------------------------------------------------------ | ------------------------------- | ---------------------------------------- |
+| Archive, trash, restore, junk / not junk | ✓                                                                  | ✓                               | ✓                                        |
+| Delete forever                           | ✓                                                                  | ✓                               | ✓                                        |
+| Empty Trash / Empty Junk                 | ✓                                                                  | ✓                               | —                                        |
+| Star (flag), read / unread               | ✓                                                                  | ✓                               | ✓                                        |
+| Mark all as read                         | —                                                                  | —                               | ✓                                        |
+| Multi-select and bulk actions            | ✓ (⌘/⇧-click, ⇧↑/⇧↓)                                               | ✓                               | ✓ (archive, trash, read, labels/folders) |
+| Undo and redo (z ⌘Z, ⇧Z ⇧⌘Z)             | ✓                                                                  | ✓                               | Undo archive/trash (6 seconds)           |
+| Apply / remove labels                    | ✓ (IMAP: move to folder; Outlook: categories, or move to a folder) | ✓                               | ✓ (IMAP: move)                           |
+| Create, rename, delete labels            | ✓ (IMAP: folders; Outlook: categories; folders rename, delete)     | ✓                               | —                                        |
+| Label colors                             | edit (Gmail; Outlook: its preset colors)                           | edit (Gmail, Outlook)           | shown (Gmail)                            |
+| Nested labels                            | ✓                                                                  | ✓                               | —                                        |
+| Drag conversations onto labels           | ✓                                                                  | ✓                               | —                                        |
+| Swipe actions                            | —                                                                  | —                               | ✓ (fixed)                                |
+| After archive: next / previous           | ✓                                                                  | ✓                               | ✓                                        |
+| Snooze                                   | ✓ (on this device, while open)                                     | ✓ (on this browser, while open) | —                                        |
 
 ## Todoist
 
@@ -145,25 +147,25 @@ conversations are in one, never their mail.
 
 ## Composing & sending
 
-| Feature                                | Mac                                            | Web                             | iPhone                                         |
-| -------------------------------------- | ---------------------------------------------- | ------------------------------- | ---------------------------------------------- |
-| New, reply, reply all                  | ✓                                              | ✓                               | ✓                                              |
-| Forward                                | ✓ (with attachments)                           | ✓                               | last message, with attachments                 |
-| Cc / Bcc                               | ✓ / ✓                                          | ✓                               | ✓ / ✓                                          |
-| From: pick the mailbox                 | ✓                                              | ✓                               | ✓                                              |
-| Contact suggestions (from cached mail) | ✓                                              | ✓                               | ✓ (recipient chips)                            |
-| Attachments (25 MB)                    | ✓                                              | ✓                               | ✓ (Photos / Files)                             |
-| Rich text (bold, lists, links, quotes) | ✓                                              | ✓                               | —                                              |
-| Drafts                                 | autosaved, conflict-aware                      | ✓                               | local autosave/recovery; mailbox save on close |
-| Undo send (10 s)                       | ✓                                              | ✓                               | —                                              |
-| Send later                             | ✓ (on this device, while open)                 | ✓ (on this browser, while open) | —                                              |
-| Signatures                             | Gmail: saved in Gmail; IMAP: synced preference | ✓                               | ✓ (same)                                       |
-| Handles mailto: links                  | ✓ (default mail app)                           | —                               | —                                              |
+| Feature                                | Mac                                                     | Web                             | iPhone                                         |
+| -------------------------------------- | ------------------------------------------------------- | ------------------------------- | ---------------------------------------------- |
+| New, reply, reply all                  | ✓                                                       | ✓                               | ✓                                              |
+| Forward                                | ✓ (with attachments)                                    | ✓                               | last message, with attachments                 |
+| Cc / Bcc                               | ✓ / ✓                                                   | ✓                               | ✓ / ✓                                          |
+| From: pick the mailbox                 | ✓                                                       | ✓                               | ✓                                              |
+| Contact suggestions (from cached mail) | ✓                                                       | ✓                               | ✓ (recipient chips)                            |
+| Attachments (25 MB)                    | ✓                                                       | ✓                               | ✓ (Photos / Files)                             |
+| Rich text (bold, lists, links, quotes) | ✓                                                       | ✓                               | —                                              |
+| Drafts                                 | autosaved, conflict-aware                               | ✓                               | local autosave/recovery; mailbox save on close |
+| Undo send (10 s)                       | ✓                                                       | ✓                               | —                                              |
+| Send later                             | ✓ (on this device, while open)                          | ✓ (on this browser, while open) | —                                              |
+| Signatures                             | Gmail: saved in Gmail; IMAP, Outlook: synced preference | ✓                               | ✓ (same)                                       |
+| Handles mailto: links                  | ✓ (default mail app)                                    | —                               | —                                              |
 
 On iPhone, Compose lives in the sidebar. In a conversation, tap the compact Reply button to
 reply to the sender, or hold it for Reply, Reply all and Forward; Trash sits beside Archive.
 
-Scheduled sends and snoozes work with Gmail and IMAP on Mac and web. The queue is local to
+Scheduled sends and snoozes work with Gmail, IMAP and Outlook on Mac and web. The queue is local to
 that device/browser, survives restarts, and runs overdue actions when the app next opens.
 Snooze is available in the reader toolbar and a conversation's right-click menu.
 “Scheduled & snoozed” appears only when the queue is nonempty and lists every mailbox's
@@ -174,26 +176,27 @@ These are Otter Mail actions, separate from Gmail's own scheduled and snoozed fo
 
 ## Search
 
-| Feature                        | Mac                                                                        | Web | iPhone                                 |
-| ------------------------------ | -------------------------------------------------------------------------- | --- | -------------------------------------- |
-| Gmail: server search           | ✓ (all Gmail operators, paged; local when offline)                         | ✓   | ✓ (25 results, plus local)             |
-| IMAP: local search             | ✓ (in: from: to: subject: is: has: after: before: newer_than: older_than:) | ✓   | ✓ (from: to: subject: label: is: has:) |
-| Search chips / advanced search | ✓                                                                          | ✓   | —                                      |
-| Search tabs in the sidebar     | ✓                                                                          | ✓   | —                                      |
+| Feature                        | Mac                                                                                                     | Web | iPhone                                 |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------- | --- | -------------------------------------- |
+| Gmail: server search           | ✓ (all Gmail operators, paged; local when offline)                                                      | ✓   | ✓ (25 results, plus local)             |
+| IMAP: local search             | ✓ (in: from: to: subject: is: has: after: before: newer_than: older_than:)                              | ✓   | ✓ (from: to: subject: label: is: has:) |
+| Outlook: server search         | ✓ (Outlook's search; from: to: cc: subject: has: after: before: newer_than: older_than: in: is: label:) | ✓   | —                                      |
+| Search chips / advanced search | ✓                                                                                                       | ✓   | —                                      |
+| Search tabs in the sidebar     | ✓                                                                                                       | ✓   | —                                      |
 
 ## Calendar invitations
 
-| Feature                             | Mac                                                    | Web | iPhone |
-| ----------------------------------- | ------------------------------------------------------ | --- | ------ |
-| Invitation card (what, when, where) | ✓                                                      | ✓   | —      |
-| Yes / No / Maybe                    | Gmail: Google Calendar; IMAP: email reply to organizer | ✓   | —      |
-| Google's RSVP links in the body     | ✓ (answered in place)                                  | ✓   | —      |
+| Feature                             | Mac                                                                               | Web | iPhone |
+| ----------------------------------- | --------------------------------------------------------------------------------- | --- | ------ |
+| Invitation card (what, when, where) | ✓                                                                                 | ✓   | —      |
+| Yes / No / Maybe                    | Gmail: Google Calendar; Outlook: Outlook calendar; IMAP: email reply to organizer | ✓   | —      |
+| Google's RSVP links in the body     | ✓ (answered in place)                                                             | ✓   | —      |
 
 ## Contacts & avatars
 
-| Feature       | Mac                                                                      | Web | iPhone        |
-| ------------- | ------------------------------------------------------------------------ | --- | ------------- |
-| Sender photos | Gmail: contacts → Gravatar → domain logo → initials; IMAP: from Gravatar | ✓   | initials only |
+| Feature       | Mac                                                                               | Web | iPhone        |
+| ------------- | --------------------------------------------------------------------------------- | --- | ------------- |
+| Sender photos | Gmail: contacts → Gravatar → domain logo → initials; IMAP, Outlook: from Gravatar | ✓   | initials only |
 
 ## Notifications & live mail
 
@@ -201,6 +204,7 @@ These are Otter Mail actions, separate from Gmail's own scheduled and snoozed fo
 | ---------------------------------------------------------- | ---------------------------- | ----------------------- | ---------------------------------- |
 | New-mail notifications (Off / Inbox / All), click opens it | ✓                            | ✓ (browser)             | ✓ (private Gmail APNs; local IMAP) |
 | Gmail push via relay                                       | ✓ (with an Otter account)    | ✓                       | ✓ (WebSocket + private APNs)       |
+| Outlook push via relay (Graph subscription)                | ✓ (with an Otter account)    | ✓                       | —                                  |
 | IMAP IDLE                                                  | ✓ (while running)            | ✓ (while a tab is open) | while open                         |
 | Background sync                                            | ✓ (15 s – 15 min, or manual) | ✓ (while a tab is open) | BGAppRefresh, ≥ 15 min             |
 | Unread badge                                               | Dock                         | tab title, app badge    | app icon                           |
@@ -312,7 +316,7 @@ on the local Vite server, with a private browser session and server-side key sto
 
 Claude and Codex get Otter Mail's own tools (an MCP server in the Mac app's backend), so they
 need no mail CLI: search, read and sort mail, download attachments, save drafts and send, in
-any mailbox (Gmail or IMAP), and list, add, change and answer events in Google Calendar. A tool
+any mailbox (Gmail, IMAP or Outlook), and list, add, change and answer events in Google Calendar or Outlook's calendar. A tool
 that changes a mailbox asks first unless the chat has full access; drafts don't ask. They can
 also make a theme or change one of the user's own, and wear a theme; a built-in never changes
 (changing one makes a copy, worn in its place). They manage projects too (create, add

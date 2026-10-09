@@ -2,6 +2,10 @@
 BETTER_AUTH_SECRET=
 GOOGLE_WEB_CLIENT_SECRET=
 
+# Optional Outlook for the web app (README.md, "Microsoft setup"). Without them, it has no Outlook.
+MICROSOFT_CLIENT_ID=
+MICROSOFT_CLIENT_SECRET=
+
 # Optional iPhone push. Without these, registration returns 503 and the phone keeps local alerts.
 APNS_TEAM_ID=
 APNS_KEY_ID=

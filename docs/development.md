@@ -86,7 +86,8 @@ profile in `chromium/` and logs in `logs/main.log`. Delete it to start fresh.
 
 `pnpm dev:demo` (the web app) and `pnpm dev:demo:desktop` (the Mac app) open on real mailboxes
 made for development, already added, past the setup: the dedicated `otterware.demo@gmail.com`
-Google account (synthetic mail, contacts and calendar events) and the local IMAP server's
+Google account (synthetic mail, contacts and calendar events), a dedicated Outlook (Microsoft)
+account set up the same way, and the local IMAP server's
 `me@otter.test` ([IMAP locally](#imap-locally), started for you; it needs Docker). They keep their
 own data, apart from the mailboxes you develop with: the Mac app in a `demo/` data home, the web
 app in its own OPFS storage (`.otter-mail-dev-demo`, `dev-demo-files/`), signed in to an Otter
@@ -96,14 +97,20 @@ One variable in the main checkout's ignored `.env.local` holds them, a JSON list
 (`packages/contracts/src/demo.ts`):
 
 ```dotenv
-OTTER_MAIL_DEMO_MAILBOXES='[{"provider":"gmail","email":"otterware.demo@gmail.com","password":"…","refreshTokens":{}}]'
+OTTER_MAIL_DEMO_MAILBOXES='[{"provider":"gmail","email":"otterware.demo@gmail.com","password":"…","refreshTokens":{}},{"provider":"outlook","email":"…@outlook.com","password":"…","refreshTokens":{}}]'
 ```
 
 Once per machine, `pnpm dev:demo:desktop --login` and `pnpm dev:demo --login` sign the Gmail
 mailbox in to Google (Google's page, in your browser; the password is there) and save each
 sign-in in the list, one per OAuth client: the Mac app's, and the relay's web client, which comes
 back to `http://localhost:8787/v1/gmail/callback` (so no other `pnpm dev` may hold that port
-then). Copying `.env.local` to another machine brings them along. An IMAP entry is
+then). The Outlook mailbox signs in to Microsoft the same way: the Mac app's public client
+(`OTTER_MAIL_MICROSOFT_CLIENT_ID` in `.env.local`), and the relay's web client
+(`MICROSOFT_CLIENT_ID` and `MICROSOFT_CLIENT_SECRET` in `infra/relay/.dev.vars`), coming back to
+`http://localhost:8787/v1/outlook/callback`, which the app registration must list. Microsoft's
+sign-ins lapse after 90 days unused: `--login` again then. `--login` signs in the mailboxes that
+have no sign-in for that app yet, or every one when none is missing. Copying `.env.local` to another machine
+brings them along. An IMAP entry is
 `{"provider":"imap","email","password","imap":{"host","port","security"},"smtp":{…}}`.
 
 How they get in, in development only:
@@ -111,17 +118,19 @@ How they get in, in development only:
 - The dev runner reads the list, adds the local IMAP server's mailbox and hands it to the app as
   `OTTER_MAIL_DEMO_MAILBOXES`.
 - Core's `addDemoMailboxes` adds those the app doesn't have yet before the windows ask for any.
-  The Mac app refreshes the saved Google sign-in itself; the web app has the local relay seal it,
-  as its sign-in popup would.
+  The Mac app refreshes the saved Google (or Microsoft) sign-in itself; the web app has the local
+  relay seal it, as its sign-in popup would.
 - The web app gets the list from its Vite dev server (`/__dev/demo-mailboxes`), never a build.
   The local relay runs with `DEV_DEMO=true` (never in `wrangler.jsonc`), which opens
-  `/v1/dev/session` (an Otter session for an address, without Google) and `/v1/dev/gmail`.
+  `/v1/dev/session` (an Otter session for an address, without Google), `/v1/dev/gmail` and
+  `/v1/dev/outlook`.
 
 New T3 worktrees symlink `.env.local` during setup; the dev runner falls back to the main
 checkout's (the parent of `git rev-parse --path-format=absolute --git-common-dir`). Keep the
 password and sign-ins out of commits, logs, screenshots and app bundles, and never give them a
 `VITE_` prefix. Preserve the seeded reviewer data, and send test mail only to
-`otterware.demo@gmail.com` itself; the fixtures' `otter.example` addresses are fictional.
+`otterware.demo@gmail.com` itself (or between it and the Outlook demo mailbox); the fixtures'
+`otter.example` addresses are fictional.
 
 ## Google sign-in
 
@@ -131,6 +140,13 @@ baked in at build time and never committed: copy `.env.example` to `.env.local` 
 (Credentials: https://console.cloud.google.com/auth/clients?project=otterware). The same
 `OTTER_MAIL_GOOGLE_CLIENT_ID` / `OTTER_MAIL_GOOGLE_CLIENT_SECRET` variables override the baked-in
 values at runtime.
+
+Outlook mailboxes sign in the same way (`apps/desktop/src/services/microsoft-oauth.ts`), with a
+public client of an Azure app registration: no secret, PKCE, and a loopback redirect on
+`http://localhost` (any port, under "Mobile and desktop applications"; "Allow public client
+flows" on). Its Application (client) ID is `OTTER_MAIL_MICROSOFT_CLIENT_ID`, baked in and
+overridable like Google's; without one the app doesn't offer Outlook. The web app signs in to
+Outlook through the relay instead.
 
 The same client signs in to the Otter account (`infra/relay`): with a Gmail account already on the
 Mac, the app proves the identity with a fresh ID token from that account's refresh token, no

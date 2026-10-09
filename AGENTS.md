@@ -5,12 +5,13 @@ Ubuntu, a .deb), and the same app in the browser at https://mail.otterware.app. 
 like Otter Code (our fork of T3 Code): a pnpm monorepo built with Vite+ (`vp`); the desktop app
 ships through GitHub Releases with auto-update.
 
-What each app supports (Mac, Linux, web, iPhone; Gmail vs IMAP): `docs/features.md`. Keep it current
+What each app supports (Mac, Linux, web, iPhone; Gmail vs IMAP vs Outlook): `docs/features.md`. Keep it current
 when a feature lands or goes.
 
 ## Where code lives
 
-- `packages/core`: the mail backend, shared by both apps: Gmail API client, quota, the SQLite
+- `packages/core`: the mail backend, shared by both apps: its mail providers (`src/providers`:
+  Gmail's API, IMAP, Outlook through Microsoft Graph; docs/imap.md, docs/outlook.md), quota, the SQLite
   mail cache, sync, the JSON stores, the Otter account (better-auth client), mailboxes synced
   across devices, realtime push, and the handlers the UI calls. It is plain TypeScript: anything
   platform-specific goes through the `Platform` interface (`src/platform.ts`).
@@ -26,7 +27,7 @@ when a feature lands or goes.
     The rest of the app asks `hostOS` / `backendOS` and never checks `process.platform`.
   - `src/handlers/`: the desktop-only handlers (default mail app, app icon, …); `backend.ts` there holds
     the ones the backend serves.
-  - `src/services/`: Google sign-in (loopback OAuth), the agent panel's
+  - `src/services/`: Google and Microsoft sign-in (loopback OAuth), the agent panel's
     browser (`browser.ts`: its session, the Web Store, popups and permissions; `extensions.ts`
     with `src/extensions-preload.ts`: Chrome's extension APIs Electron lacks), the local agents
     (Claude, Codex; Hermes is in core) and the MCP server that gives them, and other agents on

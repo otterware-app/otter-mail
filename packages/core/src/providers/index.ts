@@ -9,15 +9,17 @@ import { providerKindOf } from "../services/account-store.js";
 import type { GmailAccount } from "../types.js";
 import { gmailProvider } from "./gmail/index.js";
 import { imapProvider } from "./imap/index.js";
+import { outlookProvider } from "./outlook/index.js";
 import type { MailProvider } from "./provider.js";
 
 const providers: Record<MailProviderKind, MailProvider | null> = {
   gmail: gmailProvider,
   imap: imapProvider,
+  outlook: outlookProvider,
 };
 
 /** What an account whose provider isn't here yet shows. */
-const UNAVAILABLE = "IMAP isn't available yet.";
+const UNAVAILABLE = "This kind of mailbox isn't available in this app.";
 
 /** The account's provider; null when this build can't reach its kind of mailbox yet. */
 export function findProvider(account: GmailAccount | string): MailProvider | null {

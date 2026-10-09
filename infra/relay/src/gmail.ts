@@ -12,6 +12,7 @@
  */
 
 import { GMAIL_SCOPES } from "@otter-mail/contracts";
+import { signInPage } from "@otter-mail/shared/sign-in-page";
 import { EncryptJWT, jwtDecrypt, jwtVerify, SignJWT } from "jose";
 
 import { googleKeys } from "./auth.ts";
@@ -197,22 +198,35 @@ export async function refresh(env: Env, userId: string, sealed: string) {
 
 /** The popup's last page: hands the result (or error) to the app and closes. */
 export function popupResponse(env: Env, message: { result?: SignInResult; error?: string }) {
-  const payload = JSON.stringify({ type: "otter:gmail-sign-in", ...message }).replace(
+  return popupPage(env, "gmail", message);
+}
+
+/**
+ * The sign-in popup's last page, for Gmail or Outlook (outlook.ts): posts
+ * `{ type: "otter:<provider>-sign-in", … }` to the app and closes.
+ */
+export function popupPage(
+  env: Env,
+  provider: "gmail" | "outlook",
+  message: { result?: unknown; error?: string },
+) {
+  const payload = JSON.stringify({ type: `otter:${provider}-sign-in`, ...message }).replace(
     /</g,
     "\\u003c",
   );
-  const html = `<!doctype html><meta charset="utf-8"><title>Otter Mail</title>
-<body style="font:15px -apple-system,BlinkMacSystemFont,sans-serif;display:grid;place-items:center;height:90vh">
-<p>${message.error ? "Sign-in didn't work. You can close this window." : "Signed in. You can close this window."}</p>
-<script>
+  const html = signInPage({
+    title: message.error ? "Sign-in didn't work" : "Signed in",
+    detail: "You can close this window.",
+    ok: !message.error,
+    script: `
 const message = ${payload};
 if (window.opener) {
   window.opener.postMessage(message, ${JSON.stringify(env.APP_ORIGIN)});
   window.close();
 } else {
   // Signed in in the app's own tab (the browser blocked the popup): take the answer back there.
-  location.replace(${JSON.stringify(`${env.APP_ORIGIN}/app`)} + "#gmail-sign-in=" + encodeURIComponent(JSON.stringify(message)));
-}
-</script>`;
+  location.replace(${JSON.stringify(`${env.APP_ORIGIN}/app`)} + "#${provider}-sign-in=" + encodeURIComponent(JSON.stringify(message)));
+}`,
+  });
   return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8" } });
 }

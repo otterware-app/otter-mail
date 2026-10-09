@@ -28,6 +28,7 @@ const ORIGIN_CHANNELS: Record<keyof PageRequests | "download" | "open", string[]
   todoistSignIn: ["todoist:signIn"],
   pickFiles: ["gmail:pickAttachments"],
   googleSignIn: ["gmail:addAccount"],
+  outlookSignIn: ["gmail:addOutlookAccount"],
   download: ["gmail:getAttachment"],
   open: ["gmail:openAttachment", "gmail:openComposeAttachment"],
   detectLanguage: ["translation:detect"],

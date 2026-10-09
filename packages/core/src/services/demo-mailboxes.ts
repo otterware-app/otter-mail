@@ -11,6 +11,7 @@ import { broadcast } from "../ipc.js";
 import { logger } from "../logger.js";
 import { platform } from "../platform.js";
 import { addImapAccount } from "../handlers/imap-accounts.js";
+import { saveOutlookAccount } from "../handlers/outlook-accounts.js";
 import * as accountStore from "./account-store.js";
 import { accountAdded } from "./linked-accounts.js";
 import * as mailSync from "./mail-sync.js";
@@ -23,6 +24,12 @@ async function addDemoMailbox(mailbox: DemoMailbox): Promise<void> {
       password: mailbox.password,
       imap: { username: mailbox.username ?? mailbox.email, imap: mailbox.imap, smtp: mailbox.smtp },
     });
+    return;
+  }
+  if (mailbox.provider === "outlook") {
+    const addDemoAccount = platform().microsoft?.addDemoAccount;
+    if (!addDemoAccount) throw new Error("This app can't add a demo Outlook mailbox.");
+    await saveOutlookAccount(await addDemoAccount(mailbox));
     return;
   }
   const addDemoAccount = platform().google.addDemoAccount;

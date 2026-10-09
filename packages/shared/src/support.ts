@@ -74,7 +74,7 @@ export type SupportDiagnostics = {
   syncIntervalSeconds: number | null;
   mailboxes: {
     mailbox: string;
-    provider: "gmail" | "imap";
+    provider: "gmail" | "imap" | "outlook";
     enabled: boolean;
     authenticated: boolean;
     sync: {
@@ -213,7 +213,7 @@ Read the report and diagnostics supplied with this playbook. Ask focused
 follow-up questions to understand the bug or feature request. Respect the selected
 feedback type and affected platform (Mac, web, or iPhone). Diagnostics describe
 the app that collected them; do not assume they describe a different affected
-platform. Establish the provider (Gmail or IMAP) when relevant.
+platform. Establish the provider (Gmail, IMAP or Outlook) when relevant.
 
 For bugs, ask for the information needed to reproduce the problem. For feature
 requests, clarify the user's goal and desired behavior, inspect existing support,

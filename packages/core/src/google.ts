@@ -5,6 +5,6 @@ export const SIGNED_OUT_MESSAGE = "Signed out of Google. Sign in to this account
 /** The user gave up on a sign-in (or started another one). */
 export class SignInCancelledError extends Error {
   constructor() {
-    super("Google sign-in was cancelled.");
+    super("Sign-in was cancelled.");
   }
 }

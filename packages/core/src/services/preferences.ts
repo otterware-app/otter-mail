@@ -30,7 +30,7 @@ import { getHermesKey } from "./agent/settings.js";
 import { readKeybindings, writeKeybindings } from "./keybindings-store.js";
 import { configureAutoSync, followMailboxArrangement } from "./mail-sync.js";
 import { getOtterUser, relayRequest } from "./otter-account.js";
-import { listAccounts, updateAccount } from "./account-store.js";
+import { keepsSignatureOnDevice, listAccounts, updateAccount } from "./account-store.js";
 import { getSettings, updateSettings, type AppSettings } from "./settings-store.js";
 import { listViews, writeViews } from "./views-store.js";
 import type { MailView } from "../types.js";
@@ -145,7 +145,7 @@ const SECTIONS = {
     async read() {
       const signatures = syncedSignatures();
       for (const account of await listAccounts()) {
-        if (account.provider !== "imap") continue;
+        if (!keepsSignatureOnDevice(account)) continue;
         signatures[account.email.toLowerCase()] = account.signature ?? "";
       }
       return signatures;
@@ -156,7 +156,7 @@ const SECTIONS = {
       let changed = false;
       for (const account of await listAccounts()) {
         const signature = signatures[account.email.toLowerCase()];
-        if (account.provider !== "imap" || signature === undefined) continue;
+        if (!keepsSignatureOnDevice(account) || signature === undefined) continue;
         if ((account.signature ?? "") === signature) continue;
         await updateAccount(account.id, { signature });
         changed = true;

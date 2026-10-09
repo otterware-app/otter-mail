@@ -1,14 +1,15 @@
 # Otter Mail relay
 
-https://relay.mail.otterware.app, a Cloudflare Worker. It gives Otter Mail seven things (the
+https://relay.mail.otterware.app, a Cloudflare Worker. It gives Otter Mail eight things (the
 Mac app works without it; the web app needs it):
 
 - **Otter accounts.** Sign in with Google once per Mac, and the mailboxes you use come along to
-  every Mac. The relay keeps the list of linked addresses (Gmail, or IMAP with its server
+  every Mac. The relay keeps the list of linked addresses (Gmail, Outlook, or IMAP with its server
   settings) and their display names and colors. Each Mac still signs in to each mailbox itself;
-  the relay never holds Gmail tokens or IMAP passwords. Linking a Gmail account needs a Google ID
-  token for it; an IMAP link proves nothing, so it never receives Gmail pushes, and a mailbox
-  can't switch between Gmail and IMAP without being unlinked first (409).
+  the relay never holds Gmail or Microsoft tokens or IMAP passwords. Linking a Gmail account needs
+  a Google ID token for it, an Outlook one a Microsoft ID token (`src/microsoft-jwt.ts`); an IMAP
+  link proves nothing, so it never receives Gmail or Outlook pushes, and a mailbox can't switch
+  providers without being unlinked first (409).
 - **Preferences that follow you.** Settings, views, keybindings, the agent's settings and
   UI choices like the theme, as sections of JSON per Otter account, plus the Hermes API key,
   sealed with a key derived from the auth secret. A change is pushed to the account's other
@@ -34,10 +35,20 @@ Mac app works without it; the web app needs it):
   relay can open it, and only for the Otter user it was issued to). The browser keeps the sealed
   token and asks `/v1/gmail/token` for fresh access tokens. Nothing is stored here. See
   `src/gmail.ts`.
+- **Outlook for the web app.** The same for Microsoft (`src/outlook.ts`): the relay's
+  confidential client does the exchange (a browser's Microsoft refresh tokens last a day),
+  asks Graph which mailbox signed in, and seals the refresh token. Microsoft rotates refresh
+  tokens, so `/v1/outlook/token` answers a freshly sealed one each time.
 - **Realtime mail.** Each Mac asks Gmail (`users.watch`) to publish its mailboxes' changes to the
   `gmail-push` Pub/Sub topic. Pub/Sub pushes each notification (`{ emailAddress, historyId }`,
   no content) to the relay, which forwards it over WebSocket to the Macs of whoever linked that
   address. They sync the change from Gmail within a couple of seconds, instead of on the next poll.
+  Outlook has no Pub/Sub: each device subscribes its Outlook mailboxes with Microsoft Graph,
+  using the `notificationUrl` and `clientState` `/v1/outlook/watch` gives it, and Graph posts
+  straight to `/push/outlook/:email`. The `clientState` is an HMAC of the address (keyed from the
+  auth secret), so a notification without it is acknowledged (202) and dropped; with it, devices
+  of whoever linked the address as Outlook get a `mail` event (`historyId` ""). No iPhone
+  alerts for Outlook yet.
 - **A tunnel to mail servers for the web app.** A browser can't open TCP connections, so
   `/v1/tunnel` pipes a WebSocket to an IMAP or SMTP server (mail ports only, public hosts only).
   The web app does TLS inside it, so the relay carries ciphertext; it logs host, port, byte
@@ -76,7 +87,8 @@ Mac ◀──── WebSocket /v1/events ◀── UserHub (Durable Object, one 
 
 - `src/worker.ts`: routes (Hono). `/v1/auth/*` is better-auth; `/v1/me`, `/v1/accounts`,
   `/v1/preferences`, `/v1/projects`, `/v1/agent-tokens`, `/v1/events` and `/v1/tunnel` need a
-  session; `/mcp` takes an agent token; `/push/gmail` takes Pub/Sub pushes.
+  session; `/mcp` takes an agent token; `/push/gmail` takes Pub/Sub pushes, `/push/outlook/:email`
+  Graph's.
 - `src/tunnel.ts`: the web app's TCP tunnel (`cloudflare:sockets`), and which hosts and ports
   it may reach.
 - `src/auth.ts`: better-auth: Google sign-in (ID tokens from the Mac app, the redirect flow for
@@ -86,11 +98,13 @@ Mac ◀──── WebSocket /v1/events ◀── UserHub (Durable Object, one 
 - `src/identity.ts`: shared Otter sign-in and account deletion pages. Drive uses the relay as
   an OIDC provider with PKCE; see [shared identity](../../docs/shared-identity.md).
 - `src/gmail.ts`: the web app's Gmail sign-in popup, and token refreshes.
+- `src/outlook.ts`: the same for Outlook, and Graph subscriptions' `clientState`.
 - `src/preferences.ts`: merging preference sections, sealing the Hermes key.
 - `src/projects.ts`: projects, their threads and links; the project tools' store.
 - `src/mcp.ts`: agent tokens, and the MCP server agents reach projects through.
 - `src/keys.ts`: keys derived from the auth secret, one per purpose.
 - `src/google-jwt.ts`: verifies Google-signed JWTs (jose): ID tokens, and Pub/Sub's push tokens.
+- `src/microsoft-jwt.ts`: verifies Microsoft ID tokens, and which address one proves.
 - `src/user-hub.ts`: the Durable Object holding each user's sockets (hibernating).
 - `src/schema.ts`, `src/store.ts`: the D1 schema (Drizzle) and the queries (linked accounts,
   preferences).
@@ -156,6 +170,32 @@ the Google project number. Updated apps select the topic for their grant; Gmail 
 watch topic to belong to the OAuth client's project. Both projects' authenticated push
 subscriptions deliver to the same relay, which accepts exactly their two service accounts.
 Do not delete the old clients, topic, subscription, or signing account while old grants exist.
+
+## Microsoft setup (Outlook)
+
+One app registration in Microsoft Entra (portal.azure.com → App registrations) serves the web
+app through the relay; the desktop app may use the same one or its own.
+
+- **Supported account types:** accounts in any organizational directory and personal Microsoft
+  accounts (`common`, which `MICROSOFT_AUTHORITY` in `packages/contracts/src/microsoft.ts` uses).
+- **Platforms:** Web, redirect URI `https://relay.mail.otterware.app/v1/outlook/callback`
+  (`http://localhost:8787/v1/outlook/callback` for `pnpm dev`); Mobile and desktop
+  applications, redirect URI `http://localhost` (the desktop app's loopback sign-in).
+- **API permissions:** Microsoft Graph, delegated, as `OUTLOOK_SCOPES`: `openid`, `email`,
+  `profile`, `offline_access`, `User.Read`, `Mail.ReadWrite`, `Mail.Send`,
+  `MailboxSettings.ReadWrite`, `Calendars.ReadWrite`.
+- **Token configuration:** add the optional claim `xms_edov` to the ID token. A work account's
+  `email` claim is whatever its admin typed; it proves the address only with `xms_edov` (the
+  tenant verified the domain). Without it, a work mailbox links only when its address is the
+  sign-in name (`preferred_username`). Personal accounts' `email` is Microsoft's own.
+- **Certificates & secrets:** a client secret, as the Worker secret `MICROSOFT_CLIENT_SECRET`.
+  It expires (24 months at most): rotate it before then.
+
+Variables: `MICROSOFT_CLIENT_ID` (the registration's application ID; empty, the web app has no
+Outlook and `/v1/me` says `outlook: false`), `MICROSOFT_CLIENT_SECRET`, and
+`MICROSOFT_DESKTOP_CLIENT_IDS` (comma-separated: the desktop and iPhone apps' client IDs, when
+they differ, so their ID tokens can link mailboxes). `MICROSOFT_JWKS_URL`,
+`MICROSOFT_TOKEN_URL` and `MICROSOFT_GRAPH_URL` exist for the tests only.
 
 ## Shared identity service
 

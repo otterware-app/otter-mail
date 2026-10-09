@@ -20,6 +20,7 @@ import { requestMain, tellMain } from "./main-link.js";
 import { backendOS } from "./os/backend.js";
 import { googleAuth } from "./services/gmail-oauth.js";
 import { connectMailSocket } from "./services/mail-socket.js";
+import { microsoftAuth } from "./services/microsoft-oauth.js";
 import { claudeProvider } from "./services/agent/claude.js";
 import { codexProvider } from "./services/agent/codex.js";
 import { desktopSupportDiagnostics } from "./services/support-diagnostics.js";
@@ -112,6 +113,7 @@ export function desktopPlatform(): Platform {
     },
 
     google: googleAuth,
+    microsoft: microsoftAuth,
     todoistSignIn,
     relayUrl: process.env.OTTER_MAIL_RELAY_URL?.trim() || "https://relay.mail.otterware.app",
     relaySession: "bearer",

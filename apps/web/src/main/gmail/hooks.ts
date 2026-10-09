@@ -756,16 +756,31 @@ function applyLabelPatch<T extends GmailMessageSummary>(
 
 // ---- Mutations ----
 
-export function useAddAccount() {
+/**
+ * Adds a mailbox with its provider's sign-in in the browser: Google's for
+ * Gmail, Microsoft's for Outlook. Given an address, signs that mailbox back in.
+ */
+export function useAddAccount(provider: "gmail" | "outlook" = "gmail") {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (email?: string) => {
-      console.log("[hooks:useAddAccount] adding account", { email });
-      return gmailApi.addAccount(email);
+      console.log("[hooks:useAddAccount] adding account", { provider, email });
+      return provider === "outlook"
+        ? gmailApi.addOutlookAccount(email)
+        : gmailApi.addAccount(email);
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: queryKeys.accounts() });
     },
+  });
+}
+
+/** Which kinds of mailbox this app can add besides Gmail and IMAP (Outlook needs an OAuth client). */
+export function useMailProviders() {
+  return useQuery({
+    queryKey: ["gmail:mailProviders"],
+    queryFn: () => gmailApi.mailProviders(),
+    staleTime: Infinity,
   });
 }
 

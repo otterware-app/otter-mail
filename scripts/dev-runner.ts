@@ -67,7 +67,7 @@ Options:
   --home <dir>    Data home of the Mac app. Default: a linked worktree's own
                   .otter-mail, otherwise ~/.otter-mail/dev (never the installed
                   app's ~/.otter-mail/userdata); for the demo, its demo/ inside.
-  --login         Demo runs: sign the demo Gmail mailboxes in to Google first
+  --login         Demo runs: sign the demo Gmail mailboxes in to Google (Outlook ones to Microsoft) first
                   (once per machine), saving the sign-ins in .env.local.
   --dry-run       Print the resolved ports and commands, then exit.
   -h, --help      Show this help.
@@ -196,6 +196,32 @@ function googleClient(app: "desktop" | "web", env: Record<string, string | undef
 }
 
 /**
+ * The Microsoft client a demo sign-in is for: the Mac app's public one
+ * (.env.local), or the local relay's web client (infra/relay/.dev.vars),
+ * through the callback registered for it.
+ */
+function microsoftClient(app: "desktop" | "web", env: Record<string, string | undefined>) {
+  if (app === "desktop") {
+    const id = process.env.OTTER_MAIL_MICROSOFT_CLIENT_ID ?? env.OTTER_MAIL_MICROSOFT_CLIENT_ID;
+    if (!id) throw new Error(".env.local needs OTTER_MAIL_MICROSOFT_CLIENT_ID.");
+    return { id };
+  }
+  const relayDir = NodePath.join(repoRoot, "infra/relay");
+  const vars = NodePath.join(relayDir, ".dev.vars");
+  const devVars = NodeFS.existsSync(vars) ? parseEnv(NodeFS.readFileSync(vars, "utf8")) : {};
+  const id =
+    devVars.MICROSOFT_CLIENT_ID ||
+    /"MICROSOFT_CLIENT_ID":\s*"([^"]+)"/.exec(
+      NodeFS.readFileSync(NodePath.join(relayDir, "wrangler.jsonc"), "utf8"),
+    )?.[1];
+  const secret = devVars.MICROSOFT_CLIENT_SECRET;
+  if (!id || !secret) {
+    throw new Error("infra/relay/.dev.vars needs MICROSOFT_CLIENT_ID and MICROSOFT_CLIENT_SECRET.");
+  }
+  return { id, secret, redirectUri: `http://localhost:${BASE_RELAY_PORT}/v1/outlook/callback` };
+}
+
+/**
  * The demo runs' mailboxes (packages/contracts/src/demo.ts): .env.local's,
  * signed in to Google first with `--login`, then the local IMAP server's,
  * started for them.
@@ -206,10 +232,15 @@ async function demoMailboxes(mode: Mode, signIn: boolean): Promise<DemoMailbox[]
   const json = process.env[DEMO_MAILBOXES_ENV] ?? env[DEMO_MAILBOXES_ENV];
   let mailboxes = json ? parseDemoMailboxes(json) : [];
   const app = mode === "dev:demo:desktop" ? "desktop" : "web";
-  if (signIn) mailboxes = await login(file, mailboxes, app, googleClient(app, env));
+  if (signIn) {
+    mailboxes = await login(file, mailboxes, app, {
+      google: () => googleClient(app, env),
+      microsoft: () => microsoftClient(app, env),
+    });
+  }
   if (!json) console.warn(`[dev] ${file} has no ${DEMO_MAILBOXES_ENV} (docs/development.md).`);
   for (const mailbox of mailboxes) {
-    if (mailbox.provider === "gmail" && !mailbox.refreshTokens[app]) {
+    if (mailbox.provider !== "imap" && !mailbox.refreshTokens[app]) {
       console.warn(`[dev] ${mailbox.email} isn't signed in yet: run \`pnpm ${mode} --login\`.`);
     }
   }
