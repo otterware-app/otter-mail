@@ -5,6 +5,7 @@ import type { MailProviderKind } from "@otter-mail/contracts/mail";
 import {
   accessToken,
   credential,
+  failureDetail,
   sameSettings,
   NotificationFailure,
   type Connection,
@@ -45,7 +46,28 @@ async function json(url: string, token: string, options: RequestInit = {}): Prom
   });
   if (!response.ok) {
     if (response.status === 404) throw new MissingResource();
-    throw new NotificationFailure(response.status === 401 || response.status === 403);
+    const body = (await response.json().catch(() => null)) as {
+      error?: { errors?: { reason?: string }[]; status?: string };
+    } | null;
+    // Gmail uses 403 for quota limits too. Those need retry, not fresh consent.
+    const quota =
+      body?.error?.errors?.some((e) =>
+        [
+          "rateLimitExceeded",
+          "userRateLimitExceeded",
+          "dailyLimitExceeded",
+          "quotaExceeded",
+        ].includes(e.reason ?? ""),
+      ) || body?.error?.status === "RESOURCE_EXHAUSTED";
+    const reauthorize = response.status === 401 || (response.status === 403 && !quota);
+    const call = /\/(profile|watch|history|messages|subscriptions|mailFolders)\b/.exec(
+      new URL(url).pathname,
+    )?.[1];
+    throw new NotificationFailure(
+      reauthorize,
+      undefined,
+      failureDetail(call ?? "api", response.status, body?.error?.errors?.[0]?.reason),
+    );
   }
   return response.json() as Promise<Json>;
 }

@@ -2,7 +2,7 @@ import Foundation
 import CryptoKit
 import Darwin
 
-/** Only routing/preferences/history markers in the App Group; secrets are in its Keychain group. */
+/** Only routing and preferences in the App Group; secrets are in its Keychain group. */
 nonisolated enum PushState {
     static var group: String { Bundle.main.object(forInfoDictionaryKey: "NotificationAppGroup") as? String ?? "" }
     static var directory: URL? { FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: group)?.appending(path: "Notifications", directoryHint: .isDirectory) }
@@ -14,19 +14,11 @@ nonisolated enum PushState {
         var imapSettings: [String: ImapSettings]? = nil
     }
 
-    struct Cursor: Codable, Sendable {
-        var userId: String
-        var historyId: String
-    }
-
     static func configuration() -> Configuration? { read("configuration") }
 
     static func configure(_ configuration: Configuration?) {
         try? write(configuration, "configuration")
     }
-
-    static func cursor(_ email: String) -> Cursor? { read(name(email)) }
-    static func save(_ cursor: Cursor?, email: String) throws { try write(cursor, name(email)) }
 
     static func permits(userId: String, email: String) -> Bool {
         guard let config = configuration() else { return false }

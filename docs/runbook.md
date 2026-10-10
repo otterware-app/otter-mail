@@ -135,6 +135,10 @@ background sync. APNs is best effort and cannot recall an already submitted aler
 A stopped connection appears in Settings → Mailboxes → Background notifications. `reauthorize`
 needs user consent/password again; `retry` backs off transient failures. Check OAuth client-secret
 expiry, registered redirect URLs, server granted scopes and subscription renewal when investigating.
+Setup reports an error if the provider consent succeeds but watcher startup rejects its grant.
+The relay logs safe reason codes (`scope_missing`, `scope_rejected`, `grant_revoked`,
+`provider_authorization`, `provider_temporary`, `connection_changed`) without tokens or provider
+response bodies. Gmail quota-related HTTP 403 responses retry instead of requesting reauthorization.
 Do not solve an enrichment problem by adding a server mail cache or proxy. Disconnecting deletes
 that account/mailbox's credential and delivery state. If a provider cannot be reached, preserve its
 cursor and avoid submitting speculative alerts.

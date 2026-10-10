@@ -92,6 +92,8 @@ const notificationReads: {
   fields: string | null;
   format: string | null;
 }[] = [];
+const notificationApiErrors = new Map<string, { status: number; reason: string }>();
+const notificationRefreshScopes = new Map<string, string>();
 
 type BasicOutlookMessage = {
   id: string;
@@ -153,6 +155,13 @@ beforeAll(async () => {
         fields: url.searchParams.get("fields"),
         format: url.searchParams.get("format"),
       });
+      const failure = notificationApiErrors.get(address);
+      if (failure && !url.pathname.endsWith("/profile")) {
+        res
+          .writeHead(failure.status)
+          .end(JSON.stringify({ error: { errors: [{ reason: failure.reason }] } }));
+        return;
+      }
       let result: unknown;
       if (url.pathname.endsWith("/profile"))
         result = { emailAddress: address, historyId: state.historyId };
@@ -487,7 +496,11 @@ async function googleToken(form: URLSearchParams): Promise<[number, unknown]> {
       id_token: await idToken(email, { aud: clientId! }),
       ...(grant === "authorization_code" ? { refresh_token: `rt:${email}` } : {}),
       ...(clientId === NOTIFICATION_CLIENT_ID
-        ? { scope: "https://www.googleapis.com/auth/gmail.metadata openid email" }
+        ? {
+            scope:
+              (grant === "refresh_token" ? notificationRefreshScopes.get(email) : undefined) ??
+              "https://www.googleapis.com/auth/gmail.metadata openid email",
+          }
         : {}),
     },
   ];
@@ -2150,6 +2163,113 @@ const pushRegistration = (token: string, mailboxes: string[]) => ({
   topic: "dev.otterware.mail.dev",
   environment: "sandbox",
   mode: "inbox",
+});
+
+describe("notification connection failures", () => {
+  async function callbackFor(token: string, email: string) {
+    const response = await call("POST", "/v1/notification-connections/authorize", token, {
+      email,
+      returnTo: "native",
+    });
+    expect(response.status).toBe(200);
+    const { url } = (await response.json()) as { url: string };
+    const authorization = new URL(url);
+    return fetch(
+      base +
+        new URL(authorization.searchParams.get("redirect_uri")!).pathname +
+        "?" +
+        new URLSearchParams({
+          state: authorization.searchParams.get("state")!,
+          code: "code:" + email,
+        }),
+    );
+  }
+  async function statusFor(token: string, email: string) {
+    const result = (await (await call("GET", "/v1/notification-connections", token)).json()) as {
+      connections: { email: string; status: string }[];
+    };
+    return result.connections.find((c) => c.email === email)?.status;
+  }
+  it("shows a setup error when the first refreshed grant has broader Gmail permissions", async () => {
+    const owner = await signIn("notification-scope-owner@example.com"),
+      email = "notification-scope-mail@example.com";
+    await link(owner.token, email);
+    notificationRefreshScopes.set(
+      email,
+      "https://www.googleapis.com/auth/gmail.metadata https://mail.google.com/",
+    );
+    const result = await callbackFor(owner.token, email);
+    expect(await result.text()).toContain("ottermail-notifications://complete?result=error");
+    expect(await statusFor(owner.token, email)).toBe("reauthorize");
+    expect(notificationReads.filter((r) => r.email === email)).toHaveLength(1); // mailbox proof only, no reads with the broadened grant
+    notificationRefreshScopes.delete(email);
+  });
+  it(
+    "stops a connected grant if later refresh broadens its scopes",
+    { timeout: 10_000 },
+    async () => {
+      const owner = await signIn("notification-later-scope-owner@example.com"),
+        email = "notification-later-scope-mail@example.com";
+      await link(owner.token, email);
+      await connectNotificationMailbox(owner.token, email);
+      const token = "9a".repeat(32);
+      await call("PUT", "/v1/push/device", owner.token, pushRegistration(token, [email]));
+      notificationRefreshScopes.set(email, "https://mail.google.com/");
+      await push({ emailAddress: email, historyId: "200" });
+      await expect.poll(() => statusFor(owner.token, email), { timeout: 5000 }).toBe("reauthorize");
+      expect(notifications.filter((n) => n.token === token)).toHaveLength(0);
+      notificationRefreshScopes.delete(email);
+    },
+  );
+  it(
+    "starts a reconnected grant from the mailbox's current state",
+    { timeout: 20_000 },
+    async () => {
+      const owner = await signIn("notification-reconnect-owner@example.com"),
+        email = "notification-reconnect-mail@example.com",
+        token = "5c".repeat(32);
+      await link(owner.token, email);
+      await connectNotificationMailbox(owner.token, email);
+      await call("PUT", "/v1/push/device", owner.token, pushRegistration(token, [email]));
+      notificationRefreshScopes.set(email, "https://mail.google.com/");
+      await push({ emailAddress: email, historyId: "100" });
+      await expect.poll(() => statusFor(owner.token, email), { timeout: 5000 }).toBe("reauthorize");
+      notificationRefreshScopes.delete(email);
+      // Arrived while the grant was stopped: reconnecting must not announce it.
+      const old = { id: "0c0001", historyId: "300", labels: ["UNREAD", "INBOX"] };
+      notificationMail.set(email, { historyId: "300", added: [old] });
+      const result = await callbackFor(owner.token, email);
+      expect(await result.text()).toContain("ottermail-notifications://complete?result=success");
+      expect(await statusFor(owner.token, email)).toBe("ready");
+      await new Promise((resolve) => setTimeout(resolve, 6000));
+      expect(notifications.filter((n) => n.token === token)).toHaveLength(0);
+      const fresh = { id: "0c0002", historyId: "301", labels: ["UNREAD", "INBOX"] };
+      notificationMail.set(email, { historyId: "301", added: [old, fresh] });
+      await push({ emailAddress: email, historyId: "301" });
+      await expect
+        .poll(() => notifications.filter((n) => n.token === token).length, { timeout: 10_000 })
+        .toBe(1);
+      expect(notifications.find((n) => n.token === token)!.body.otter).toMatchObject({
+        messageId: "0c0002",
+      });
+    },
+  );
+  it(
+    "retries a Gmail 403 quota limit without requiring new consent",
+    { timeout: 10_000 },
+    async () => {
+      const owner = await signIn("notification-quota-owner@example.com"),
+        email = "notification-quota-mail@example.com";
+      await link(owner.token, email);
+      notificationApiErrors.set(email, { status: 403, reason: "userRateLimitExceeded" });
+      const result = await callbackFor(owner.token, email);
+      expect(await result.text()).toContain("ottermail-notifications://complete?result=success");
+      expect(await statusFor(owner.token, email)).toBe("retry");
+      notificationApiErrors.delete(email);
+      await call("PUT", "/v1/push/device", owner.token, pushRegistration("ab".repeat(32), [email]));
+      await expect.poll(() => statusFor(owner.token, email), { timeout: 5000 }).toBe("ready");
+    },
+  );
 });
 
 describe("iPhone push registration and lifecycle", () => {
