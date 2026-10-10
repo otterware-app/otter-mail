@@ -138,7 +138,8 @@ expiry, registered redirect URLs, server granted scopes and subscription renewal
 Setup reports an error if the provider consent succeeds but watcher startup rejects its grant.
 The relay logs safe reason codes (`scope_missing`, `scope_rejected`, `grant_revoked`,
 `provider_authorization`, `provider_temporary`, `connection_changed`) without tokens or provider
-response bodies. Gmail quota-related HTTP 403 responses retry instead of requesting reauthorization.
+response bodies. Gmail quota-related HTTP 403 responses (`rateLimitExceeded`) retry with backoff instead
+of requesting reauthorization; new deliveries wait for that retry rather than calling Gmail again.
 Do not solve an enrichment problem by adding a server mail cache or proxy. Disconnecting deletes
 that account/mailbox's credential and delivery state. If a provider cannot be reached, preserve its
 cursor and avoid submitting speculative alerts.

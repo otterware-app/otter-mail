@@ -2255,19 +2255,24 @@ describe("notification connection failures", () => {
     },
   );
   it(
-    "retries a Gmail 403 quota limit without requiring new consent",
-    { timeout: 10_000 },
+    "retries a Gmail 403 rate limit after its backoff, without requiring new consent",
+    { timeout: 40_000 },
     async () => {
       const owner = await signIn("notification-quota-owner@example.com"),
         email = "notification-quota-mail@example.com";
       await link(owner.token, email);
-      notificationApiErrors.set(email, { status: 403, reason: "userRateLimitExceeded" });
+      notificationApiErrors.set(email, { status: 403, reason: "rateLimitExceeded" });
       const result = await callbackFor(owner.token, email);
       expect(await result.text()).toContain("ottermail-notifications://complete?result=success");
       expect(await statusFor(owner.token, email)).toBe("retry");
-      notificationApiErrors.delete(email);
       await call("PUT", "/v1/push/device", owner.token, pushRegistration("ab".repeat(32), [email]));
-      await expect.poll(() => statusFor(owner.token, email), { timeout: 5000 }).toBe("ready");
+      // Deliveries during the backoff don't call Gmail again while it is throttling.
+      const reads = notificationReads.filter((r) => r.email === email).length;
+      for (const historyId of ["101", "102", "103"]) await push({ emailAddress: email, historyId });
+      await new Promise((resolve) => setTimeout(resolve, 4000));
+      expect(notificationReads.filter((r) => r.email === email)).toHaveLength(reads);
+      notificationApiErrors.delete(email);
+      await expect.poll(() => statusFor(owner.token, email), { timeout: 30_000 }).toBe("ready");
     },
   );
 });
