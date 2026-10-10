@@ -15,6 +15,7 @@ import {
   save,
   sameSettings,
   validateScopes,
+  NotificationFailure,
 } from "./notification-connections.ts";
 import type { App, Env } from "./worker.ts";
 
@@ -296,5 +297,36 @@ describe("verified notification credentials", () => {
     expect(body).not.toContain("fake-limited-refresh");
     expect(body).not.toContain("fake-client-secret");
     expect(response.headers.get("content-security-policy")).toContain("frame-ancestors 'none'");
+  });
+  it("reports an error when consent succeeds but watcher startup rejects the grant", async () => {
+    const { url } = await authorize();
+    oauth();
+    start.mockImplementation(async () => {
+      db.prepare(
+        "UPDATE notification_connections SET status='reauthorize' WHERE user_id=? AND email=?",
+      ).run("owner", mailbox);
+    });
+    const response = await callbackResponse(env, url!.searchParams.get("state")!, "fake-code");
+    const body = await response.text();
+    expect(body).toContain("ottermail-notifications://complete?result=error");
+    expect(body).not.toContain("result=success");
+    expect(body).not.toContain("fake-limited-refresh");
+    expect((await connection(env, "owner", mailbox))?.status).toBe("reauthorize");
+  });
+  it("classifies missing and overly broad scopes without retaining response content", () => {
+    for (const [scope, reason] of [
+      [undefined, "scope_missing"],
+      ["openid email", "scope_missing"],
+      [`${googleScope} https://mail.google.com/`, "scope_rejected"],
+    ] as const) {
+      try {
+        validateScopes("gmail", scope);
+        throw new Error("Should reject the scope");
+      } catch (error) {
+        expect(error).toBeInstanceOf(NotificationFailure);
+        expect(error).toMatchObject({ reason, reauthorize: true });
+        expect((error as Error).message).not.toContain("mail.google.com");
+      }
+    }
   });
 });

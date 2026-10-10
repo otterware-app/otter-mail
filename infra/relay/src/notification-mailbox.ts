@@ -112,6 +112,7 @@ export class NotificationMailbox extends DurableObject<Env> {
       console.warn("Notification check failed", {
         provider: row.provider,
         stage,
+        reason: error instanceof connections.NotificationFailure ? error.reason : "unexpected",
         category: reauthorize
           ? "authorization"
           : error instanceof connections.NotificationFailure

@@ -34,7 +34,16 @@ type Authorization = {
   expires_at: number;
 };
 export class NotificationFailure extends Error {
-  constructor(readonly reauthorize: boolean) {
+  constructor(
+    readonly reauthorize: boolean,
+    readonly reason:
+      | "scope_missing"
+      | "scope_rejected"
+      | "grant_revoked"
+      | "provider_authorization"
+      | "provider_temporary"
+      | "connection_changed" = reauthorize ? "provider_authorization" : "provider_temporary",
+  ) {
     super(
       reauthorize
         ? "Notification connection needs authorization."
@@ -165,6 +174,10 @@ export async function save(
   if (!(await connection(env, userId, address)))
     throw new HTTPException(404, { message: "Mailbox was removed." });
   await watcher(env, userId, address).start(userId, address);
+  const current = await connection(env, userId, address);
+  if (!current || current.generation !== generation)
+    throw new NotificationFailure(true, "connection_changed");
+  if (current.status === "reauthorize") throw new NotificationFailure(true);
 }
 export function watcher(env: Env, userId: string, address: string) {
   return env.NOTIFICATION_MAILBOX.get(
@@ -188,7 +201,7 @@ export async function remove(env: Env, userId: string, address: string): Promise
 
 /** Enforce actual token scopes, including refresh responses; don't trust the requested scope or client name. */
 export function validateScopes(provider: "gmail" | "outlook", scope: unknown): void {
-  if (typeof scope !== "string") throw new NotificationFailure(true);
+  if (typeof scope !== "string") throw new NotificationFailure(true, "scope_missing");
   const granted = new Set(
     scope
       .split(/\s+/)
@@ -207,8 +220,9 @@ export function validateScopes(provider: "gmail" | "outlook", scope: unknown): v
           "https://www.googleapis.com/auth/userinfo.profile",
         ])
       : new Set(["mail.readbasic", "user.read", "openid", "email", "profile", "offline_access"]);
-  if (!granted.has(required) || [...granted].some((s) => !allowedScopes.has(s)))
-    throw new NotificationFailure(true);
+  if (!granted.has(required)) throw new NotificationFailure(true, "scope_missing");
+  if ([...granted].some((s) => !allowedScopes.has(s)))
+    throw new NotificationFailure(true, "scope_rejected");
 }
 type Tokens = { access_token: string; refresh_token?: string; scope?: string };
 export async function tokenRequest(
@@ -237,12 +251,17 @@ export async function tokenRequest(
     signal: AbortSignal.timeout(8000),
   });
   const body = (await response.json()) as Tokens & { error?: string };
-  if (!response.ok || !body.access_token)
+  if (!response.ok || !body.access_token) {
+    const revoked = body.error === "invalid_grant" || body.error === "interaction_required";
     throw new NotificationFailure(
-      body.error === "invalid_grant" ||
-        body.error === "interaction_required" ||
-        response.status === 401,
+      revoked || response.status === 401,
+      revoked
+        ? "grant_revoked"
+        : response.status === 401
+          ? "provider_authorization"
+          : "provider_temporary",
     );
+  }
   validateScopes(provider, body.scope);
   return body;
 }
@@ -252,7 +271,7 @@ export async function accessToken(env: Env, row: Connection): Promise<string> {
   const expected =
     saved.provider === "gmail" ? googleClient(env) : env.NOTIFICATION_MICROSOFT_CLIENT_ID;
   if (!configured(env, saved.provider) || saved.clientId !== expected)
-    throw new NotificationFailure(true);
+    throw new NotificationFailure(true, "connection_changed");
   const token = await tokenRequest(env, saved.provider, {
     grant_type: "refresh_token",
     refresh_token: saved.refreshToken,
@@ -272,7 +291,8 @@ export async function accessToken(env: Env, row: Connection): Promise<string> {
     // A concurrent refresh may already have saved a newer rotation. Never overwrite it.
   }
   const current = await connection(env, row.user_id, row.email);
-  if (current?.generation !== row.generation) throw new NotificationFailure(true);
+  if (current?.generation !== row.generation)
+    throw new NotificationFailure(true, "connection_changed");
   return token.access_token;
 }
 
@@ -521,8 +541,10 @@ export async function callbackResponse(env: Env, state: string, code?: string): 
   try {
     await complete(env, state, code);
     success = Boolean(code);
-  } catch {
-    /* Show a safe error, never token/provider response text. */
+  } catch (error) {
+    console.warn("Notification setup failed", {
+      reason: error instanceof NotificationFailure ? error.reason : "unexpected",
+    });
   }
   const returnTo = verified.payload.returnTo;
   const nonce = crypto.randomUUID();

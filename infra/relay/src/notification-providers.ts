@@ -45,7 +45,20 @@ async function json(url: string, token: string, options: RequestInit = {}): Prom
   });
   if (!response.ok) {
     if (response.status === 404) throw new MissingResource();
-    throw new NotificationFailure(response.status === 401 || response.status === 403);
+    const body = (await response.json().catch(() => null)) as {
+      error?: { errors?: { reason?: string }[]; status?: string };
+    } | null;
+    // Gmail uses 403 for quota limits too. Those need retry, not fresh consent.
+    const quota =
+      body?.error?.errors?.some((e) =>
+        [
+          "rateLimitExceeded",
+          "userRateLimitExceeded",
+          "dailyLimitExceeded",
+          "quotaExceeded",
+        ].includes(e.reason ?? ""),
+      ) || body?.error?.status === "RESOURCE_EXHAUSTED";
+    throw new NotificationFailure(response.status === 401 || (response.status === 403 && !quota));
   }
   return response.json() as Promise<Json>;
 }
