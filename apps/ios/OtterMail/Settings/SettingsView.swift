@@ -47,6 +47,9 @@ struct SettingsView: View {
                     } label: {
                         Label("Notifications", systemImage: "bell")
                     }
+                    if !store.isDemo {
+                        NavigationLink("Background notification setup") { MailboxesSettings() }
+                    }
                     Picker(selection: $preferences.advance) {
                         ForEach(Preferences.Advance.allCases) { Text($0.title).tag($0) }
                     } label: {
@@ -56,7 +59,7 @@ struct SettingsView: View {
                     Text("Mail")
                 } footer: {
                     if !store.isDemo {
-                        Text("Gmail alerts may say “Mailbox updated” for changes that aren't new mail. Sender and preview are filled in on this iPhone when available.")
+                        Text("Connect background notifications for each mailbox to receive alerts while the app is closed. Alerts are sent only for verified new mail; sender and preview load on this iPhone.")
                     }
                 }
 

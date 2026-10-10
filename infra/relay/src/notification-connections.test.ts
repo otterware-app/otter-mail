@@ -211,6 +211,19 @@ describe("verified notification credentials", () => {
     ).rejects.toMatchObject({ status: 401 });
     expect((await connection(env, "owner", mailbox))!.generation).toBe(original);
   });
+
+  it("a session that expires before the final write cannot create a grant", async () => {
+    await expect(
+      save(
+        env,
+        "owner",
+        mailbox,
+        { provider: "gmail", clientId: "google-notifications", refreshToken: "fake" },
+        { ...session, expiresAt: Date.now() - 1 },
+      ),
+    ).rejects.toMatchObject({ status: 401 });
+    expect(await connection(env, "owner", mailbox)).toBeNull();
+  });
   it("checks scopes again on refresh and doesn't restore credentials after removal", async () => {
     await save(
       env,

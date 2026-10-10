@@ -696,6 +696,13 @@ function MailboxNotifications({ account }: { account: GmailAccount }) {
           </Btn>
         }
       />
+      {connection && connection.status !== "ready" ? (
+        <div className="px-4 pb-3">
+          <Btn size="sm" variant="outline" disabled={busy} onClick={() => void disconnect()}>
+            Disconnect
+          </Btn>
+        </div>
+      ) : null}
       {provider !== "imap" ? (
         <p className="px-4 pb-3 text-xs text-muted-foreground">
           Google or Microsoft will ask for limited access to identify new mail. Message bodies and

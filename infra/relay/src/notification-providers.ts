@@ -68,8 +68,8 @@ export async function gmailCheck(
       method: "POST",
       body: JSON.stringify({
         topicName:
-          env.NOTIFICATION_GOOGLE_PUSH_TOPIC ??
-          ((env.NOTIFICATION_GOOGLE_CLIENT_ID ?? env.GOOGLE_WEB_CLIENT_ID).startsWith(
+          env.NOTIFICATION_GOOGLE_PUSH_TOPIC ||
+          ((env.NOTIFICATION_GOOGLE_CLIENT_ID || env.GOOGLE_WEB_CLIENT_ID).startsWith(
             "187875144740-",
           )
             ? (env.PUSH_TOPIC_LEGACY ?? env.PUSH_TOPIC)

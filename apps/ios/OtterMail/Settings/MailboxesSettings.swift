@@ -127,11 +127,12 @@ struct MailboxSettings: View {
                 Section {
                     let connection = session.notificationConnections[email.lowercased()]
                     LabeledContent("Background notifications", value: notificationStatus(connection?.status))
-                    if connection?.status == "ready" {
+                    if connection != nil {
                         Button("Disconnect background notifications") {
                             Task { do { try await session.disconnectNotifications(email) } catch { self.error = error.localizedDescription } }
                         }
-                    } else {
+                    }
+                    if connection?.status != "ready" {
                         Button(session.busy ?? "Connect notifications") {
                             if mailbox.imap != nil { confirmNotifications = true } else { connectNotifications() }
                         }.disabled(session.busy != nil)

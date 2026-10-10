@@ -209,35 +209,91 @@ permissions, sealed refresh tokens, profiles and application data remain here. S
 `pnpm dev` generates a standalone local config without the production service binding; its
 local database and fake/developer identities remain independent of production Accounts.
 
-## iPhone APNs
+## Verified iPhone APNs
 
 `PUT /v1/push/device` replaces the authenticated session's token/topic/environment, Off/Inbox/All
-mode and list of already-linked Gmail mailboxes; `DELETE` removes that session's registration.
-The API rejects IMAP/unlinked/other-user mailboxes, unsupported topic/environment combinations,
-and extra fields (including mail content or credentials). D1 holds routing only in
-`push_devices`, `push_mailboxes`, and revocation markers in `push_revocations`. There is no mail
-cache, phone Gmail proxy, notification enrichment endpoint or server-side Gmail watch renewal.
+mode and list of already-linked Gmail, Outlook or IMAP mailboxes. `DELETE` removes that device.
+Other-user/unlinked mailboxes, unsupported topic/environment combinations, and extra content or
+credential fields are rejected. `push_devices`, `push_mailboxes` and `push_revocations` contain
+routing/lifecycle metadata. The provider grants below are an explicit addition to the original
+device-only privacy model; none is a server mail cache or enrichment proxy.
 
-The existing Pub/Sub OIDC check and WebSocket fan-out remain. UserHub durably coalesces each
-mailbox for five seconds, limits bursts to one submission per 30 seconds, and drops repeated or
-older decimal history markers. Its alarm rechecks registrations, linked Gmail ownership,
-expiration and the account's Off preference at delivery/retry. Token transfer/rotation is atomic.
-Unlink/account deletion cascades routes; legacy auth hooks and the central Accounts private
-`IdentityLifecycle.disconnect` RPC remove registrations on sign-out/remote revocation. A
-revocation marker prevents an already-authenticated in-flight registration from restoring them.
-Expired sessions are removed when routing. Account deletion clears the user hub's markers.
+`GET /v1/notification-connections` returns the account's connection status and configured providers,
+never credentials. `POST /v1/notification-connections/authorize` starts a limited Gmail/Outlook
+OAuth grant for an already-linked mailbox. A single-use, ten-minute PKCE request binds the mailbox,
+user and originating Otter session; revocation/unlink wins an in-flight exchange. Gmail reuses the
+registered `/v1/gmail/callback` URL, with a different state-signing key/audience than normal web
+sign-in. Outlook returns to `/v1/notifications/callback`. Native callbacks contain only success/error;
+web/desktop popups contain no tokens. The provider's profile must match the chosen mailbox.
+`PUT /v1/notification-connections/imap` explicitly accepts the local IMAP password and matching
+server settings. A public TLS/STARTTLS IMAP server is required. Remote settings edits cannot
+redirect a previously stored password to another host. `DELETE /v1/notification-connections/:email`
+deletes credentials, pending authorization and delivery state, and stops the watcher.
 
-APNs payloads use an explicit allowlist: generic “Mailbox updated” text and
-`otter: {version:1,userId,email,historyId,mode}`. `mode` is the more restrictive registered/account
-Inbox/All preference, allowing remote restrictions to reach a closed phone. No badge, sound or
-claim of new mail; the phone adds sound for confirmed eligible arrivals. The topic is the
-**application** bundle ID. The alert has `mutable-content: 1`, `apns-push-type: alert`, priority
-10, a hashed per-user/mailbox collapse ID, and expiration 0 (do not queue stale offline alerts).
-Inbox/All filtering and enrichment happen on the phone using direct Gmail access. Without
-Apple's restricted notification-filtering entitlement, an extension cannot suppress a
-submitted alert: read/archive/label changes and enrichment failures may remain generic.
-Off stops future submissions; a push already accepted by APNs cannot be recalled. See the
-[iPhone README](../../apps/ios/README.md#private-gmail-push) for phone behavior and watch limits.
+`notification_connections` holds AES-GCM encrypted credentials under
+`NOTIFICATION_CREDENTIAL_SECRET`, with user/mailbox/provider bound into the encrypted claims.
+A generation/CAS check prevents refresh/removal races from restoring an old grant. Actual Gmail
+scopes are checked at exchange and each refresh: `gmail.metadata`, identity scopes only; broader
+grants are rejected. The reader requests message IDs, labels and history, not sender/subject headers.
+The permission itself can read headers. Outlook uses a **separate** Entra application with
+`Mail.ReadBasic` and `User.Read`, not the application's full-mail client: Microsoft refresh tokens
+can acquire other permissions previously consented to that same app. IMAP passwords generally
+permit content access, even though the watcher requests only UIDs, flags, INTERNALDATE and
+Message-ID; only its deduplication hash is persisted.
+
+One `NotificationMailbox` Durable Object serializes each user/mailbox's provider work. It stores
+only cursors, deduplication IDs/hashes and a durable outbox. Gmail `messageAdded` history uses a
+persisted pre-change cursor; watch ending IDs never become starting baselines. Initial/stale
+history rebases do not announce old mail. Outlook tracks immutable IDs and received dates.
+IMAP uses bounded inbox IDLE cycles, read-only EXAMINE/FETCH, UIDVALIDITY baselines and rotating
+batches for other eligible folders; old copies/moves are excluded by hashes and arrival dates.
+Gmail watches and Outlook subscriptions renew on the server. A five-minute reconciliation catches
+missed Google/Microsoft events; a revoked grant stops reading and asks for reauthorization.
+Watchers pause when no enabled, unexpired, authorized APNs devices remain. IMAP IDLE requires a
+live outbound TCP connection and incurs Durable Object duration charges while active.
+
+Raw Pub/Sub and Graph events still authenticate and fan out over WebSocket. They never directly
+submit an alert. Only verified arrivals enter UserHub's durable five-second coalescing window,
+with a 30-second mailbox cooldown and separate receipt namespace from legacy Gmail history IDs.
+Before APNs, ownership/session/settings and the message's **current** unread/folder state are
+checked again. Inbox and All devices retain their own eligible selection during mixed bursts.
+Retries are bounded; errors log category/status only, never provider responses or credentials.
+Token transfer/rotation is atomic. Unlink/account deletion cascades credentials and routes;
+legacy auth hooks and central Accounts `IdentityLifecycle.disconnect` remove revoked routing.
+
+The APNs allowlist is “New mail. Open Otter Mail to read it.”, normal sound and
+`otter: {version:2,userId,email,provider,historyId,messageId,mode}` (IMAP also has folder/UIDVALIDITY).
+No sender, subject, preview, body, attachment, provider token or unread badge is sent to Apple.
+The existing application topic, `mutable-content: 1`, alert push type, priority 10, per-mailbox
+collapse ID and expiration 0 remain. The phone fetches/enriches directly from its provider.
+A generic fallback is now a confirmed arrival, rather than an arbitrary change. An ordinary
+extension still cannot recall an accepted alert: read/Off/sign-out after submission or phone
+network/credential/timeout failures may leave a generic **new-mail** notification. No restricted
+Apple filtering entitlement is needed. See [phone behavior](../../apps/ios/README.md#verified-background-notifications).
+
+### Provider grant configuration
+
+Set `NOTIFICATION_CREDENTIAL_SECRET` to a dedicated random secret using the `cf` CLI, never a
+tracked file. For local `DEV_DEMO` only, the auth secret can supply the encryption key. Existing
+Google web client/secret and `/v1/gmail/callback` issue the separate metadata-only grant; optional
+`NOTIFICATION_GOOGLE_CLIENT_ID` / `NOTIFICATION_GOOGLE_CLIENT_SECRET` select a dedicated web client
+with that callback. `NOTIFICATION_GOOGLE_PUSH_TOPIC` can override the matching project's topic;
+otherwise current/legacy topics are selected by client project number. Do not delete the legacy
+Google client/topic while it is used. Server-side metadata remains a Google restricted scope;
+complete applicable OAuth verification/security assessment requirements for public distribution.
+
+Create a separate Microsoft app registration (accounts in any directory + personal accounts),
+with only delegated `User.Read`, `Mail.ReadBasic`, identity scopes and `offline_access`. Web redirects:
+`https://relay.mail.otterware.app/v1/notifications/callback` and
+`http://localhost:8787/v1/notifications/callback`. Configure
+`NOTIFICATION_MICROSOFT_CLIENT_ID` / `NOTIFICATION_MICROSOFT_CLIENT_SECRET`; the service rejects the
+full-mail app's client ID. Rotate the secret before its expiry. Corporate tenant policies may
+require administrator consent. Keep the existing full-mail registration untouched.
+
+For local protocol tests only, `NOTIFICATION_IMAP_TEST_TARGET` permits the exact synthetic
+host/port and bypasses TLS for that fixture. Never set it in a deployed environment. Likewise,
+`NOTIFICATION_GOOGLE_API_ORIGIN`, Google/Microsoft token/Graph overrides and `APNS_TEST_ORIGIN`
+are only test transports. Production connections never accept client-supplied API origins.
 
 Configure Apple without committing keys:
 

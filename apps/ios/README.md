@@ -24,7 +24,8 @@ their code.
 
 Like the Mac app, the phone signs in to Google and Microsoft itself and talks to Gmail and
 Microsoft Graph directly, and to IMAP and SMTP servers directly too (`docs/imap.md`,
-`docs/outlook.md`); the relay never sees its mail, tokens or passwords.
+`docs/outlook.md`). Full device grants stay on-device. Explicit background-notification connections
+add limited server grants (or an encrypted IMAP password), while mail content still loads directly.
 
 - `Account/GoogleAuth.swift`: Google sign-in per mailbox with the otterware project's "iOS" OAuth
   client (no secret; PKCE; Google returns to the client ID's reversed form). Refresh tokens stay in
@@ -108,62 +109,72 @@ the Xcode project, apart from the Mac app's.
 `pnpm ios:resources` (`dev:ios` and releases run it); rerun it after changing the palettes or the
 demo mailbox.
 
-## Private Gmail push
+## Verified background notifications
 
-`OtterMailNotificationService` is embedded in the app. Gmail → Pub/Sub → relay carries only
-`emailAddress` and `historyId`. The relay submits an APNs alert titled “Otter Mail”, with
-“Mailbox updated. Open Otter Mail to check your mail.” and version/user/mailbox/history/filter metadata.
-The generic fallback is silent; confirmed eligible mail gains the normal sound locally.
-No sender, subject, preview, body, attachment, Gmail access token or refresh token goes through
-this push path to Otter or Apple. APNs has no unread badge. The extension fetches only added
-messages' headers/preview **directly from Gmail**, then changes the notification on this phone.
-Enriched taps open that mailbox/thread, fetching it directly if it isn't cached; generic taps open
-the mailbox and sync. The demo needs neither Google nor Apple configuration.
-Notification and mailbox-list previews render Markdown as plain text on-device, keeping link
-labels and words without their URL destinations or formatting markers. Input and display length
-are bounded, including truncated Gmail link snippets; the message body is left intact.
+Gmail, Outlook and IMAP use one APNs pipeline. Background alerts are an explicit, per-mailbox
+connection to the Otter account (Settings → Mailboxes → the mailbox → Background notifications).
+New Gmail and Outlook mailbox setup offers the additional limited provider consent as part of
+setup. IMAP asks explicitly before storing its password with Otter. The existing device sign-in
+continues to read mail directly; connecting notifications does not replace it or transfer full
+Gmail/Microsoft grants between devices. A server connection is shared by the account's devices.
 
-`NotificationShared/` contains the direct reader, shared OAuth refresh, Keychain access and
-App Group markers. The app moves existing Google refresh tokens from its original private
-Keychain group by copying/verifying before deletion. Google credentials and cached access tokens
-use `AfterFirstUnlockThisDeviceOnly`, so enrichment can work while locked **after the first
-unlock since reboot**; before that it falls back. Otter sessions and IMAP passwords stay in the
-app's private Keychain. A nonblocking cross-process file lock serializes OAuth refresh, with
-cancellation and replacement checks before saving; account/mailbox removal clears credentials
-and markers. Debug and release have different groups and tokens.
+The relay verifies a new message and its current unread/folder state **before** submitting an
+alert, and rechecks just before APNs. Read/archive/label changes, watch renewal, initial sync and
+an unconnected mailbox do not create alerts. Inbox admits unread inbox arrivals; All also admits
+unread arrivals elsewhere, excluding sent, drafts, junk and trash. Account/device settings use the
+more restrictive filter. Off stops future submissions once the relay receives the change.
 
-The extension uses its own persisted pre-change history cursor, seeded after a successful app
-sync. Once push is registered, app/WebSocket/background syncs leave that cursor to the extension
-so they cannot consume its pending additions. It walks `messageAdded` history from that cursor, then checks the message's current unread
-and label state. Off prevents registration delivery; Inbox enriches unread inbox mail; All also
-enriches unread mail outside the inbox, excluding sent/drafts/spam/trash. Each alert also carries
-the more restrictive account/device filter, so changing All to Inbox on another device limits
-enrichment without sending any mail to the server. Relaxing that filter takes effect when this
-phone refreshes its preferences and registration. Multiple eligible
-messages produce one alert for the newest message among the last eight additions, with a count
-of the eligible messages fetched. Each mailbox has its own cursor. A completed history walk
-advances to Gmail's returned cursor, **never using the Pub/Sub ending marker as a starting
-cursor**. Missing/404 history rebases from Gmail's profile without announcing existing mail.
-An incomplete walk (over five pages), revoked credentials, offline state or the 22-second
-local deadline preserves the original generic alert. Completion is guarded against expiry races.
+APNs carries only a generic “New mail. Open Otter Mail to read it.” alert, normal sound, and
+allowlisted user/mailbox/provider/message identifiers. It carries no sender, subject, preview,
+message body, attachment, provider credential or unread badge. The embedded
+`OtterMailNotificationService` fetches the indicated message **directly from Gmail, Microsoft
+Graph or the IMAP server**, then adds sender, subject and a bounded preview locally. The event's
+ending marker is never used as a history baseline. Version 1 compatibility retains the older
+on-device history reader; the new relay never submits unverified version 1 change alerts.
 
-Apple requires an alert and `mutable-content: 1` to run this extension, and allows about
-30 seconds. Ordinary extensions cannot discard a submitted alert. This build does **not**
-request Apple's restricted filtering entitlement. Read/archive/label changes, watch renewal,
-duplicate delivery, or a filter mismatch can therefore show a generic alert even in Inbox mode.
-Off and access removal stop future server submissions once received by the relay; already
-submitted alerts cannot be recalled, and offline local sign-out/preferences cannot notify the
-server until connectivity returns. The phone refuses enrichment for a removed/wrong account.
-Foreground generic alerts are suppressed using the supported presentation delegate. Gmail local
-alerts are disabled for successfully registered mailboxes (remembered across launches); IMAP
-keeps its existing local behavior. If APNs accepts a push but delivery fails later, there is no
-local-alert guarantee. Apple/Gmail push are best effort, not an exact new-mail counter.
+The generic fallback now corresponds to a verified arrival. It remains if the phone is offline,
+Google/Microsoft access was revoked, the IMAP UIDVALIDITY changed, credentials are locked, or the
+22-second deadline expires. Ordinary extensions cannot suppress an accepted alert: mail read on
+another device after submission can still appear, and APNs/extension execution are best effort.
+No restricted Apple filtering entitlement is required. Foreground generic alerts are suppressed
+by the supported presentation delegate. Local alerts are disabled only for mailboxes connected
+to this push pipeline, so a second background/local alert isn't generated for the same arrival.
+Unconnected mailboxes keep local notification behavior.
 
-The app renews Gmail watches daily when it runs and retains the returned expiration. Background
-refresh also attempts renewal, but iOS decides whether it runs. Gmail watches expire in at most
-seven days; an unopened phone may stop receiving pushes until it opens again (another signed-in
-device can renew the same mailbox's watch). The extension does not renew watches, and the relay
-has no phone Gmail tokens with which to do so. Gmail can also drop events; opening always syncs.
+Gmail's server grant is limited to `gmail.metadata`; the reader requests only message IDs,
+labels and history. This permission can also read headers, but the notification service does not
+request sender/subject headers or content. Google's actual granted scopes are checked at exchange
+and on every refresh; broader grants are rejected. The existing Google web client/registered
+callback can issue this separate limited grant. Outlook uses a separate Microsoft app registration
+with `User.Read`, `Mail.ReadBasic` and `offline_access`; it cannot share the full-mail application's
+refresh-token authority. IMAP credentials normally authorize mailbox content even though the
+watcher reads UIDs, flags, INTERNALDATE and Message-ID (stored only as a deduplication hash).
+Server credentials are encrypted at rest under a dedicated Worker secret. No server mail cache,
+body download or notification-enrichment proxy is added. Disconnecting notifications deletes the
+grant and stops its watcher; unlink/account deletion cascades deletion. Revoked/expired Otter
+sessions lose device routing; a watcher pauses when no enabled authorized devices remain.
+
+The server renews Gmail watches and Outlook subscriptions, so renewal no longer depends on
+opening the phone within seven days. A five-minute reconciliation also catches dropped provider
+events. IMAP uses bounded IDLE cycles for the inbox; other eligible folders are scanned in rotating
+batches. UIDVALIDITY rebases never announce old mail. Message-ID hashes and arrival dates prevent
+ordinary copies/moves from becoming new-mail alerts. Alerts coalesce in five-second bursts, with
+at least 30 seconds between submissions per mailbox and bounded transient-error retries.
+Subscriptions, grants and device sessions can still expire or be revoked; reconnect when Settings
+says authorization is required. Opening the app always syncs directly from the provider.
+
+`NotificationShared/` contains the direct readers, coordinated OAuth refresh, shared Keychain and
+App Group configuration. Existing Google/Microsoft refresh tokens and IMAP passwords migrate by
+copy/verify/delete from the original private Keychain group. Shared provider secrets and access
+tokens use `AfterFirstUnlockThisDeviceOnly`: enrichment can work on a locked phone **after the
+first unlock since reboot**, and falls back before that. Otter session credentials stay private to
+the app. Cross-process locks serialize refresh; removal/replacement checks prevent an in-flight
+refresh from restoring deleted credentials. Debug/release storage, topics and tokens are separate.
+
+Enriched Gmail/Outlook taps open the mailbox/conversation, fetching it directly if absent from the
+cache. IMAP taps resolve the notified UID into its local thread, loading the folder if needed.
+Generic taps open the mailbox and sync. Notification previews render Markdown as plain text and
+keep link labels. The demo needs no Google, Microsoft, IMAP, Apple or Otter credentials.
 
 ### Apple setup and verification
 

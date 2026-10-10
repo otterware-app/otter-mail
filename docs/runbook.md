@@ -108,3 +108,32 @@ opportunistic, and the server has no phone Gmail credentials to renew on its beh
 - **Cloudflare:** the `otter-mail-relay` and site workers.
 - **Back up `~/.otter-mail/signing`** (a password manager works). Losing it means new
   certificates and keys from Apple's portals.
+
+## Verified background notifications
+
+Before merging a notification-service change, confirm the dedicated
+`NOTIFICATION_CREDENTIAL_SECRET` and separate Outlook notification app ID/secret are configured
+on `otter-mail-relay`. Use `pnpm dlx cf@latest auth whoami` first; `cf` and Wrangler have separate
+logins. Preserve the existing Workers Builds deployment script: it applies D1 migrations on merge,
+including the notification credential/authorization tables and the NotificationMailbox DO binding.
+See [provider configuration](../infra/relay/README.md#provider-grant-configuration).
+
+After deployment, connect a dedicated demo mailbox using the app's limited consent. Verify that
+full-mail grants are rejected, status becomes ready, and read/label-only events do not submit
+APNs. Exercise Off / Inbox / All, a read during coalescing, mixed inbox/non-inbox arrivals, unlink,
+remote session revocation, token rotation and reconnect. Test Google/Microsoft expiry and IMAP
+UIDVALIDITY/copy behavior. Use only the demo fixtures for mail; never log credentials or fetch
+private users' mail to diagnose push. D1 holds encrypted credentials and routing/cursors, not mail.
+
+Check signed iPhone delivery and taps while locked after first unlock. Generic text must describe
+confirmed new mail; offline/timeout/expired phone credentials can prevent preview enrichment.
+Simulator injection checks local presentation/tap flow, not live APNs or extension networking.
+The app list cache still synchronizes from the provider; alert enrichment is not a whole-inbox
+background sync. APNs is best effort and cannot recall an already submitted alert.
+
+A stopped connection appears in Settings → Mailboxes → Background notifications. `reauthorize`
+needs user consent/password again; `retry` backs off transient failures. Check OAuth client-secret
+expiry, registered redirect URLs, server granted scopes and subscription renewal when investigating.
+Do not solve an enrichment problem by adding a server mail cache or proxy. Disconnecting deletes
+that account/mailbox's credential and delivery state. If a provider cannot be reached, preserve its
+cursor and avoid submitting speculative alerts.

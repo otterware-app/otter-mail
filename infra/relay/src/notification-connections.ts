@@ -60,14 +60,14 @@ const imapSettings = z
 const microsoftScope = "https://graph.microsoft.com/Mail.ReadBasic";
 const microsoftIdentityScope = "https://graph.microsoft.com/User.Read";
 const authority = "https://login.microsoftonline.com/common/oauth2/v2.0";
-const googleClient = (env: Env) => env.NOTIFICATION_GOOGLE_CLIENT_ID ?? env.GOOGLE_WEB_CLIENT_ID;
+const googleClient = (env: Env) => env.NOTIFICATION_GOOGLE_CLIENT_ID || env.GOOGLE_WEB_CLIENT_ID;
 const googleSecret = (env: Env) =>
-  env.NOTIFICATION_GOOGLE_CLIENT_SECRET ?? env.GOOGLE_WEB_CLIENT_SECRET;
+  env.NOTIFICATION_GOOGLE_CLIENT_SECRET || env.GOOGLE_WEB_CLIENT_SECRET;
 const callback = (env: Env, provider: "gmail" | "outlook") =>
   `${env.BETTER_AUTH_URL}${provider === "gmail" ? "/v1/gmail/callback" : "/v1/notifications/callback"}`;
 const key = (env: Env) => {
   const secret =
-    env.NOTIFICATION_CREDENTIAL_SECRET ??
+    env.NOTIFICATION_CREDENTIAL_SECRET ||
     (env.DEV_DEMO === "true" ? env.BETTER_AUTH_SECRET : undefined);
   if (!secret)
     throw new HTTPException(503, { message: "Background notifications are not configured." });
@@ -138,13 +138,13 @@ export async function save(
   userId: string,
   address: string,
   value: Credential,
-  session?: { id: string; createdAt: number },
+  session?: { id: string; createdAt: number; expiresAt?: number },
 ): Promise<void> {
   const generation = crypto.randomUUID();
   const result =
     await env.DB.prepare(`INSERT INTO notification_connections (user_id,email,provider,generation,credential,status,updated_at)
     SELECT user_id,email,provider,?,?,'connecting',? FROM linked_accounts WHERE user_id=? AND email=? AND provider=?
-    AND NOT EXISTS (SELECT 1 FROM push_revocations WHERE user_id=? AND (session_id=? OR (session_id='' AND revoked_at>=?)))
+    AND NOT EXISTS (SELECT 1 FROM push_revocations WHERE user_id=? AND (session_id=? OR (session_id='' AND revoked_at>=?))) AND ? > ?
     ON CONFLICT(user_id,email) DO UPDATE SET generation=excluded.generation,credential=excluded.credential,status='connecting',updated_at=excluded.updated_at`)
       .bind(
         generation,
@@ -156,6 +156,8 @@ export async function save(
         userId,
         session?.id ?? "",
         session?.createdAt ?? Date.now(),
+        session?.expiresAt ?? Number.MAX_SAFE_INTEGER,
+        Date.now(),
       )
       .run();
   if (!result.meta.changes)
@@ -341,7 +343,11 @@ export async function complete(env: Env, state: string, code?: string): Promise<
         : env.NOTIFICATION_MICROSOFT_CLIENT_ID)!,
       refreshToken: tokens.refresh_token,
     },
-    { id: request.session_id, createdAt: request.session_created_at },
+    {
+      id: request.session_id,
+      createdAt: request.session_created_at,
+      expiresAt: request.expires_at,
+    },
   );
   return request;
 }
@@ -527,7 +533,7 @@ export async function callbackResponse(env: Env, state: string, code?: string): 
   const script =
     returnTo === "native"
       ? `location.href='ottermail-notifications://complete?result=${status}'`
-      : `if(window.opener){window.opener.postMessage({type:'otter:notification-connected',result:'${status}'},${JSON.stringify(env.APP_ORIGIN)});window.close()}`;
+      : `if(window.opener){window.opener.postMessage({type:'otter:notification-connected',result:'${status}'},${JSON.stringify(env.APP_ORIGIN)});window.close()}${returnTo === "web" ? `else{location.replace(${JSON.stringify(env.APP_ORIGIN + "/settings/accounts")})}` : ""}`;
   return new Response(
     `<!doctype html><html><head><meta charset="utf-8"><title>Otter Mail notifications</title></head><body><p>${message}</p><script nonce="${nonce}">${script}</script></body></html>`,
     {
