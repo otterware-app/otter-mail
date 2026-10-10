@@ -34,3 +34,6 @@ apps/ios/.build/
 
 # Generated standalone relay config for local development.
 infra/relay/.wrangler.local.jsonc
+
+# Rust
+/target
