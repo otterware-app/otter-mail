@@ -640,31 +640,47 @@ final class Session {
         }
     }
 
-    /** A generic tap opens the mailbox; an enriched tap can fetch a thread absent from the cache. */
+    /**
+     * A tap opens its conversation as soon as this iPhone has it: from the cache, or fetched on its
+     * own. The account catches up behind it, so the sheet doesn't wait for every mailbox to sync.
+     */
     func prepareNotification(_ destination: NotificationDestination) async {
         let originalUser = user?.id
         guard destination.userId == nil || destination.userId == user?.id else { opening = nil; return }
-        await refreshAccount()
+        await sync?.waitForCache()
+        let known = { [store] (email: String?) in
+            email.flatMap { email in store.mailboxes.first { $0.email.lowercased() == email.lowercased() } }
+        }
+        // A mailbox linked on another device is only here once the account's mailboxes arrive.
+        if known(destination.email) == nil { await refreshAccount() } else { Task { await refreshAccount() } }
         guard user?.id == originalUser else { opening = nil; return }
         guard let email = destination.email ?? destination.thread.flatMap({ store.thread($0)?.mailbox }),
-              let mailbox = store.mailboxes.first(where: { $0.email.lowercased() == email.lowercased() }), !mailbox.signedOut else { return }
-        await sync?.sync(mailbox.email)
-        guard user?.id == originalUser, store.mailbox(mailbox.email) != nil else { opening = nil; return }
-        if let message = destination.message, let id = ImapID(message), mailbox.imap != nil,
-           !store.threads.contains(where: { $0.mailbox == mailbox.email && $0.messages.contains(where: { $0.id == message }) }) {
-            await sync?.loadMore(.label(id: id.path, name: id.path), scope: mailbox.email)
+              let mailbox = known(email), !mailbox.signedOut else { return }
+        let cached = { [store] (message: String) in
+            store.threads.first { $0.mailbox.lowercased() == mailbox.email.lowercased() && $0.messages.contains { $0.id == message } }
         }
-        if let message = destination.message, destination.thread == nil,
-           let thread = store.threads.first(where: { $0.mailbox.lowercased() == mailbox.email.lowercased() && $0.messages.contains(where: { $0.id == message }) }) {
-            opening?.thread = thread.id
+        if let message = destination.message, let thread = cached(message) {
+            if destination.thread == nil { opening?.thread = thread.id }
+            return
         }
-        if let thread = destination.thread, mailbox.provider == .gmail, store.thread(thread)?.mailbox.lowercased() != mailbox.email.lowercased() {
+        switch mailbox.provider {
+        case .gmail:
+            guard let thread = destination.thread else { return }
             let api = GmailAPI(email: mailbox.email) { [google] force in try await google.accessToken(mailbox.email, force: force) }
             if let loaded = try? await api.thread(thread), loaded.mailbox == mailbox.email,
                user?.id == originalUser, store.mailbox(mailbox.email) != nil { store.upsert(threads: [loaded]) }
-        }
-        if let thread = destination.thread, mailbox.provider == .outlook, store.thread(thread)?.mailbox.lowercased() != mailbox.email.lowercased() {
+        case .outlook:
+            guard let thread = destination.thread else { return }
             await sync?.loadNotificationThread(thread, email: mailbox.email)
+        case .imap:
+            // A UID only resolves to its thread through the folder.
+            guard let message = destination.message else { return }
+            await sync?.sync(mailbox.email)
+            guard user?.id == originalUser, store.mailbox(mailbox.email) != nil else { opening = nil; return }
+            if cached(message) == nil, let id = ImapID(message) {
+                await sync?.loadMore(.label(id: id.path, name: id.path), scope: mailbox.email)
+            }
+            if destination.thread == nil, let thread = cached(message) { opening?.thread = thread.id }
         }
     }
 
