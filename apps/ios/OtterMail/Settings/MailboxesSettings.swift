@@ -139,13 +139,13 @@ struct MailboxSettings: View {
                     }
                 } footer: {
                     Text(mailbox.imap != nil
-                        ? "Otter securely stores the IMAP password to watch for new mail. The watcher reads message IDs and flags; sender and preview load directly on this iPhone."
+                        ? "Otter securely stores the IMAP password to watch for new mail. The watcher reads new-mail metadata; sender and preview load directly on this iPhone."
                         : "Otter needs limited provider permission to confirm new mail before sending an alert. Sender and preview load directly on this iPhone.")
                 }
                 .confirmationDialog("Enable IMAP background notifications?", isPresented: $confirmNotifications, titleVisibility: .visible) {
                     Button("Enable notifications") { connectNotifications() }
                 } message: {
-                    Text("Otter will securely store this mailbox’s password and connect to its IMAP server. The password permits mailbox access; the watcher requests only message IDs and flags.")
+                    Text("Otter will securely store this mailbox’s password and connect to its IMAP server. The password permits mailbox access; the watcher requests only metadata needed to identify new mail.")
                 }
             }
             if mailbox.signedOut, let imap = mailbox.imap {

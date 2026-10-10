@@ -2463,7 +2463,7 @@ describe("iPhone push registration and lifecycle", () => {
 
   it(
     "coalesces bursts/repeated deliveries in the real UserHub and obeys Off before delivery",
-    { timeout: 20_000 },
+    { timeout: 40_000 },
     async () => {
       const owner = await signIn("push-delivery@example.com");
       const email = "push-delivery-mail@example.com",

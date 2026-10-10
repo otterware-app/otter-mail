@@ -77,7 +77,7 @@ bundles from `packages/shared` has changed. A Mac release doesn't need one.
   (and this Mac's keychain, for `pnpm release:ios`).
 - TestFlight builds expire after 90 days.
 
-## iPhone Gmail push setup/checks
+## iPhone APNs signing and transport
 
 Before enabling push, apply the relay D1 migrations and configure the APNs team/key/private-key
 Worker secrets. Use application topics `dev.otterware.mail.dev` (sandbox) and
@@ -85,18 +85,19 @@ Worker secrets. Use application topics `dev.otterware.mail.dev` (sandbox) and
 its embedded notification extension with App Groups/Keychain Sharing. Release signing also
 needs `IOS_NOTIFICATION_PROVISIONING_PROFILE` and a regenerated main profile; see
 [Apple setup](../apps/ios/README.md#apple-setup-and-verification) and
-[relay APNs configuration](../infra/relay/README.md#iphone-apns).
+[relay APNs configuration](../infra/relay/README.md#verified-iphone-apns).
 
 Check live sandbox arrival on a provisioned iPhone and production in TestFlight, using a test
-Gmail. First open/sync to seed history; background the app, send new mail, verify the sender and
+mailbox. Connect background notifications, open/sync, then background the app, send new mail, verify the sender and
 preview and tap to the correct mailbox/thread. Check light/dark, two mailboxes, Inbox/All/Off,
-label/read changes, locked device after first unlock, offline/expired-history fallback, token
+label/read changes, locked device after first unlock, offline/timeout fallback, token
 rotation, remote session revocation and unlink. Simulator injection only checks local payload/
 tap flow; it cannot prove live APNs or extension network delivery. No exact badge is sent.
-Generic mailbox-update alerts can occur for non-new-mail changes because the ordinary extension
-cannot suppress submitted alerts. Watches lapse after at most seven days unless a device renews
-them; opening the phone always attempts renewal and direct Gmail sync. Background refresh is
-opportunistic, and the server has no phone Gmail credentials to renew on its behalf.
+The server verifies arrivals and renews provider watches with the explicitly connected grant;
+read/label changes alone do not generate alerts. The ordinary extension cannot suppress an
+already submitted alert, so failed phone enrichment can leave the relevant new-mail fallback.
+Without a server connection, Gmail watches still rely on a device renewing within seven days.
+See [verified background notifications](#verified-background-notifications) for grant setup and checks.
 
 ## Accounts and access
 

@@ -714,7 +714,7 @@ function MailboxNotifications({ account }: { account: GmailAccount }) {
           <p>
             Enable IMAP background notifications? Otter will securely store this mailbox’s password
             and connect to its IMAP server to check for new mail. The password permits mailbox
-            access; Otter’s watcher reads only message IDs and flags.
+            access; Otter’s watcher reads only metadata needed to identify new mail.
           </p>
           <div className="mt-3 flex gap-2">
             <Btn size="sm" variant="primary" onClick={() => void connect()}>

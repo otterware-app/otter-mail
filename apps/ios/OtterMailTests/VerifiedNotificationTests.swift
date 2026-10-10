@@ -8,6 +8,19 @@ nonisolated struct VerifiedNotificationTests: Sendable {
     }
     private var config: PushState.Configuration { .init(userId: "owner", mode: "inbox", mailboxes: ["me@example.com"]) }
 
+    @Test func providerPayloadsDecodeTheirRoutingMarkers() throws {
+        for provider in ["gmail", "outlook", "imap"] {
+            var payload: [String: Any] = ["version": 2, "userId": "owner", "email": "me@example.com", "provider": provider,
+                                          "historyId": "9007199254740993", "messageId": provider == "imap" ? "19" : "abcdef", "mode": "inbox"]
+            if provider == "imap" { payload["folder"] = "INBOX"; payload["uidValidity"] = 42 }
+            let decoded = try JSONDecoder().decode(VerifiedNotification.Metadata.self, from: JSONSerialization.data(withJSONObject: payload))
+            #expect(decoded.provider == provider)
+            #expect(decoded.historyId == "9007199254740993")
+            #expect(decoded.uidValidity == (provider == "imap" ? 42 : nil))
+            #expect(decoded.folder == (provider == "imap" ? "INBOX" : nil))
+        }
+    }
+
     @Test func confirmedMessageUsesIdNotTheEventEndingMarker() async throws {
         let result = try await VerifiedNotification.enrich(event(), configuration: config) { path, query in
             #expect(path == "messages/abcdef")

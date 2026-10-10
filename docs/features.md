@@ -203,7 +203,7 @@ These are Otter Mail actions, separate from Gmail's own scheduled and snoozed fo
 | Feature                                                    | Mac                          | Web                     | iPhone                                                               |
 | ---------------------------------------------------------- | ---------------------------- | ----------------------- | -------------------------------------------------------------------- |
 | New-mail notifications (Off / Inbox / All), click opens it | ✓                            | ✓ (browser)             | ✓ (verified APNs for connected Gmail, Outlook, IMAP; local fallback) |
-| Gmail push via relay                                       | ✓ (with an Otter account)    | ✓                       | ✓ (WebSocket + private APNs)                                         |
+| Gmail push via relay                                       | ✓ (with an Otter account)    | ✓                       | ✓ (WebSocket + verified APNs)                                        |
 | Outlook push via relay (Graph subscription)                | ✓ (with an Otter account)    | ✓                       | ✓ (WebSocket + verified APNs)                                        |
 | IMAP IDLE                                                  | ✓ (while running)            | ✓ (while a tab is open) | while open; server watcher for connected APNs                        |
 | Background sync                                            | ✓ (15 s – 15 min, or manual) | ✓ (while a tab is open) | BGAppRefresh, ≥ 15 min                                               |

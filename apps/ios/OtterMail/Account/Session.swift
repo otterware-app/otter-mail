@@ -664,7 +664,7 @@ final class Session {
         await sync?.sync(mailbox.email)
         if let message = destination.message, let id = ImapID(message), mailbox.imap != nil,
            !store.threads.contains(where: { $0.mailbox == mailbox.email && $0.messages.contains(where: { $0.id == message }) }) {
-            await sync?.loadMore(.label(id.path, id.path), scope: mailbox.email)
+            await sync?.loadMore(.label(id: id.path, name: id.path), scope: mailbox.email)
         }
         if let message = destination.message, destination.thread == nil,
            let thread = store.threads.first(where: { $0.mailbox.lowercased() == mailbox.email.lowercased() && $0.messages.contains(where: { $0.id == message }) }) {

@@ -60,8 +60,10 @@ when a feature lands or goes.
   Drizzle on D1, a Durable Object per user). Otter accounts, the Gmail accounts linked to them,
   the account's preferences (core's `services/preferences.ts` syncs them), its projects (core's
   `services/projects.ts`; agents elsewhere reach them over the relay's MCP server), and realtime
-  mail: Gmail → Pub/Sub → relay → WebSocket to each signed-in device. Push notifications carry
-  mailbox addresses and history IDs. The optional OpenRouter agent processes and stores chats
+  mail: Gmail → Pub/Sub → relay → WebSocket to each signed-in device. Opt-in background
+  notifications use encrypted limited Gmail/Outlook grants (or an IMAP password) to verify
+  unread arrivals and renew watches; APNs carries routing IDs and generic text, and the iPhone
+  enriches directly from the provider. The optional OpenRouter agent processes and stores chats
   and mail/calendar tool results on the relay. The web app's Gmail tokens pass through it (never
   stored), the desktop app's never do. See its
   README.

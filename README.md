@@ -7,6 +7,7 @@ Gmail, calm and fast. An app for macOS and Linux, and the same app in your brows
 - Gmail labels, plus saved views that filter across accounts
 - A local SQLite cache with full-text search, so mail opens instantly and works offline
 - New-mail notifications, and a Dock unread badge
+- iPhone alerts for verified Gmail, Outlook and IMAP arrivals, with previews fetched on the phone
 - On-device translation of mail in other languages (Apple Translation on the Mac, Chrome's
   built-in translator on the web; nothing leaves your device)
 - Calendar invitations you can answer in place, and one-click unsubscribe
@@ -41,6 +42,10 @@ Mac releases support Apple Silicon Macs (arm64).
 | Updates                                                       | Automatic                                        | Always the latest                              | Always the latest                              |
 
 ## Install
+
+The native [iPhone app](apps/ios/README.md) supports background notifications after connecting
+each mailbox in Settings. Gmail and Outlook request separate limited permissions; IMAP asks
+to store its password securely. Message content is fetched directly on the phone for previews.
 
 Download the latest DMG (Mac) or .deb (Debian, Ubuntu: `sudo apt install ./Otter-Mail-*.deb`)
 from [Releases](https://github.com/otterware-app/otter-mail/releases).

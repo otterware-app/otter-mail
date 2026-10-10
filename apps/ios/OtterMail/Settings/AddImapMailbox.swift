@@ -35,7 +35,7 @@ struct AddImapMailbox: View {
             Section {
                 Toggle("Background notifications", isOn: $backgroundNotifications)
             } footer: {
-                Text("When enabled, Otter securely stores the IMAP password to watch for new mail while the app is closed. The watcher reads message IDs and flags; previews load directly on your iPhone.")
+                Text("When enabled, Otter securely stores the IMAP password to watch for new mail while the app is closed. The watcher reads new-mail metadata; previews load directly on your iPhone.")
             }
             Section {
                 TextField("Email", text: $email)
