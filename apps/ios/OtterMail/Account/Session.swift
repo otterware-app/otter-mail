@@ -536,6 +536,7 @@ final class Session {
 
     /** Back to the welcome screen, with nothing of the account left here. */
     private func endSession() {
+        opening = nil
         notificationConnections = [:]
         notificationProviders = []
         let previousUser = user
@@ -659,9 +660,11 @@ final class Session {
         let originalUser = user?.id
         guard destination.userId == nil || destination.userId == user?.id else { opening = nil; return }
         await refreshAccount()
+        guard user?.id == originalUser else { opening = nil; return }
         guard let email = destination.email ?? destination.thread.flatMap({ store.thread($0)?.mailbox }),
               let mailbox = store.mailboxes.first(where: { $0.email.lowercased() == email.lowercased() }), !mailbox.signedOut else { return }
         await sync?.sync(mailbox.email)
+        guard user?.id == originalUser, store.mailbox(mailbox.email) != nil else { opening = nil; return }
         if let message = destination.message, let id = ImapID(message), mailbox.imap != nil,
            !store.threads.contains(where: { $0.mailbox == mailbox.email && $0.messages.contains(where: { $0.id == message }) }) {
             await sync?.loadMore(.label(id: id.path, name: id.path), scope: mailbox.email)
