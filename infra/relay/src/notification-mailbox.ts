@@ -9,6 +9,9 @@ export class NotificationMailbox extends DurableObject<Env> {
   private running: Promise<void> | undefined;
 
   async start(userId: string, email: string): Promise<void> {
+    // A new grant starts from the mailbox's current state. An earlier grant's cursor would walk,
+    // and announce, everything that arrived while it was stopped.
+    await this.ctx.storage.deleteAll();
     await this.ctx.storage.put("identity", { userId, email });
     await this.check(false);
     if ((await connections.connection(this.env, userId, email))?.status === "connecting")
@@ -113,6 +116,7 @@ export class NotificationMailbox extends DurableObject<Env> {
         provider: row.provider,
         stage,
         reason: error instanceof connections.NotificationFailure ? error.reason : "unexpected",
+        detail: error instanceof connections.NotificationFailure ? error.detail : undefined,
         category: reauthorize
           ? "authorization"
           : error instanceof connections.NotificationFailure

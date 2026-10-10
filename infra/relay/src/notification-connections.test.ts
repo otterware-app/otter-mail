@@ -10,6 +10,7 @@ import {
   configured,
   credential,
   connection,
+  failureDetail,
   remove,
   routes,
   save,
@@ -155,6 +156,12 @@ describe("verified notification credentials", () => {
     expect(JSON.stringify(await result.json())).not.toMatch(
       /refresh|access_token|credential|fake-client/,
     );
+  });
+  it("describes a failed provider call by its error code only", () => {
+    expect(failureDetail("token", 400, "invalid_grant")).toBe("token 400 invalid_grant");
+    expect(failureDetail("watch", 403, "forbidden")).toBe("watch 403 forbidden");
+    expect(failureDetail("history", 403, "Token has been expired or revoked.")).toBe("history 403");
+    expect(failureDetail("messages", 500, { secret: "x" })).toBe("messages 500");
   });
   it("rejects full Gmail scope even when a metadata-only grant was requested", async () => {
     const { url } = await authorize();

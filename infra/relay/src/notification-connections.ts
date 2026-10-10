@@ -43,6 +43,8 @@ export class NotificationFailure extends Error {
       | "provider_authorization"
       | "provider_temporary"
       | "connection_changed" = reauthorize ? "provider_authorization" : "provider_temporary",
+    /** The failed call, its status and the provider's error code (`token 400 invalid_grant`). Never a body. */
+    readonly detail?: string,
   ) {
     super(
       reauthorize
@@ -199,6 +201,13 @@ export async function remove(env: Env, userId: string, address: string): Promise
   await env.USER_HUB.get(env.USER_HUB.idFromName(userId)).forgetPush(address);
 }
 
+/** A safe description of a failed provider call: only an error code that looks like one is kept. */
+export function failureDetail(call: string, status: number, code: unknown): string {
+  return typeof code === "string" && /^[A-Za-z_]{1,40}$/.test(code)
+    ? `${call} ${status} ${code}`
+    : `${call} ${status}`;
+}
+
 /** Enforce actual token scopes, including refresh responses; don't trust the requested scope or client name. */
 export function validateScopes(provider: "gmail" | "outlook", scope: unknown): void {
   if (typeof scope !== "string") throw new NotificationFailure(true, "scope_missing");
@@ -260,6 +269,7 @@ export async function tokenRequest(
         : response.status === 401
           ? "provider_authorization"
           : "provider_temporary",
+      failureDetail("token", response.status, body.error),
     );
   }
   validateScopes(provider, body.scope);
@@ -544,6 +554,7 @@ export async function callbackResponse(env: Env, state: string, code?: string): 
   } catch (error) {
     console.warn("Notification setup failed", {
       reason: error instanceof NotificationFailure ? error.reason : "unexpected",
+      detail: error instanceof NotificationFailure ? error.detail : undefined,
     });
   }
   const returnTo = verified.payload.returnTo;

@@ -5,6 +5,7 @@ import type { MailProviderKind } from "@otter-mail/contracts/mail";
 import {
   accessToken,
   credential,
+  failureDetail,
   sameSettings,
   NotificationFailure,
   type Connection,
@@ -58,7 +59,15 @@ async function json(url: string, token: string, options: RequestInit = {}): Prom
           "quotaExceeded",
         ].includes(e.reason ?? ""),
       ) || body?.error?.status === "RESOURCE_EXHAUSTED";
-    throw new NotificationFailure(response.status === 401 || (response.status === 403 && !quota));
+    const reauthorize = response.status === 401 || (response.status === 403 && !quota);
+    const call = /\/(profile|watch|history|messages|subscriptions|mailFolders)\b/.exec(
+      new URL(url).pathname,
+    )?.[1];
+    throw new NotificationFailure(
+      reauthorize,
+      undefined,
+      failureDetail(call ?? "api", response.status, body?.error?.errors?.[0]?.reason),
+    );
   }
   return response.json() as Promise<Json>;
 }

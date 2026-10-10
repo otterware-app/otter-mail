@@ -2222,6 +2222,39 @@ describe("notification connection failures", () => {
     },
   );
   it(
+    "starts a reconnected grant from the mailbox's current state",
+    { timeout: 20_000 },
+    async () => {
+      const owner = await signIn("notification-reconnect-owner@example.com"),
+        email = "notification-reconnect-mail@example.com",
+        token = "5c".repeat(32);
+      await link(owner.token, email);
+      await connectNotificationMailbox(owner.token, email);
+      await call("PUT", "/v1/push/device", owner.token, pushRegistration(token, [email]));
+      notificationRefreshScopes.set(email, "https://mail.google.com/");
+      await push({ emailAddress: email, historyId: "100" });
+      await expect.poll(() => statusFor(owner.token, email), { timeout: 5000 }).toBe("reauthorize");
+      notificationRefreshScopes.delete(email);
+      // Arrived while the grant was stopped: reconnecting must not announce it.
+      const old = { id: "0c0001", historyId: "300", labels: ["UNREAD", "INBOX"] };
+      notificationMail.set(email, { historyId: "300", added: [old] });
+      const result = await callbackFor(owner.token, email);
+      expect(await result.text()).toContain("ottermail-notifications://complete?result=success");
+      expect(await statusFor(owner.token, email)).toBe("ready");
+      await new Promise((resolve) => setTimeout(resolve, 6000));
+      expect(notifications.filter((n) => n.token === token)).toHaveLength(0);
+      const fresh = { id: "0c0002", historyId: "301", labels: ["UNREAD", "INBOX"] };
+      notificationMail.set(email, { historyId: "301", added: [old, fresh] });
+      await push({ emailAddress: email, historyId: "301" });
+      await expect
+        .poll(() => notifications.filter((n) => n.token === token).length, { timeout: 10_000 })
+        .toBe(1);
+      expect(notifications.find((n) => n.token === token)!.body.otter).toMatchObject({
+        messageId: "0c0002",
+      });
+    },
+  );
+  it(
     "retries a Gmail 403 quota limit without requiring new consent",
     { timeout: 10_000 },
     async () => {
