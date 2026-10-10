@@ -128,9 +128,8 @@ APNs carries only a generic “New mail. Open Otter Mail to read it.” alert, n
 allowlisted user/mailbox/provider/message identifiers. It carries no sender, subject, preview,
 message body, attachment, provider credential or unread badge. The embedded
 `OtterMailNotificationService` fetches the indicated message **directly from Gmail, Microsoft
-Graph or the IMAP server**, then adds sender, subject and a bounded preview locally. The event's
-ending marker is never used as a history baseline. Version 1 compatibility retains the older
-on-device history reader; the new relay never submits unverified version 1 change alerts.
+Graph or the IMAP server**, then adds sender, subject and a bounded preview locally. The phone
+never walks mailbox history to guess what arrived; any other payload keeps the generic text.
 
 The generic fallback now corresponds to a verified arrival. It remains if the phone is offline,
 Google/Microsoft access was revoked, the IMAP UIDVALIDITY changed, credentials are locked, or the
@@ -198,8 +197,8 @@ Regenerate the main App Store profile with the new capabilities, and add the ext
 APNs signing key and allowed topics as described in `infra/relay/README.md`. The APNs key is
 separate from the App Store Connect upload key; never put either in this checkout.
 
-Run the normal Xcode build and `OtterMailTests`, including `NotificationTests` (history paging,
-labels, rebase, failures, cancellation and the completion race). Check the demo in light/dark.
+Run the normal Xcode build and `OtterMailTests`, including `NotificationTests` and
+`VerifiedNotificationTests` (labels, routing, failures and the completion race). Check the demo in light/dark.
 For a signed-in test account, permit notifications and test Inbox/All/Off, locked-device
 arrival, multiple mailboxes, a generic tap and a thread absent from the local cache.
 
@@ -210,15 +209,17 @@ A simulator payload can exercise display/tap wiring:
   "aps": {
     "alert": {
       "title": "Otter Mail",
-      "body": "Mailbox updated. Open Otter Mail to check your mail."
+      "body": "New mail. Open Otter Mail to read it."
     },
     "mutable-content": 1
   },
   "otter": {
-    "version": 1,
+    "version": 2,
     "userId": "<test-account-id>",
     "email": "<test-mailbox>",
-    "historyId": "<new-change-marker>",
+    "provider": "gmail",
+    "historyId": "<sequence>",
+    "messageId": "<gmail-message-id>",
     "mode": "inbox"
   }
 }

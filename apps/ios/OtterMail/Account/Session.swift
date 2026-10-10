@@ -356,19 +356,12 @@ final class Session {
         try? await relay.unlink(mailbox.email)
     }
 
-    /** Forgets the mailbox's sign-in here: Google's (and asks Google to end it), Microsoft's, or the IMAP password. */
+    /** Forgets the mailbox's sign-in here: Google's, Microsoft's, or the IMAP password. */
     private func signOut(_ mailbox: Mailbox) async {
-        let userId = user?.id
-        let revocation = mailbox.provider == .gmail ? google.forget(mailbox.email) : nil
+        if mailbox.provider == .gmail { google.forget(mailbox.email) }
         if mailbox.provider == .imap { ImapProvider.setPassword(nil, for: mailbox.email) }
         if mailbox.provider == .outlook { microsoft.forget(mailbox.email) }
         configurePush()
-        if let userId {
-            try? await PushState.locked("notification:" + mailbox.email) {
-                if PushState.cursor(mailbox.email)?.userId == userId { try PushState.save(nil, email: mailbox.email) }
-            }
-        }
-        if let revocation { await google.revoke(await revocation.value) }
     }
 
     private func pullAccounts() async {
@@ -557,17 +550,9 @@ final class Session {
         relay.disconnect()
         sync?.forgetAll()
         sync = nil
-        let revocations = mailboxes.filter { $0.provider == .gmail }.map { google.forget($0.email) }
+        for mailbox in mailboxes where mailbox.provider == .gmail { google.forget(mailbox.email) }
         for mailbox in mailboxes where mailbox.provider == .imap { ImapProvider.setPassword(nil, for: mailbox.email) }
         for mailbox in mailboxes where mailbox.provider == .outlook { microsoft.forget(mailbox.email) }
-        Task {
-            for mailbox in mailboxes {
-                try? await PushState.locked("notification:" + mailbox.email) {
-                    if PushState.cursor(mailbox.email)?.userId == previousUser?.id { try PushState.save(nil, email: mailbox.email) }
-                }
-            }
-            for revocation in revocations { await google.revoke(await revocation.value) }
-        }
         if let previousUser {
             UserDefaults.standard.removeObject(forKey: "push:mailboxes:" + previousUser.id)
             UserDefaults.standard.removeObject(forKey: "push:pending-mode:" + previousUser.id)

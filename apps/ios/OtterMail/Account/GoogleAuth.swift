@@ -123,8 +123,13 @@ final class GoogleAuth {
         return id
     }
 
-    /** Forgets the mailbox here and asks Google to end its sign-in. */
-    func forget(_ email: String) -> Task<String?, Never> {
+    /**
+     * Forgets the mailbox's sign-in on this iPhone. Google isn't asked to revoke it: revoking ends
+     * the grant for every client in the Google Cloud project, signing the mailbox out on the
+     * account's other devices and stopping the relay's background notifications.
+     */
+    @discardableResult
+    func forget(_ email: String) -> Task<Void, Never> {
         let key = email.lowercased()
         let version = credentialVersions[key]
         refreshing[key]?.cancel()
@@ -132,27 +137,14 @@ final class GoogleAuth {
         // Deletion and refresh/rotation share the same cross-process lock. A later sign-in owns a new version.
         return Task {
             try? await PushState.locked("oauth:" + email) {
-                guard credentialVersions[key] == version else { return nil as String? }
-                let refreshToken = GoogleCredentials.credential(email)?.refreshToken
+                guard credentialVersions[key] == version else { return }
                 GoogleCredentials.forget(email)
-                return refreshToken
             }
         }
     }
 
     func signOut(_ email: String) async {
-        let refreshToken = await forget(email).value
-        await revoke(refreshToken)
-    }
-
-    func revoke(_ refreshToken: String?) async {
-        if let refreshToken {
-            var request = URLRequest(url: URL(string: "https://oauth2.googleapis.com/revoke")!)
-            request.httpMethod = "POST"
-            request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-            request.httpBody = Self.form(["token": refreshToken])
-            _ = try? await URLSession.shared.data(for: request)
-        }
+        await forget(email).value
     }
 
     private func refresh(_ email: String, force: Bool = false) async throws -> Tokens {

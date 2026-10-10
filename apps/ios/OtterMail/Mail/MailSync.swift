@@ -201,17 +201,6 @@ final class MailSync {
         do {
             let before = Dictionary(store.allThreads(of: email).map { ($0.id, $0) }) { a, _ in a }
             let delta = try await run(email) { provider, state, known in try await provider.sync(&state, known: known) }
-            if store.mailbox(email)?.provider == .gmail, let historyID = states[email]?.historyID,
-               let config = PushState.configuration(), config.mailboxes.contains(email.lowercased()) {
-                try? await PushState.locked("notification:" + email) {
-                    guard PushState.configuration()?.userId == config.userId else { return }
-                    let cursor = PushState.cursor(email)
-                    // APNs owns its cursor once registered: a WebSocket/background sync must not consume its pending additions.
-                    if cursor?.userId != config.userId || (!pushMailboxes.contains(email.lowercased()) && GmailNotification.newer(historyID, than: cursor?.historyId ?? "0")) {
-                        try PushState.save(.init(userId: config.userId, historyId: historyID), email: email)
-                    }
-                }
-            }
             if notify { await announce(delta.threads, before: before) }
             let provider = provider(email)
             let labels = try await provider.labels()
