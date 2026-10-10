@@ -89,7 +89,7 @@ nonisolated enum VerifiedNotification {
             }
         }
         guard list.count > 6, list[0].text?.uppercased() == "TEXT", ["PLAIN", "HTML"].contains(list[1].text?.uppercased() ?? "") else { return [] }
-        return [.init(path: path.isEmpty ? "TEXT" : path, html: list[1].text?.uppercased() == "HTML", encoding: list[6].text ?? "", charset: list[2].pairs["CHARSET"]?.text)]
+        return [.init(path: path.isEmpty ? "TEXT" : path, html: list[1].text?.uppercased() == "HTML", encoding: list[5].text ?? "", charset: list[2].pairs["CHARSET"]?.text)]
     }
     private static func imap(_ metadata: Metadata, settings: ImapSettings, password: String) async throws -> Message? {
         guard let uid = UInt32(metadata.messageId), uid > 0, let validity = metadata.uidValidity,
