@@ -18,6 +18,9 @@ export class NotificationMailbox extends DurableObject<Env> {
       await this.check(false);
   }
   async changed(): Promise<void> {
+    // A provider that is throttling us keeps its backoff: new deliveries wait for the retry,
+    // which reads everything they announced.
+    if (await this.ctx.storage.get<number>("failures")) return;
     // Multiple Pub/Sub/Graph deliveries become one history walk.
     const alarm = await this.ctx.storage.getAlarm();
     const due = Date.now() + 2000;
