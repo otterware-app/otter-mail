@@ -125,8 +125,10 @@ Its own Swift implementation of the same design (`apps/ios/OtterMail/Outlook/`, 
   when opened.
 - Each phone keeps its own Graph subscription (`/v1/outlook/watch`), so the relay's `mail` events
   sync it while the app is open; without one it polls every two minutes.
-- It lacks: APNs notifications for Outlook (the relay registers phones for Gmail only; Outlook
-  mail is announced by background refresh), Outlook's calendar (invitations), and making,
+- Optional verified APNs use a separate server `Mail.ReadBasic` grant; the phone fetches the
+  preview directly through Graph. The server renews that subscription without relying on app
+  launches. See [background notifications](../apps/ios/README.md#verified-background-notifications).
+- It lacks: Outlook's calendar (invitations), and making,
   renaming or deleting labels (the iPhone doesn't for any mailbox).
 
 ## Not yet

@@ -32,6 +32,38 @@ beforeAll(async () => {
 });
 
 describe("private APNs payloads", () => {
+  it.each(["gmail", "outlook", "imap"] as const)(
+    "allows only verified %s routing metadata, even when callers include mail content",
+    (provider) => {
+      const verified = {
+        ...metadata,
+        version: 2 as const,
+        provider,
+        messageId: "message-id",
+        ...(provider === "imap" ? { folder: "INBOX", uidValidity: 42 } : {}),
+      };
+      const data = payload({
+        ...verified,
+        sender: "private sender",
+        subject: "private subject",
+        body: "private body",
+        preview: "private preview",
+        credentials: "private refresh token",
+        attachments: ["private attachment"],
+      } as typeof verified);
+      expect(data).toEqual({
+        aps: {
+          alert: { title: "Otter Mail", body: "New mail. Open Otter Mail to read it." },
+          "mutable-content": 1,
+          sound: "default",
+        },
+        otter: verified,
+      });
+      expect(JSON.stringify(data)).not.toContain("private");
+      expect(data.aps).not.toHaveProperty("badge");
+    },
+  );
+
   it("allows only routing markers, generic text, and no badge", () => {
     const data = payload({
       ...metadata,

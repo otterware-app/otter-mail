@@ -42,6 +42,8 @@ import * as preferences from "./preferences.ts";
 import * as projects from "./projects.ts";
 import * as store from "./store.ts";
 import * as push from "./push.ts";
+import * as notificationConnections from "./notification-connections.ts";
+import { NotificationMailbox } from "./notification-mailbox.ts";
 import * as apns from "./apns.ts";
 import * as tunnel from "./tunnel.ts";
 import type { AgentHub } from "./agent-hub.ts";
@@ -49,8 +51,18 @@ import { SESSION_HEADER, type UserHub } from "./user-hub.ts";
 
 export { AgentHub } from "./agent-hub.ts";
 export { UserHub } from "./user-hub.ts";
+export { NotificationMailbox };
 
 export interface Env {
+  NOTIFICATION_MAILBOX: DurableObjectNamespace<NotificationMailbox>;
+  NOTIFICATION_CREDENTIAL_SECRET?: string;
+  NOTIFICATION_GOOGLE_CLIENT_ID?: string;
+  NOTIFICATION_GOOGLE_CLIENT_SECRET?: string;
+  NOTIFICATION_GOOGLE_PUSH_TOPIC?: string;
+  NOTIFICATION_GOOGLE_API_ORIGIN?: string;
+  NOTIFICATION_MICROSOFT_CLIENT_ID?: string;
+  NOTIFICATION_MICROSOFT_CLIENT_SECRET?: string;
+  NOTIFICATION_IMAP_TEST_TARGET?: string;
   DB: D1Database;
   /** Private compatibility adapter to the independent Otter Accounts service. */
   ACCOUNTS?: {
@@ -225,6 +237,21 @@ app.notFound((c) => c.json({ error: "Not found." }, 404));
 
 app.get("/", (c) => c.text("Otter Mail relay\n"));
 
+app.get("/v1/notifications/callback", async (c) => {
+  const { state, code, error } = c.req.query();
+  if (!state) return c.text("Start notification setup in Otter Mail.", 400);
+  return notificationConnections.callbackResponse(c.env, state, error ? undefined : code);
+});
+
+// Reuse Google's registered redirect. A separate state key/audience distinguishes the limited notification grant.
+app.get("/v1/gmail/callback", async (c, next) => {
+  const { state, code, error } = c.req.query();
+  if (state && (await notificationConnections.isAuthorizationState(c.env, state))) {
+    return notificationConnections.callbackResponse(c.env, state, error ? undefined : code);
+  }
+  await next();
+});
+
 /** Sign-in, sign-out, devices and account deletion. */
 // Standalone local development has no Accounts service. Production forwards
 // this request above to the coordinator that visits every cookie owner.
@@ -315,6 +342,7 @@ authed.use(async (c, next) => {
 });
 
 // The AI SDK loop and API key stay in a Durable Object per Otter account.
+authed.route("/", notificationConnections.routes());
 authed.all("/agent/*", async (c) => {
   if (c.req.header("origin") && c.req.header("origin") !== c.env.APP_ORIGIN)
     throw new HTTPException(403, { message: "Not from the web app." });
@@ -491,6 +519,11 @@ authed.put(
     if (!apns.configured(c.env))
       throw new HTTPException(503, { message: "iPhone push is not configured." });
     await push.register(c.env, c.var.session, c.req.valid("json"));
+    for (const email of c.req.valid("json").mailboxes) {
+      if (await notificationConnections.connection(c.env, c.var.session.user.id, email)) {
+        await notificationConnections.watcher(c.env, c.var.session.user.id, email).changed();
+      }
+    }
     return c.body(null, 204);
   },
 );
@@ -593,6 +626,7 @@ authed.delete(
     const userId = c.var.session.user.id;
     const { email } = c.req.valid("param");
     if (await store.deleteAccount(c.var.db, userId, email, c.req.valid("query").providers)) {
+      await notificationConnections.remove(c.env, userId, email);
       await hub(c.env, userId).forgetPush(email);
       await hub(c.env, userId).publish({ type: "accounts" });
     }
@@ -949,7 +983,12 @@ app.post(
 
     const event: RelayEvent = { type: "mail", email, historyId: "" };
     const users = await store.usersWithMailbox(c.var.db, email, "outlook");
-    await Promise.all(users.map((userId) => hub(c.env, userId).publish(event)));
+    await Promise.all(
+      users.map(async (userId) => {
+        await hub(c.env, userId).publish(event);
+        await notificationConnections.watcher(c.env, userId, email).changed();
+      }),
+    );
     return c.body(null, 202);
   },
 );

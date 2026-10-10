@@ -75,13 +75,19 @@ beforeEach(() => {
 });
 
 describe("push routing store", () => {
-  it("rejects IMAP and unlinked mailboxes without writing a device", async () => {
-    for (const email of ["imap@example.com", "stranger@example.com"]) {
+  it("rejects another user's unlinked mailbox without writing a device", async () => {
+    for (const email of ["stranger@example.com"]) {
       await expect(
         register(env, session, { ...registration, mailboxes: [email] }),
       ).rejects.toMatchObject({ status: 403 });
     }
     expect(db.prepare("SELECT * FROM push_devices").all()).toHaveLength(0);
+  });
+
+  it("registers linked IMAP mailboxes with the same session isolation", async () => {
+    await register(env, session, { ...registration, mailboxes: ["imap@example.com"] });
+    expect(await devices(env, "owner", "imap@example.com")).toHaveLength(1);
+    expect(await devices(env, "another-user", "imap@example.com")).toHaveLength(0);
   });
 
   it("rechecks access and notification mode at delivery, and cascades unlink", async () => {

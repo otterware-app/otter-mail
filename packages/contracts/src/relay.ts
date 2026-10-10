@@ -129,6 +129,32 @@ export interface MailPushMetadata {
   mode: "inbox" | "all";
 }
 
+/** A server-confirmed incoming message. No sender, subject, preview or credentials. */
+export interface NewMailPushMetadata {
+  version: 2;
+  userId: string;
+  email: string;
+  provider: "gmail" | "outlook" | "imap";
+  /** Monotonic delivery marker, independent of provider history cursors. */
+  historyId: string;
+  messageId: string;
+  /** IMAP needs the folder and UIDVALIDITY to address a message safely. */
+  folder?: string;
+  uidValidity?: number;
+  mode: "inbox" | "all";
+}
+
+export interface NotificationConnection {
+  email: string;
+  provider: "gmail" | "outlook" | "imap";
+  status: "connecting" | "ready" | "reauthorize" | "retry";
+  updatedAt: number;
+}
+
+export interface AuthorizeNotificationConnectionResponse {
+  url: string;
+}
+
 /**
  * `GET /v1/accounts?providers=gmail,imap`: the linked mailboxes of the
  * providers named. Without `providers` it lists Gmail accounts only: builds

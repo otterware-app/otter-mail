@@ -7,7 +7,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./agent-server": "./src/services/agent/server.ts",
-    "./agent-instructions": "./src/services/agent/instructions.ts"
+    "./agent-instructions": "./src/services/agent/instructions.ts",
+    "./imap": "./src/protocols/imap/client.ts"
   },
   "scripts": {
     "test": "vp test run --passWithNoTests",

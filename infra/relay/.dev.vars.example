@@ -14,3 +14,16 @@ APNS_PRIVATE_KEY=
 # Fixed allowed application topics; not the extension bundle ID.
 APNS_SANDBOX_TOPIC=dev.otterware.mail.dev
 APNS_PRODUCTION_TOPIC=dev.otterware.mail
+
+# Verified background notifications. Use a dedicated random secret in production.
+# DEV_DEMO can use BETTER_AUTH_SECRET locally; never use that fallback in production.
+NOTIFICATION_CREDENTIAL_SECRET=
+# Optional dedicated Google web client. Otherwise use GOOGLE_WEB_CLIENT_ID/SECRET
+# with a separate gmail.metadata grant, checked on exchange/refresh.
+NOTIFICATION_GOOGLE_CLIENT_ID=
+NOTIFICATION_GOOGLE_CLIENT_SECRET=
+NOTIFICATION_GOOGLE_PUSH_TOPIC=
+# A SEPARATE Entra application, with only User.Read and Mail.ReadBasic delegated permissions.
+# Web redirect: https://relay.mail.otterware.app/v1/notifications/callback
+NOTIFICATION_MICROSOFT_CLIENT_ID=
+NOTIFICATION_MICROSOFT_CLIENT_SECRET=

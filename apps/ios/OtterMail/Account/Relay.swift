@@ -35,6 +35,33 @@ final class Relay {
         var updatedAt: Date
     }
 
+    struct NotificationConnection: Decodable {
+        var email: String
+        var provider: String
+        var status: String
+        var updatedAt: Double
+    }
+    struct NotificationConnections: Decodable {
+        var connections: [NotificationConnection]
+        var providers: [String: Bool]
+    }
+
+    func notificationConnections() async throws -> NotificationConnections {
+        let (data, _) = try await send("GET", "/v1/notification-connections")
+        return try JSONDecoder().decode(NotificationConnections.self, from: data)
+    }
+    func authorizeNotifications(_ email: String) async throws -> URL {
+        struct Body: Encodable { var email: String; var returnTo = "native" }
+        struct Response: Decodable { var url: URL }
+        let (data, _) = try await send("POST", "/v1/notification-connections/authorize", body: Body(email: email))
+        return try JSONDecoder().decode(Response.self, from: data).url
+    }
+    func connectImapNotifications(_ email: String, settings: ImapSettings, password: String) async throws {
+        struct Body: Encodable { var email: String; var settings: ImapSettings; var password: String }
+        _ = try await send("PUT", "/v1/notification-connections/imap", body: Body(email: email, settings: settings, password: password))
+    }
+    func disconnectNotifications(_ email: String) async throws { _ = try await send("DELETE", "/v1/notification-connections/" + Self.path(email)) }
+
     enum Event {
         case mail(email: String)
         case accounts

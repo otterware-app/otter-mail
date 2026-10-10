@@ -77,7 +77,7 @@ bundles from `packages/shared` has changed. A Mac release doesn't need one.
   (and this Mac's keychain, for `pnpm release:ios`).
 - TestFlight builds expire after 90 days.
 
-## iPhone Gmail push setup/checks
+## iPhone APNs signing and transport
 
 Before enabling push, apply the relay D1 migrations and configure the APNs team/key/private-key
 Worker secrets. Use application topics `dev.otterware.mail.dev` (sandbox) and
@@ -85,18 +85,19 @@ Worker secrets. Use application topics `dev.otterware.mail.dev` (sandbox) and
 its embedded notification extension with App Groups/Keychain Sharing. Release signing also
 needs `IOS_NOTIFICATION_PROVISIONING_PROFILE` and a regenerated main profile; see
 [Apple setup](../apps/ios/README.md#apple-setup-and-verification) and
-[relay APNs configuration](../infra/relay/README.md#iphone-apns).
+[relay APNs configuration](../infra/relay/README.md#verified-iphone-apns).
 
 Check live sandbox arrival on a provisioned iPhone and production in TestFlight, using a test
-Gmail. First open/sync to seed history; background the app, send new mail, verify the sender and
+mailbox. Connect background notifications, open/sync, then background the app, send new mail, verify the sender and
 preview and tap to the correct mailbox/thread. Check light/dark, two mailboxes, Inbox/All/Off,
-label/read changes, locked device after first unlock, offline/expired-history fallback, token
+label/read changes, locked device after first unlock, offline/timeout fallback, token
 rotation, remote session revocation and unlink. Simulator injection only checks local payload/
 tap flow; it cannot prove live APNs or extension network delivery. No exact badge is sent.
-Generic mailbox-update alerts can occur for non-new-mail changes because the ordinary extension
-cannot suppress submitted alerts. Watches lapse after at most seven days unless a device renews
-them; opening the phone always attempts renewal and direct Gmail sync. Background refresh is
-opportunistic, and the server has no phone Gmail credentials to renew on its behalf.
+The server verifies arrivals and renews provider watches with the explicitly connected grant;
+read/label changes alone do not generate alerts. The ordinary extension cannot suppress an
+already submitted alert, so failed phone enrichment can leave the relevant new-mail fallback.
+Without a server connection, Gmail watches still rely on a device renewing within seven days.
+See [verified background notifications](#verified-background-notifications) for grant setup and checks.
 
 ## Accounts and access
 
@@ -108,3 +109,32 @@ opportunistic, and the server has no phone Gmail credentials to renew on its beh
 - **Cloudflare:** the `otter-mail-relay` and site workers.
 - **Back up `~/.otter-mail/signing`** (a password manager works). Losing it means new
   certificates and keys from Apple's portals.
+
+## Verified background notifications
+
+Before merging a notification-service change, confirm the dedicated
+`NOTIFICATION_CREDENTIAL_SECRET` and separate Outlook notification app ID/secret are configured
+on `otter-mail-relay`. Use `pnpm dlx cf@latest auth whoami` first; `cf` and Wrangler have separate
+logins. Preserve the existing Workers Builds deployment script: it applies D1 migrations on merge,
+including the notification credential/authorization tables and the NotificationMailbox DO binding.
+See [provider configuration](../infra/relay/README.md#provider-grant-configuration).
+
+After deployment, connect a dedicated demo mailbox using the app's limited consent. Verify that
+full-mail grants are rejected, status becomes ready, and read/label-only events do not submit
+APNs. Exercise Off / Inbox / All, a read during coalescing, mixed inbox/non-inbox arrivals, unlink,
+remote session revocation, token rotation and reconnect. Test Google/Microsoft expiry and IMAP
+UIDVALIDITY/copy behavior. Use only the demo fixtures for mail; never log credentials or fetch
+private users' mail to diagnose push. D1 holds encrypted credentials and routing/cursors, not mail.
+
+Check signed iPhone delivery and taps while locked after first unlock. Generic text must describe
+confirmed new mail; offline/timeout/expired phone credentials can prevent preview enrichment.
+Simulator injection checks local presentation/tap flow, not live APNs or extension networking.
+The app list cache still synchronizes from the provider; alert enrichment is not a whole-inbox
+background sync. APNs is best effort and cannot recall an already submitted alert.
+
+A stopped connection appears in Settings → Mailboxes → Background notifications. `reauthorize`
+needs user consent/password again; `retry` backs off transient failures. Check OAuth client-secret
+expiry, registered redirect URLs, server granted scopes and subscription renewal when investigating.
+Do not solve an enrichment problem by adding a server mail cache or proxy. Disconnecting deletes
+that account/mailbox's credential and delivery state. If a provider cannot be reached, preserve its
+cursor and avoid submitting speculative alerts.

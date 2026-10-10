@@ -85,8 +85,8 @@ actor ImapClient {
     }
 
     /** Connects, upgrades to TLS if need be, logs in, and turns on QRESYNC where there is one. */
-    static func connect(_ server: MailServer, username: String, auth: MailAuth) async throws -> ImapClient {
-        let client = ImapClient(try await MailSocket.open(server))
+    static func connect(_ server: MailServer, username: String, auth: MailAuth, maxResponseBytes: Int = MailSocket.maxLiteral) async throws -> ImapClient {
+        let client = ImapClient(try await MailSocket.open(server, maxResponseBytes: maxResponseBytes))
         do {
             try await client.start(server, username: username, auth: auth)
         } catch {
@@ -241,10 +241,10 @@ actor ImapClient {
 
     /** Opens a folder (read-write), with where it's at. */
     @discardableResult
-    func select(_ path: String) async throws -> Status {
+    func select(_ path: String, readOnly: Bool = false) async throws -> Status {
         let condstore = capabilities.contains("CONDSTORE") && !capabilities.contains("QRESYNC")
         selected = nil
-        let reply = try await command("SELECT \(Self.quote(path))\(condstore ? " (CONDSTORE)" : "")")
+        let reply = try await command("\(readOnly ? "EXAMINE" : "SELECT") \(Self.quote(path))\(condstore ? " (CONDSTORE)" : "")")
         selected = path
         var status = Status(uidValidity: 0, uidNext: 0, highestModSeq: nil, exists: 0)
         for response in reply.untagged {

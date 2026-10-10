@@ -17,19 +17,23 @@ import Network
 nonisolated final class MailSocket {
     let transport: any MailTransport
     private var buffer = Data()
+    private var literalLimit = MailSocket.maxLiteral
 
     private init(_ transport: any MailTransport) {
         self.transport = transport
     }
 
     /** Connects; STARTTLS servers start in plaintext until `startTLS()`. */
-    static func open(_ server: MailServer) async throws -> MailSocket {
+    static func open(_ server: MailServer, maxResponseBytes: Int = maxLiteral) async throws -> MailSocket {
         let transport: any MailTransport = switch server.security {
         case .tls: NWTransport(host: server.host, port: server.port)
         case .starttls: StreamTransport(host: server.host, port: server.port)
         }
-        try await transport.start()
-        return MailSocket(transport)
+        try await withTaskCancellationHandler { try await transport.start() } onCancel: { transport.close() }
+        try Task.checkCancellation()
+        let socket = MailSocket(transport)
+        socket.literalLimit = maxResponseBytes
+        return socket
     }
 
     /** The longest line read (literals aside), and the most an IMAP response's literals may carry. */
@@ -52,7 +56,7 @@ nonisolated final class MailSocket {
 
     /** Exactly `count` bytes (an IMAP literal). */
     func read(_ count: Int) async throws -> Data {
-        guard count <= Self.maxLiteral else { throw ImapError.protocolError("The mail server sent too much at once.") }
+        guard count <= literalLimit else { throw ImapError.protocolError("The mail server sent too much at once.") }
         while buffer.count < count { buffer.append(try await transport.receive()) }
         let bytes = buffer.prefix(count)
         buffer = Data(buffer.dropFirst(count))

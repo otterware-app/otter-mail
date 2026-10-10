@@ -13,6 +13,9 @@
 /* Begin PBXBuildFile section */
 		0B0000000000000000000001 = {isa = PBXBuildFile; fileRef = 0B0000000000000000000002; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		0B0000000000000000000012 /* MailDecoding.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B0000000000000000000011; };
+		0B0000000000000000000022 /* ImapClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B0000000000000000000021; };
+		0B0000000000000000000032 /* ImapParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B0000000000000000000031; };
+		0B0000000000000000000042 /* MailSocket.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B0000000000000000000041; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -20,6 +23,9 @@
 		0A0000000000000000000011 /* OtterMailTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OtterMailTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		0B0000000000000000000002 = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = OtterMailNotificationService.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		0B0000000000000000000011 /* MailDecoding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OtterMail/Imap/MailDecoding.swift; sourceTree = SOURCE_ROOT; };
+		0B0000000000000000000021 /* ImapClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OtterMail/Imap/ImapClient.swift; sourceTree = SOURCE_ROOT; };
+		0B0000000000000000000031 /* ImapParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OtterMail/Imap/ImapParser.swift; sourceTree = SOURCE_ROOT; };
+		0B0000000000000000000041 /* MailSocket.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OtterMail/Imap/MailSocket.swift; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXContainerItemProxy section */
@@ -235,7 +241,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		0B000000000000000000000C = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (0B0000000000000000000012, ); runOnlyForDeploymentPostprocessing = 0; };
+		0B000000000000000000000C = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (0B0000000000000000000012, 0B0000000000000000000022, 0B0000000000000000000032, 0B0000000000000000000042, ); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -436,6 +442,7 @@
                 PRODUCT_NAME = "$(TARGET_NAME)";
                 SKIP_INSTALL = YES;
                 SWIFT_VERSION = 6.0;
+                SWIFT_APPROACHABLE_CONCURRENCY = YES;
                 TARGETED_DEVICE_FAMILY = 1;
                 LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../../Frameworks", );
             };
@@ -459,6 +466,7 @@
                 PRODUCT_NAME = "$(TARGET_NAME)";
                 SKIP_INSTALL = YES;
                 SWIFT_VERSION = 6.0;
+                SWIFT_APPROACHABLE_CONCURRENCY = YES;
                 TARGETED_DEVICE_FAMILY = 1;
                 LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../../Frameworks", );
             };

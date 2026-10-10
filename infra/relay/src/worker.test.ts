@@ -48,9 +48,11 @@ import type {
 const CLIENT_ID = "test-client.apps.googleusercontent.com";
 const WEB_CLIENT_ID = "997327858649-test-web.apps.googleusercontent.com";
 const LEGACY_WEB_CLIENT_ID = "187875144740-test-web.apps.googleusercontent.com";
+const NOTIFICATION_CLIENT_ID = "notification-client.apps.googleusercontent.com";
 const IOS_CLIENT_ID = "test-ios-client.apps.googleusercontent.com";
 const IOS_STORE_CLIENT_ID = "test-ios-store-client.apps.googleusercontent.com";
 const MS_CLIENT_ID = "11111111-0000-0000-0000-00000000web0";
+const NOTIFICATION_MS_CLIENT_ID = "11111111-0000-0000-0000-notifications";
 const MS_DESKTOP_CLIENT_ID = "11111111-0000-0000-0000-0000desktop0";
 const MS_TENANT = "aaaaaaaa-0000-0000-0000-000000000000";
 const APP_ORIGIN = "http://app.test";
@@ -67,6 +69,12 @@ let persistDir: string;
 /** A mail server for the tunnel: greets, then echoes; `bye` makes it hang up, `stall` stop reading. */
 let mailServer: net.Server;
 let mailTarget: string;
+let notificationImapServer: net.Server;
+let notificationImapTarget: string;
+const notificationImapMessages: { uid: number; seen: boolean; reference: string; date: Date }[] =
+  [];
+const notificationImapIdle = new Map<net.Socket, string>();
+const notificationImapCommands: string[] = [];
 let apnsMock: http.Server;
 const apnsDelays = new Map<string, number>();
 const notifications: {
@@ -74,6 +82,26 @@ const notifications: {
   body: Record<string, unknown>;
   headers: http.IncomingHttpHeaders;
 }[] = [];
+const notificationMail = new Map<
+  string,
+  { historyId: string; added: { id: string; historyId: string; labels: string[] }[] }
+>();
+const notificationReads: {
+  email: string;
+  path: string;
+  fields: string | null;
+  format: string | null;
+}[] = [];
+
+type BasicOutlookMessage = {
+  id: string;
+  receivedDateTime: string;
+  isRead: boolean;
+  isDraft: boolean;
+  parentFolderId: string;
+};
+const notificationOutlookMail = new Map<string, BasicOutlookMessage[]>();
+const outlookNotificationReads: { path: string; select: string | null }[] = [];
 
 beforeAll(async () => {
   const apple = await generateKeyPair("ES256", { extractable: true });
@@ -110,10 +138,79 @@ beforeAll(async () => {
   const publicJwk = { ...(await exportJWK(pair.publicKey)), kid: "test", alg: "RS256" };
   jwks = http.createServer((req, res) => {
     res.setHeader("content-type", "application/json");
+    if (req.url?.startsWith("/gmail/v1/users/me/")) {
+      const address = /^Bearer at:([^:]+):/.exec(req.headers.authorization ?? "")?.[1];
+      if (!address) {
+        res.writeHead(401).end("{}");
+        return;
+      }
+      const state = notificationMail.get(address) ?? { historyId: "100", added: [] };
+      notificationMail.set(address, state);
+      const url = new URL(req.url, "http://mock.test");
+      notificationReads.push({
+        email: address,
+        path: url.pathname,
+        fields: url.searchParams.get("fields"),
+        format: url.searchParams.get("format"),
+      });
+      let result: unknown;
+      if (url.pathname.endsWith("/profile"))
+        result = { emailAddress: address, historyId: state.historyId };
+      else if (url.pathname.endsWith("/watch"))
+        result = { historyId: state.historyId, expiration: String(Date.now() + 7 * 86_400_000) };
+      else if (url.pathname.endsWith("/history")) {
+        const baseline = BigInt(url.searchParams.get("startHistoryId") ?? "0");
+        result = {
+          historyId: state.historyId,
+          history: state.added
+            .filter((m) => BigInt(m.historyId) > baseline)
+            .map((m) => ({ messagesAdded: [{ message: { id: m.id } }] })),
+        };
+      } else {
+        const message = state.added.find((m) => m.id === url.pathname.split("/").at(-1));
+        if (!message) {
+          res.writeHead(404).end("{}");
+          return;
+        }
+        result = { id: message.id, labelIds: message.labels };
+      }
+      res.writeHead(200).end(JSON.stringify(result));
+      return;
+    }
     if (req.url?.startsWith("/graph/v1.0/me")) {
       const email = /^Bearer mat:([^:]+):/.exec(req.headers.authorization ?? "")?.[1];
+      const url = new URL(req.url, "http://mock.test");
+      if (email && url.pathname !== "/graph/v1.0/me") {
+        outlookNotificationReads.push({
+          path: url.pathname,
+          select: url.searchParams.get("$select"),
+        });
+        const messages = notificationOutlookMail.get(email) ?? [];
+        if (url.pathname.includes("/mailFolders/")) {
+          res
+            .writeHead(200)
+            .end(JSON.stringify({ id: "folder-" + url.pathname.split("/").at(-1) }));
+          return;
+        }
+        if (url.pathname.endsWith("/messages")) {
+          const since = url.searchParams.get("$filter")?.replace("receivedDateTime ge ", "") ?? "";
+          res
+            .writeHead(200)
+            .end(JSON.stringify({ value: messages.filter((m) => m.receivedDateTime >= since) }));
+          return;
+        }
+        const message = messages.find(
+          (m) => m.id === decodeURIComponent(url.pathname.split("/").at(-1)!),
+        );
+        res.writeHead(message ? 200 : 404).end(JSON.stringify(message ?? {}));
+        return;
+      }
       res.writeHead(email ? 200 : 401);
       res.end(JSON.stringify({ mail: email?.toUpperCase(), displayName: "Outlook User" }));
+      return;
+    }
+    if (req.url?.startsWith("/graph/v1.0/subscriptions")) {
+      res.writeHead(200).end(JSON.stringify({ id: "basic-notification-subscription" }));
       return;
     }
     if (req.url === "/token" || req.url === "/microsoft/token") {
@@ -147,6 +244,82 @@ beforeAll(async () => {
   });
   await new Promise<void>((resolve) => mailServer.listen(0, "127.0.0.1", resolve));
   mailTarget = `127.0.0.1:${(mailServer.address() as net.AddressInfo).port}`;
+
+  notificationImapServer = net.createServer((socket) => {
+    socket.write("* OK [CAPABILITY IMAP4rev1 AUTH=PLAIN SASL-IR IDLE] notification fixture\r\n");
+    let pending = "";
+    socket.on("error", () => {});
+    socket.on("close", () => notificationImapIdle.delete(socket));
+    socket.on("data", (data) => {
+      pending += String(data);
+      while (pending.includes("\r\n")) {
+        const end = pending.indexOf("\r\n"),
+          line = pending.slice(0, end);
+        pending = pending.slice(end + 2);
+        if (line === "DONE") {
+          const tag = notificationImapIdle.get(socket);
+          notificationImapIdle.delete(socket);
+          socket.write(`${tag} OK idle complete\r\n`);
+          continue;
+        }
+        const tag = line.split(" ")[0]!,
+          command = line.slice(tag.length + 1);
+        const kind = command.split(" ")[0]!.toUpperCase();
+        notificationImapCommands.push(kind);
+        if (kind === "CAPABILITY")
+          socket.write(
+            `* CAPABILITY IMAP4rev1 AUTH=PLAIN SASL-IR IDLE\r\n${tag} OK capability\r\n`,
+          );
+        else if (kind === "AUTHENTICATE" || kind === "LOGIN")
+          socket.write(`${tag} OK authenticated\r\n`);
+        else if (kind === "LIST") socket.write(`* LIST () "/" "INBOX"\r\n${tag} OK list\r\n`);
+        else if (kind === "EXAMINE" || kind === "SELECT") {
+          const next = Math.max(0, ...notificationImapMessages.map((m) => m.uid)) + 1;
+          socket.write(
+            `* ${notificationImapMessages.length} EXISTS\r\n* OK [UIDVALIDITY 41] stable\r\n* OK [UIDNEXT ${next}] next\r\n${tag} OK [READ-ONLY] selected\r\n`,
+          );
+        } else if (kind === "UID" && command.toUpperCase().startsWith("UID FETCH ")) {
+          const range = command.split(" ")[2]!,
+            [start, last] = range.split(":");
+          const low = Number(start),
+            high = last === "*" ? Infinity : last ? Number(last) : low;
+          for (const message of notificationImapMessages.filter(
+            (m) => m.uid >= low && m.uid <= high,
+          )) {
+            const date = message.date,
+              month = [
+                "Jan",
+                "Feb",
+                "Mar",
+                "Apr",
+                "May",
+                "Jun",
+                "Jul",
+                "Aug",
+                "Sep",
+                "Oct",
+                "Nov",
+                "Dec",
+              ][date.getUTCMonth()];
+            const timestamp = `${date.getUTCDate()}-${month}-${date.getUTCFullYear()} ${[date.getUTCHours(), date.getUTCMinutes(), date.getUTCSeconds()].map((n) => String(n).padStart(2, "0")).join(":")} +0000`;
+            const header = `Message-ID: <${message.reference}>\r\n\r\n`;
+            const fields = `UID ${message.uid} FLAGS (${message.seen ? "\\Seen" : ""}) INTERNALDATE "${timestamp}"`;
+            socket.write(
+              `* ${message.uid} FETCH (${fields}${command.includes("HEADER.FIELDS") ? ` BODY[HEADER.FIELDS (MESSAGE-ID)] {${Buffer.byteLength(header)}}\r\n${header}` : ""})\r\n`,
+            );
+          }
+          socket.write(`${tag} OK fetched\r\n`);
+        } else if (kind === "IDLE") {
+          notificationImapIdle.set(socket, tag);
+          socket.write("+ idling\r\n");
+        } else if (kind === "LOGOUT") {
+          socket.end(`* BYE\r\n${tag} OK logout\r\n`);
+        } else socket.write(`${tag} OK done\r\n`);
+      }
+    });
+  });
+  await new Promise<void>((resolve) => notificationImapServer.listen(0, "127.0.0.1", resolve));
+  notificationImapTarget = `127.0.0.1:${(notificationImapServer.address() as net.AddressInfo).port}`;
 
   persistDir = fs.mkdtempSync(path.join(os.tmpdir(), "otter-relay-test-"));
   // This suite exercises the local standalone identity. The central service has
@@ -204,6 +377,16 @@ beforeAll(async () => {
       GOOGLE_WEB_CLIENT_SECRET: { type: "plain_text", value: "legacy-secret" },
       GOOGLE_GMAIL_CLIENT_ID: { type: "plain_text", value: WEB_CLIENT_ID },
       GOOGLE_GMAIL_CLIENT_SECRET: { type: "plain_text", value: "web-secret" },
+      NOTIFICATION_CREDENTIAL_SECRET: {
+        type: "plain_text",
+        value: "notification-test-encryption-key",
+      },
+      NOTIFICATION_GOOGLE_CLIENT_ID: { type: "plain_text", value: NOTIFICATION_CLIENT_ID },
+      NOTIFICATION_GOOGLE_CLIENT_SECRET: { type: "plain_text", value: "notification-secret" },
+      NOTIFICATION_GOOGLE_API_ORIGIN: { type: "plain_text", value: `http://127.0.0.1:${port}` },
+      NOTIFICATION_MICROSOFT_CLIENT_ID: { type: "plain_text", value: NOTIFICATION_MS_CLIENT_ID },
+      NOTIFICATION_MICROSOFT_CLIENT_SECRET: { type: "plain_text", value: "notification-ms-secret" },
+      NOTIFICATION_IMAP_TEST_TARGET: { type: "plain_text", value: notificationImapTarget },
       APP_ORIGIN: { type: "plain_text", value: APP_ORIGIN },
       COOKIE_DOMAIN: { type: "plain_text", value: "" },
       TUNNEL_TEST_TARGET: { type: "plain_text", value: mailTarget },
@@ -232,6 +415,7 @@ afterAll(async () => {
   await worker?.dispose();
   jwks?.close();
   mailServer?.close();
+  notificationImapServer?.close();
   apnsMock?.close();
   fs.rmSync(persistDir, { recursive: true, force: true });
 });
@@ -277,11 +461,13 @@ function signInRequest(token: string) {
 async function googleToken(form: URLSearchParams): Promise<[number, unknown]> {
   const clientId = form.get("client_id");
   const secret =
-    clientId === WEB_CLIENT_ID
-      ? "web-secret"
-      : clientId === LEGACY_WEB_CLIENT_ID
-        ? "legacy-secret"
-        : null;
+    clientId === NOTIFICATION_CLIENT_ID
+      ? "notification-secret"
+      : clientId === WEB_CLIENT_ID
+        ? "web-secret"
+        : clientId === LEGACY_WEB_CLIENT_ID
+          ? "legacy-secret"
+          : null;
   if (!secret || form.get("client_secret") !== secret) {
     return [401, { error: "invalid_client" }];
   }
@@ -300,6 +486,9 @@ async function googleToken(form: URLSearchParams): Promise<[number, unknown]> {
       expires_in: 3599,
       id_token: await idToken(email, { aud: clientId! }),
       ...(grant === "authorization_code" ? { refresh_token: `rt:${email}` } : {}),
+      ...(clientId === NOTIFICATION_CLIENT_ID
+        ? { scope: "https://www.googleapis.com/auth/gmail.metadata openid email" }
+        : {}),
     },
   ];
 }
@@ -323,7 +512,11 @@ function msIdToken(email: string, claims: Record<string, unknown> = {}) {
  * for revoked@ is invalid_grant.
  */
 async function microsoftToken(form: URLSearchParams): Promise<[number, unknown]> {
-  if (form.get("client_id") !== MS_CLIENT_ID || form.get("client_secret") !== "ms-secret") {
+  const notification = form.get("client_id") === NOTIFICATION_MS_CLIENT_ID;
+  if (
+    (!notification && form.get("client_id") !== MS_CLIENT_ID) ||
+    form.get("client_secret") !== (notification ? "notification-ms-secret" : "ms-secret")
+  ) {
     return [401, { error: "invalid_client" }];
   }
   if (!form.get("scope")?.includes("offline_access")) return [400, { error: "invalid_scope" }];
@@ -346,6 +539,7 @@ async function microsoftToken(form: URLSearchParams): Promise<[number, unknown]>
       expires_in: 3599,
       refresh_token: `mrt:${email}:${Number(n) + 1}`,
       id_token: await msIdToken(String(email), { aud: MS_CLIENT_ID }),
+      ...(notification ? { scope: "User.Read Mail.ReadBasic" } : {}),
     },
   ];
 }
@@ -365,6 +559,28 @@ async function link(token: string, email: string, profile: Record<string, unknow
     idToken: await idToken(email),
     ...profile,
   });
+}
+
+async function connectNotificationMailbox(
+  token: string,
+  email: string,
+  provider: "gmail" | "outlook" = "gmail",
+) {
+  const response = await call("POST", "/v1/notification-connections/authorize", token, {
+    email,
+    returnTo: "desktop",
+  });
+  expect(response.status).toBe(200);
+  const { url } = (await response.json()) as { url: string };
+  const state = new URL(url).searchParams.get("state")!;
+  const result = await fetch(
+    `${base}${new URL(new URL(url).searchParams.get("redirect_uri")!).pathname}?state=${encodeURIComponent(state)}&code=${encodeURIComponent((provider === "gmail" ? "code:" : "mcode:") + email)}`,
+  );
+  const status = (await (await call("GET", "/v1/notification-connections", token)).json()) as {
+    connections: { email: string; status: string }[];
+  };
+  expect(status.connections.find((c) => c.email === email)?.status).toBe("ready");
+  expect(await result.text()).toContain("Background notifications connected");
 }
 
 /** The linked mailboxes, as a build that knows IMAP asks for them (`query` "" for older ones). */
@@ -1937,6 +2153,208 @@ const pushRegistration = (token: string, mailboxes: string[]) => ({
 });
 
 describe("iPhone push registration and lifecycle", () => {
+  it(
+    "watches IMAP via IDLE, verifies unread UIDs and suppresses copied/read messages",
+    { timeout: 45_000 },
+    async () => {
+      notificationImapMessages.length = 0;
+      const owner = await signIn("imap-push-owner@example.com"),
+        address = "imap-push-mail@example.com",
+        token = "78".repeat(32);
+      const [host, port] = notificationImapTarget.split(":");
+      const settings = {
+        username: "synthetic-user",
+        imap: { host: host!, port: Number(port), security: "tls" },
+        smtp: { host: host!, port: 465, security: "tls" },
+      };
+      expect(
+        (
+          await call("PUT", "/v1/accounts/" + address, owner.token, {
+            provider: "imap",
+            imap: settings,
+          })
+        ).status,
+      ).toBe(204);
+      expect(
+        (
+          await call("PUT", "/v1/notification-connections/imap", owner.token, {
+            email: address,
+            settings,
+            password: "synthetic-password",
+          })
+        ).status,
+      ).toBe(204);
+      const state = (await (
+        await call("GET", "/v1/notification-connections", owner.token)
+      ).json()) as { connections: { status: string }[] };
+      expect(state.connections[0]?.status).toBe("ready");
+      expect(
+        (await call("PUT", "/v1/push/device", owner.token, pushRegistration(token, [address])))
+          .status,
+      ).toBe(204);
+      await expect.poll(() => notificationImapIdle.size, { timeout: 8000 }).toBeGreaterThan(0);
+      notificationImapMessages.push({
+        uid: 1,
+        seen: false,
+        reference: "new-imap-message@fixture.test",
+        date: new Date(Date.now() + 1000),
+      });
+      for (const socket of notificationImapIdle.keys()) socket.write("* 1 EXISTS\r\n");
+      await expect
+        .poll(() => notifications.filter((n) => n.token === token).length, { timeout: 12_000 })
+        .toBe(1);
+      const message = notifications.find((n) => n.token === token)!;
+      expect(message.body.otter).toMatchObject({
+        version: 2,
+        provider: "imap",
+        messageId: "1",
+        folder: "INBOX",
+        uidValidity: 41,
+        userId: owner.user.id,
+        email: address,
+      });
+      expect(JSON.stringify(message.body)).not.toMatch(
+        /synthetic-password|reference|subject|preview|attachment|credential/,
+      );
+      expect(notificationImapCommands).toContain("EXAMINE");
+      notificationImapMessages[0]!.seen = true;
+      notificationImapMessages.push({
+        uid: 2,
+        seen: false,
+        reference: "new-imap-message@fixture.test",
+        date: new Date(),
+      });
+      for (const socket of notificationImapIdle.keys()) socket.write("* 2 EXISTS\r\n");
+      await new Promise((resolve) => setTimeout(resolve, 8000));
+      expect(notifications.filter((n) => n.token === token)).toHaveLength(1);
+      await call("DELETE", "/v1/notification-connections/" + address, owner.token);
+    },
+  );
+  it(
+    "never alerts from an unverified change marker or a mailbox with no server grant",
+    { timeout: 10_000 },
+    async () => {
+      const owner = await signIn("push-unverified@example.com"),
+        address = "push-unverified-mail@example.com",
+        token = "12".repeat(32);
+      await link(owner.token, address);
+      await call("PUT", "/v1/push/device", owner.token, pushRegistration(token, [address]));
+      await push({ emailAddress: address, historyId: "9999999999999999999" });
+      await push({ emailAddress: address, historyId: "9999999999999999999" });
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+      expect(notifications.filter((n) => n.token === token)).toHaveLength(0);
+      expect(notificationReads.filter((read) => read.email === address)).toHaveLength(0);
+    },
+  );
+
+  it(
+    "rechecks unread state before submission and never fetches content on the server",
+    { timeout: 20_000 },
+    async () => {
+      const owner = await signIn("push-read-race@example.com"),
+        address = "push-read-race-mail@example.com",
+        token = "34".repeat(32);
+      await link(owner.token, address);
+      await connectNotificationMailbox(owner.token, address);
+      await call("PUT", "/v1/push/device", owner.token, pushRegistration(token, [address]));
+      const message = { id: "abcdef44", historyId: "200", labels: ["UNREAD", "INBOX"] };
+      notificationMail.set(address, { historyId: "200", added: [message] });
+      await push({ emailAddress: address, historyId: "200" });
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+      message.labels = ["INBOX"];
+      notificationMail.set(address, { historyId: "201", added: [message] });
+      await push({ emailAddress: address, historyId: "201" });
+      await new Promise((resolve) => setTimeout(resolve, 6000));
+      expect(notifications.filter((n) => n.token === token)).toHaveLength(0);
+      const reads = notificationReads.filter(
+        (read) => read.email === address && read.path.includes("/messages/"),
+      );
+      expect(reads.length).toBeGreaterThanOrEqual(2);
+      expect(
+        reads.every((read) => read.fields === "id,labelIds" && read.format === "minimal"),
+      ).toBe(true);
+    },
+  );
+
+  it(
+    "routes confirmed Outlook arrivals through APNs with only basic mail permission",
+    { timeout: 20_000 },
+    async () => {
+      const owner = await signIn("outlook-push-owner@example.com"),
+        address = "outlook-push-mail@contoso.test",
+        token = "56".repeat(32);
+      expect(
+        (
+          await call("PUT", "/v1/accounts/" + encodeURIComponent(address), owner.token, {
+            provider: "outlook",
+            idToken: await msIdToken(address),
+          })
+        ).status,
+      ).toBe(204);
+      await connectNotificationMailbox(owner.token, address, "outlook");
+      expect(
+        (await call("PUT", "/v1/push/device", owner.token, pushRegistration(token, [address])))
+          .status,
+      ).toBe(204);
+      notificationOutlookMail.set(address, [
+        {
+          id: "immutable-new-message",
+          receivedDateTime: new Date(Date.now() + 100).toISOString(),
+          isRead: false,
+          isDraft: false,
+          parentFolderId: "folder-inbox",
+        },
+      ]);
+      const target = (await (
+        await call("POST", "/v1/outlook/watch", owner.token, { email: address })
+      ).json()) as OutlookWatchResponse;
+      await fetch(base + new URL(target.notificationUrl).pathname, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          value: [
+            {
+              clientState: target.clientState,
+              changeType: "created",
+              resourceData: { id: "immutable-new-message" },
+            },
+          ],
+        }),
+      });
+      await expect
+        .poll(() => notifications.filter((n) => n.token === token).length, { timeout: 12_000 })
+        .toBe(1);
+      const delivered = notifications.find((n) => n.token === token)!;
+      expect(delivered.body.otter).toMatchObject({
+        version: 2,
+        userId: owner.user.id,
+        email: address,
+        provider: "outlook",
+        messageId: "immutable-new-message",
+        mode: "inbox",
+      });
+      expect(JSON.stringify(delivered.body)).not.toMatch(
+        /subject|bodyPreview|attachments|refresh_token|access_token/,
+      );
+      expect(
+        outlookNotificationReads.every(
+          (read) => !/subject|from|body|attachment/i.test(read.select ?? ""),
+        ),
+      ).toBe(true);
+      await call(
+        "DELETE",
+        "/v1/notification-connections/" + encodeURIComponent(address),
+        owner.token,
+      );
+      expect(
+        (
+          (await (await call("GET", "/v1/notification-connections", owner.token)).json()) as {
+            connections: unknown[];
+          }
+        ).connections,
+      ).toHaveLength(0);
+    },
+  );
   it("requires a session, linked Gmail ownership, allowed topic/environment and metadata-only input", async () => {
     const owner = await signIn("native-push-owner@example.com");
     const stranger = await signIn("native-push-stranger@example.com");
@@ -2045,14 +2463,19 @@ describe("iPhone push registration and lifecycle", () => {
 
   it(
     "coalesces bursts/repeated deliveries in the real UserHub and obeys Off before delivery",
-    { timeout: 20_000 },
+    { timeout: 40_000 },
     async () => {
       const owner = await signIn("push-delivery@example.com");
       const email = "push-delivery-mail@example.com",
         token = "ab".repeat(32);
       apnsDelays.set(token, 1500);
       await link(owner.token, email);
+      await connectNotificationMailbox(owner.token, email);
       await call("PUT", "/v1/push/device", owner.token, pushRegistration(token, [email]));
+      notificationMail.set(email, {
+        historyId: "200",
+        added: [{ id: "abc123", historyId: "200", labels: ["UNREAD", "INBOX"] }],
+      });
       await push({ emailAddress: email, historyId: "9007199254740993" });
       await push({ emailAddress: email, historyId: "9007199254740994" });
       await push({ emailAddress: email, historyId: "9007199254740994" });
@@ -2066,12 +2489,13 @@ describe("iPhone push registration and lifecycle", () => {
       expect(notifications.filter((n) => n.token === token)).toHaveLength(1);
       apnsDelays.delete(token);
       const delivered = notifications.find((n) => n.token === token)!;
-      expect(delivered.body.otter).toEqual({
-        version: 1,
+      expect(delivered.body.otter).toMatchObject({
+        version: 2,
         userId: owner.user.id,
         email,
-        historyId: "9007199254740994",
         mode: "inbox",
+        provider: "gmail",
+        messageId: "abc123",
       });
       expect(delivered.headers["apns-topic"]).toBe("dev.otterware.mail.dev");
       expect(JSON.stringify(delivered.body)).not.toMatch(
@@ -2081,7 +2505,12 @@ describe("iPhone push registration and lifecycle", () => {
       const offEmail = "push-off-mail@example.com",
         offToken = "cd".repeat(32);
       await link(off.token, offEmail);
+      await connectNotificationMailbox(off.token, offEmail);
       await call("PUT", "/v1/push/device", off.token, pushRegistration(offToken, [offEmail]));
+      notificationMail.set(offEmail, {
+        historyId: "200",
+        added: [{ id: "def123", historyId: "200", labels: ["UNREAD", "INBOX"] }],
+      });
       await push({ emailAddress: offEmail, historyId: "10" });
       await call("PUT", "/v1/preferences", off.token, {
         preferences: { settings: { notificationsMode: "off" } },

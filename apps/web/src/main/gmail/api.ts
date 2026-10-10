@@ -1,5 +1,6 @@
 import { ipc, task } from "~/lib/ipc";
 import type { ImapSettings } from "@otter-mail/contracts";
+import type { NotificationConnection } from "@otter-mail/contracts/relay";
 export type { ChatChange } from "@otter-mail/contracts";
 import type { AgentAccess, AgentTokens, ConnectedAgent } from "@otter-mail/contracts/agent-tokens";
 import type { OpenRouterConnection } from "@otter-mail/contracts/openrouter";
@@ -415,6 +416,14 @@ export type AddImapAccountParams = {
 };
 
 export const gmailApi = {
+  notificationConnections: (): Promise<{
+    connections: NotificationConnection[];
+    providers: Record<string, boolean>;
+  }> => ipc("otter:notificationConnections"),
+  connectNotifications: (accountId: string): Promise<{ url: string } | { connected: true }> =>
+    ipc("otter:connectNotifications", { accountId }),
+  disconnectNotifications: (accountId: string): Promise<void> =>
+    ipc("otter:disconnectNotifications", { accountId }),
   saveSupportReport: (contents: string, filename?: "Otter Mail diagnostics.json") =>
     task<boolean>("support:saveReport", { contents, filename }),
   listAccounts: (): Promise<GmailAccount[]> => ipc("gmail:listAccounts"),

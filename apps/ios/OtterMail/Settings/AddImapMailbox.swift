@@ -19,6 +19,7 @@ struct AddImapMailbox: View {
     @State private var note: String?
     @State private var finding = false
     @State private var error: String?
+    @State private var backgroundNotifications = false
 
     private var domain: String {
         let parts = email.trimmingCharacters(in: .whitespaces).split(separator: "@")
@@ -31,6 +32,11 @@ struct AddImapMailbox: View {
 
     var body: some View {
         SettingsForm {
+            Section {
+                Toggle("Background notifications", isOn: $backgroundNotifications)
+            } footer: {
+                Text("When enabled, Otter securely stores the IMAP password to watch for new mail while the app is closed. The watcher reads new-mail metadata; previews load directly on your iPhone.")
+            }
             Section {
                 TextField("Email", text: $email)
                     .keyboardType(.emailAddress)
@@ -115,6 +121,7 @@ struct AddImapMailbox: View {
         )
         do {
             try await session.addImapMailbox(email, settings: settings, password: password)
+            if backgroundNotifications { try await session.connectNotifications(email) }
             dismiss()
         } catch {
             let hint = await MailDiscovery.certificateHint(error, email: email, tried: [settings.imap.host, settings.smtp.host])

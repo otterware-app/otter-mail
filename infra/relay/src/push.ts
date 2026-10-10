@@ -23,11 +23,11 @@ export async function register(
   const mailboxes = [...new Set(input.mailboxes)];
   for (const email of mailboxes) {
     const linked = await env.DB.prepare(
-      "SELECT 1 FROM linked_accounts WHERE user_id = ? AND email = ? AND provider = 'gmail'",
+      "SELECT 1 FROM linked_accounts WHERE user_id = ? AND email = ?",
     )
       .bind(userId, email)
       .first();
-    if (!linked) throw new HTTPException(403, { message: "Push requires a linked Gmail mailbox." });
+    if (!linked) throw new HTTPException(403, { message: "Push requires a linked mailbox." });
   }
   const now = Date.now();
   const allowed =
@@ -64,7 +64,7 @@ export async function register(
     env.DB.prepare("DELETE FROM push_mailboxes WHERE session_id = ?").bind(session.id),
     ...mailboxes.map((email) =>
       env.DB.prepare(`INSERT INTO push_mailboxes (session_id, user_id, email)
-      SELECT ?, user_id, email FROM linked_accounts WHERE user_id = ? AND email = ? AND provider = 'gmail'
+      SELECT ?, user_id, email FROM linked_accounts WHERE user_id = ? AND email = ?
       AND EXISTS (SELECT 1 FROM push_devices WHERE session_id=?)`).bind(
         session.id,
         userId,
@@ -109,7 +109,7 @@ export async function devices(env: Env, userId: string, email: string): Promise<
     CASE WHEN d.mode='inbox' OR json_extract(p.data, '$.settings.notificationsMode')='inbox'
     THEN 'inbox' ELSE 'all' END AS notification_mode FROM push_devices d
     JOIN push_mailboxes m ON m.session_id=d.session_id AND m.user_id=d.user_id
-    JOIN linked_accounts a ON a.user_id=m.user_id AND a.email=m.email AND a.provider='gmail'
+    JOIN linked_accounts a ON a.user_id=m.user_id AND a.email=m.email
     LEFT JOIN preferences p ON p.user_id=d.user_id
     WHERE d.user_id=? AND m.email=? AND d.mode!='off'
     AND COALESCE(json_extract(p.data, '$.settings.notificationsMode'), d.mode) != 'off'`)

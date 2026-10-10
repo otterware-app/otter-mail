@@ -25,7 +25,7 @@ nonisolated enum Keychain {
         }
         let attributes: [String: Any] = [
             kSecValueData as String: Data(value.utf8),
-            kSecAttrAccessible as String: (thisDeviceOnly || key.hasPrefix("google-")) ? kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly : kSecAttrAccessibleAfterFirstUnlock,
+            kSecAttrAccessible as String: (thisDeviceOnly || key.hasPrefix("google-") || key.hasPrefix("microsoft-") || key.hasPrefix("imap-password:")) ? kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly : kSecAttrAccessibleAfterFirstUnlock,
         ]
         let status = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
         if status != errSecItemNotFound { return status == errSecSuccess }
@@ -35,6 +35,10 @@ nonisolated enum Keychain {
     /** Copy and verify before deleting the old app-private item; retry later if locked or not provisioned. */
     static func migrateGoogle(_ email: String) {
         let key = GoogleCredentials.refreshKey(email)
+        migrateShared(key)
+    }
+
+    static func migrateShared(_ key: String) {
         var legacy = query(key, shared: false)
         legacy[kSecReturnData as String] = true
         var result: AnyObject?
@@ -49,6 +53,8 @@ nonisolated enum Keychain {
         SecItemDelete(query(GoogleCredentials.refreshKey(email), shared: false) as CFDictionary)
     }
 
+    static func removeLegacy(_ key: String) { SecItemDelete(query(key, shared: false) as CFDictionary) }
+
     /** Moves an item kept before to this device alone (a no-op when there's none). */
     static func makeThisDeviceOnly(_ key: String) {
         let change = [kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly]
@@ -61,7 +67,7 @@ nonisolated enum Keychain {
             kSecAttrService as String: service,
             kSecAttrAccount as String: key,
         ]
-        if shared && key.hasPrefix("google-") { query[kSecAttrAccessGroup as String] = PushState.group }
+        if shared && (key.hasPrefix("google-") || key.hasPrefix("microsoft-") || key.hasPrefix("imap-password:")) { query[kSecAttrAccessGroup as String] = PushState.group }
         if !shared, let legacy = Bundle.main.object(forInfoDictionaryKey: "LegacyKeychainGroup") as? String {
             query[kSecAttrAccessGroup as String] = legacy
         }

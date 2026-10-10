@@ -8,6 +8,7 @@ import { CheckIcon, GripVerticalIcon, LayersIcon, PlusIcon, RotateCwIcon } from 
 import { Switch } from "~/components/ui/switch";
 import { arrangeAccounts, setMailboxArrangement, useMailboxArrangement } from "../mailboxes";
 import { gmailApi } from "../gmail/api";
+import { useOtterAccount } from "../otter-account";
 import { toast } from "../gmail/toast";
 import {
   syncStatusPollMs,
@@ -482,6 +483,7 @@ function AccountEditor({ account }: { account: GmailAccount }) {
 
   return (
     <>
+      <MailboxNotifications account={account} />
       <SettingsSection
         title={displayName}
         icon={<AccountAvatar account={account} />}
@@ -617,6 +619,114 @@ function AccountEditor({ account }: { account: GmailAccount }) {
         </Text>
       </Dialog>
     </>
+  );
+}
+
+/** An explicit server connection, separate from local desktop banners. */
+function MailboxNotifications({ account }: { account: GmailAccount }) {
+  const otter = useOtterAccount();
+  const [busy, setBusy] = useState(false);
+  const [confirmImap, setConfirmImap] = useState(false);
+  const connections = useQuery({
+    queryKey: ["notification-connections", otter?.user?.email],
+    queryFn: gmailApi.notificationConnections,
+    enabled: Boolean(otter?.user),
+    refetchInterval: otter?.user ? 5000 : false,
+  });
+  const provider = account.provider ?? "gmail";
+  const connection = connections.data?.connections.find(
+    (c) => c.email === account.email.toLowerCase(),
+  );
+  if (!otter?.user || account.signedOut || !connections.data?.providers[provider]) return null;
+  const connect = async () => {
+    setBusy(true);
+    setConfirmImap(false);
+    try {
+      const result = await gmailApi.connectNotifications(account.id);
+      if ("url" in result) await window.desktopBridge.openExternal(result.url);
+      await connections.refetch();
+    } catch (error) {
+      toast.error("Couldn't connect notifications", {
+        description: error instanceof Error ? error.message : "Try again.",
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+  const disconnect = async () => {
+    setBusy(true);
+    try {
+      await gmailApi.disconnectNotifications(account.id);
+      await connections.refetch();
+    } catch {
+      toast.error("Couldn't disconnect notifications", {
+        description: "Check your connection and try again.",
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+  const description =
+    connection?.status === "ready"
+      ? "Connected. Alerts are sent only for confirmed new mail."
+      : connection?.status === "retry"
+        ? "Connection interrupted. Otter is retrying."
+        : connection?.status === "reauthorize"
+          ? "Authorization expired. Reconnect to resume alerts."
+          : connection?.status === "connecting"
+            ? "Checking the connection…"
+            : "Receive verified new-mail alerts on your iPhone while the app is closed.";
+  return (
+    <SettingsSection title="iPhone notifications">
+      <SettingsRow
+        title="Background notifications"
+        description={description}
+        control={
+          <Btn
+            size="sm"
+            variant="outline"
+            disabled={busy}
+            onClick={() => {
+              if (connection?.status === "ready") void disconnect();
+              else if (provider === "imap") setConfirmImap(true);
+              else void connect();
+            }}
+          >
+            {busy ? "Connecting…" : connection?.status === "ready" ? "Disconnect" : "Connect"}
+          </Btn>
+        }
+      />
+      {connection && connection.status !== "ready" ? (
+        <div className="px-4 pb-3">
+          <Btn size="sm" variant="outline" disabled={busy} onClick={() => void disconnect()}>
+            Disconnect
+          </Btn>
+        </div>
+      ) : null}
+      {provider !== "imap" ? (
+        <p className="px-4 pb-3 text-xs text-muted-foreground">
+          Google or Microsoft will ask for limited access to identify new mail. Message bodies and
+          previews continue to load directly on your iPhone.
+        </p>
+      ) : null}
+      {confirmImap ? (
+        <div className="px-4 pb-4 text-sm">
+          <p>
+            Enable IMAP background notifications? Otter will securely store this mailbox’s password
+            and connect to its IMAP server to check for new mail. The password permits mailbox
+            access; Otter’s watcher reads only metadata needed to identify new mail.
+          </p>
+          <div className="mt-3 flex gap-2">
+            <Btn size="sm" variant="primary" onClick={() => void connect()}>
+              Enable notifications
+            </Btn>
+            <Btn size="sm" variant="outline" onClick={() => setConfirmImap(false)}>
+              Cancel
+            </Btn>
+          </div>
+        </div>
+      ) : null}
+    </SettingsSection>
   );
 }
 

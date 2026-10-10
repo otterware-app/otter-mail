@@ -9,6 +9,8 @@ import { DurableObject } from "cloudflare:workers";
 import type { RelayEvent } from "@otter-mail/contracts/relay";
 import * as apns from "./apns.ts";
 import * as push from "./push.ts";
+import { connection, NotificationFailure } from "./notification-connections.ts";
+import { stillEligible } from "./notification-providers.ts";
 import type { Env } from "./worker.ts";
 
 type PendingPush = {
@@ -17,6 +19,15 @@ type PendingPush = {
   historyId: string;
   attempts: number;
   due: number;
+  verified?: {
+    provider: "gmail" | "outlook" | "imap";
+    messageId: string;
+    inbox: boolean;
+    generation: string;
+    folder?: string;
+    uidValidity?: number;
+  };
+  inboxMessage?: PendingPush["verified"];
 };
 
 /** Set by the Worker on the upgrade request it forwards: the socket's session. */
@@ -54,19 +65,41 @@ export class UserHub extends DurableObject<Env> {
   }
 
   /** Five-second bursts coalesce, then at most one alert per mailbox each 30 seconds. */
-  async queuePush(userId: string, email: string, historyId: string): Promise<void> {
+  async queuePush(userId: string, email: string, _historyId: string): Promise<void> {
+    // Legacy change markers never produce a visible alert. The provider watcher verifies additions.
+    if (this.env.NOTIFICATION_MAILBOX) {
+      await this.env.NOTIFICATION_MAILBOX.get(
+        this.env.NOTIFICATION_MAILBOX.idFromName(JSON.stringify([userId, email])),
+      ).changed();
+    }
+  }
+
+  async queueVerifiedPush(
+    userId: string,
+    email: string,
+    historyId: string,
+    verified: NonNullable<PendingPush["verified"]>,
+  ): Promise<void> {
     if (!apns.configured(this.env)) return;
     if (!(await push.devices(this.env, userId, email)).length) return;
     await this.ctx.blockConcurrencyWhile(async () => {
-      const previous = await this.ctx.storage.get<string>(`marker:${email}`);
+      const previous = await this.ctx.storage.get<string>(`new-marker:${email}`);
       if (!apns.newer(historyId, previous)) return;
       const last = (await this.ctx.storage.get<number>(`last:${email}`)) ?? 0;
       const due = Math.max(Date.now() + 5000, last + 30_000);
       const existing = await this.ctx.storage.get<PendingPush>(`pending:${email}`);
       const nextDue = existing?.due ?? due;
       await this.ctx.storage.put({
-        [`marker:${email}`]: historyId,
-        [`pending:${email}`]: { userId, email, historyId, attempts: 0, due: nextDue },
+        [`new-marker:${email}`]: historyId,
+        [`pending:${email}`]: {
+          userId,
+          email,
+          historyId,
+          attempts: 0,
+          due: nextDue,
+          verified,
+          inboxMessage: verified.inbox ? verified : existing?.inboxMessage,
+        },
       });
       const alarm = await this.ctx.storage.getAlarm();
       if (!alarm || alarm > nextDue) await this.ctx.storage.setAlarm(nextDue);
@@ -77,24 +110,67 @@ export class UserHub extends DurableObject<Env> {
     const pending = await this.ctx.storage.list<PendingPush>({ prefix: "pending:" });
     for (const [key, event] of pending) {
       if (event.due > Date.now()) continue;
+      if (!event.verified) {
+        await this.ctx.storage.delete(key);
+        continue;
+      }
       let retryDelay = 0;
       const devices = await push.devices(this.env, event.userId, event.email);
       for (const device of devices) {
-        const receipt = `sent:${device.session_id}:${event.email}`;
+        const receipt = `new-sent:${device.session_id}:${event.email}`;
         if (!apns.newer(event.historyId, await this.ctx.storage.get<string>(receipt))) continue;
         // Registration/unlink/revocation is checked again immediately before submission.
         const current = (await push.devices(this.env, event.userId, event.email)).find(
           (d) => d.session_id === device.session_id,
         );
         if (!current) continue;
-        const result = await apns.send(this.env, current, {
-          version: 1,
+        const selected =
+          current.notification_mode === "inbox" ? event.inboxMessage : event.verified;
+        if (!selected) continue;
+        const linked = await this.env.DB.prepare(
+          "SELECT 1 FROM notification_connections WHERE user_id=? AND email=? AND generation=? AND status='ready'",
+        )
+          .bind(event.userId, event.email, selected.generation)
+          .first();
+        if (!linked) continue;
+        const row = await connection(this.env, event.userId, event.email);
+        if (!row || row.generation !== selected.generation) continue;
+        try {
+          if (!(await stillEligible(this.env, row, selected, current.notification_mode))) {
+            await this.ctx.storage.put(receipt, event.historyId);
+            continue;
+          }
+        } catch (error) {
+          if (!(error instanceof NotificationFailure && error.reauthorize))
+            retryDelay = Math.max(retryDelay, 30_000);
+          continue;
+        }
+        // Provider reads yielded: revocation/unlink/Off may have changed while they were in flight.
+        const recipient = (await push.devices(this.env, event.userId, event.email)).find(
+          (d) => d.session_id === current.session_id && d.token === current.token,
+        );
+        if (!recipient) continue;
+        if (recipient.notification_mode !== current.notification_mode) {
+          retryDelay = Math.max(retryDelay, 5000);
+          continue;
+        }
+        if (
+          (await connection(this.env, event.userId, event.email))?.generation !==
+          selected.generation
+        )
+          continue;
+        const result = await apns.send(this.env, recipient, {
+          version: 2,
           userId: event.userId,
           email: event.email,
           historyId: event.historyId,
           mode: current.notification_mode,
+          provider: selected.provider,
+          messageId: selected.messageId,
+          ...(selected.folder ? { folder: selected.folder } : {}),
+          ...(selected.uidValidity ? { uidValidity: selected.uidValidity } : {}),
         });
-        if (result === "invalid") await push.invalidate(this.env, current);
+        if (result === "invalid") await push.invalidate(this.env, recipient);
         if (typeof result === "object") retryDelay = Math.max(retryDelay, result.retryAfterMs);
         else if (result === "retry")
           retryDelay = Math.max(retryDelay, 30_000 * (event.attempts + 1));
@@ -132,16 +208,25 @@ export class UserHub extends DurableObject<Env> {
     }
     if (!sessionId) await this.ctx.storage.deleteAll();
     else {
-      const receipts = await this.ctx.storage.list({ prefix: `sent:${sessionId}:` });
-      if (receipts.size) await this.ctx.storage.delete([...receipts.keys()]);
+      for (const prefix of [`sent:${sessionId}:`, `new-sent:${sessionId}:`]) {
+        const receipts = await this.ctx.storage.list({ prefix });
+        if (receipts.size) await this.ctx.storage.delete([...receipts.keys()]);
+      }
     }
   }
 
   async forgetPush(email: string): Promise<void> {
-    await this.ctx.storage.delete([`pending:${email}`, `marker:${email}`, `last:${email}`]);
-    const receipts = await this.ctx.storage.list({ prefix: "sent:" });
-    const matching = [...receipts.keys()].filter((key) => key.endsWith(`:${email}`));
-    if (matching.length) await this.ctx.storage.delete(matching);
+    await this.ctx.storage.delete([
+      `pending:${email}`,
+      `marker:${email}`,
+      `new-marker:${email}`,
+      `last:${email}`,
+    ]);
+    for (const prefix of ["sent:", "new-sent:"]) {
+      const receipts = await this.ctx.storage.list({ prefix });
+      const matching = [...receipts.keys()].filter((key) => key.endsWith(`:${email}`));
+      if (matching.length) await this.ctx.storage.delete(matching);
+    }
   }
 
   override webSocketMessage(): void {
