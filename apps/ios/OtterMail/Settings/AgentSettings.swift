@@ -160,6 +160,23 @@ struct AgentSettings: View {
                             ForEach(agent.models) { Text($0.name).tag($0.slug) }
                         }
                     }
+                    // Paired before OpenClaw could ask it things: one more permission, approved on the gateway.
+                    if agent.openClawQuestions == false {
+                        if let request = agent.openClawQuestionsRequest {
+                            let command = "openclaw devices approve \(request)"
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("Approve answering its questions on the gateway:")
+                                Text(command).font(.footnote.monospaced()).foregroundStyle(palette.muted).textSelection(.enabled)
+                            }
+                            Button("Copy the command") { UIPasteboard.general.string = command }
+                        } else {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Button("Allow answering its questions") { Task { await agent.allowOpenClawQuestions() } }
+                                Text("OpenClaw sometimes stops to ask you something. This iPhone was paired before it could answer.")
+                                    .font(.footnote).foregroundStyle(palette.muted)
+                            }
+                        }
+                    }
                 } else if let request = agent.openClawPairing {
                     let command = "openclaw devices approve \(request)"
                     VStack(alignment: .leading, spacing: 6) {

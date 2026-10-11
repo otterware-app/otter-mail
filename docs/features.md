@@ -345,7 +345,11 @@ followed again on the next one, and a chat whose reply was cut off by quitting p
 on the next launch, showing what it did meanwhile and streaming the rest (the chat says so while
 the gateway is out of reach). The token and device key stay on the device. The iPhone pairs the
 same way (Settings › Agents, a setup code), and picks a reply back up when it comes back to the
-foreground or is opened again.
+foreground or is opened again. When OpenClaw stops to ask something (its `ask_user`), the
+question takes the composer's place, with its options and room for an answer of your own; a
+device paired before this asks the gateway for that permission from Settings › Agents. A message
+sent while it works steers the run, or, when the runtime can't take it mid-turn, runs right after
+it, and the chat follows that too.
 
 Other agents on the Mac (Claude Code or Codex in a terminal, Cursor, …) get the same tools from
 that server while the app is open, with a token made in Settings › Agents (its address stays the

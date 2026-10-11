@@ -228,8 +228,12 @@ export function hermesStep(name: string, args: unknown): ToolStep {
 
 /** An OpenClaw tool call: its shell (`bash`, `/usr/bin/bash -lc <command>`), else the tool by name. */
 export function openClawStep(name: string, args: unknown): ToolStep {
+  // A tool reached through the tool catalog comes wrapped: `tool_call { id: "ask_user", args }`.
+  const wrapped = args as { id?: unknown; args?: unknown } | null;
+  if (name === "tool_call" && typeof wrapped?.id === "string")
+    return openClawStep(wrapped.id, wrapped.args);
   const command = (args as { command?: unknown } | null)?.command;
-  if (name === "bash" && typeof command === "string")
+  if ((name === "bash" || name === "exec") && typeof command === "string")
     return commandStep(command.replace(/^(\S*\/)?bash -l?c /, "").replace(/^(['"])(.*)\1$/s, "$2"));
   return genericStep(name, args);
 }

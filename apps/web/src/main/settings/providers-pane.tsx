@@ -623,7 +623,8 @@ function OpenClawEditor({
   const [url, setUrl] = useState("");
   const [token, setToken] = useState("");
   const [saving, setSaving] = useState(false);
-  const { openclaw, openclawPairingRequest } = state.settings;
+  const { openclaw, openclawPairingRequest, openclawQuestions } = state.settings;
+  const [asking, setAsking] = useState(false);
   const connected = provider.status === "ready";
   const device = window.desktopBridge.platform === "web" ? "browser" : osNames.computer;
   const host = gatewayHost(url || setupCodeUrl(code) || openclaw.url);
@@ -634,6 +635,20 @@ function OpenClawEditor({
     const timer = setInterval(() => void gmailApi.refreshAgentProviders().catch(() => {}), 4000);
     return () => clearInterval(timer);
   }, [openclawPairingRequest]);
+
+  /** Asks the gateway to let this device answer the agent's questions; approved there. */
+  const allowQuestions = async () => {
+    setAsking(true);
+    try {
+      setState(await gmailApi.agentAllowOpenClawQuestions());
+    } catch (error) {
+      toast.error(
+        `Could not ask the gateway: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    } finally {
+      setAsking(false);
+    }
+  };
 
   const connect = async () => {
     const address = url.trim() || openclaw.url;
@@ -776,6 +791,27 @@ function OpenClawEditor({
             description={`The gateway is waiting for you to approve this ${device}. Run this on its computer; Otter Mail connects as soon as you do.`}
           >
             <Command value={`openclaw devices approve ${openclawPairingRequest}`} />
+          </SettingsRow>
+        ) : null}
+        {connected && openclawQuestions.allowed === false ? (
+          <SettingsRow
+            title="Answer its questions"
+            description={
+              openclawQuestions.request
+                ? "The gateway is waiting for you to approve it. Run this on its computer; its questions show up in the chat once you do."
+                : `OpenClaw sometimes stops to ask you something. This ${device} was paired before it could answer; allowing it asks the gateway for that, and you approve it there.`
+            }
+            control={
+              openclawQuestions.request ? null : (
+                <Btn size="sm" disabled={asking} onClick={() => void allowQuestions()}>
+                  {asking ? "Asking…" : "Allow"}
+                </Btn>
+              )
+            }
+          >
+            {openclawQuestions.request ? (
+              <Command value={`openclaw devices approve ${openclawQuestions.request}`} />
+            ) : null}
           </SettingsRow>
         ) : null}
       </SettingsSection>

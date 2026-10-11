@@ -40,6 +40,7 @@ import {
   type ChatEvent,
   type ChatChange,
   type ChatSession,
+  type ChatQuestion,
   type ChatSessionMessage,
   type ApprovalDecision,
   type ChatAttachment,
@@ -52,6 +53,7 @@ import {
 } from "./api";
 import { ProviderModelPicker, RuntimeModePicker, TraitsPicker } from "./model-picker";
 import { ApprovalCard } from "./approval-card";
+import { QuestionCard } from "./question-card";
 import {
   ProviderIcon,
   isProviderUsable,
@@ -1099,6 +1101,9 @@ export function AgentChatPanel({
     [],
   );
   const [respondingApproval, setRespondingApproval] = useState<string | null>(null);
+  // Questions the running turn asks (OpenClaw's ask_user), oldest first.
+  const [questions, setQuestions] = useState<{ requestId: string; question: ChatQuestion }[]>([]);
+  const [answeringQuestion, setAnsweringQuestion] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
 
   // Provider: a conversation keeps the one it started with; an empty one
@@ -1313,8 +1318,21 @@ export function AgentChatPanel({
         setApprovals((list) => list.filter((a) => a.approval.id !== event.approvalId));
         return;
       }
-      if (event.type === "done" || event.type === "error")
+      if (event.type === "question") {
+        setQuestions((list) => [
+          ...list.filter((q) => q.question.id !== event.question.id),
+          { requestId: event.requestId, question: event.question },
+        ]);
+        return;
+      }
+      if (event.type === "questionResolved") {
+        setQuestions((list) => list.filter((q) => q.question.id !== event.questionId));
+        return;
+      }
+      if (event.type === "done" || event.type === "error") {
         setApprovals((list) => list.filter((a) => a.requestId !== event.requestId));
+        setQuestions((list) => list.filter((q) => q.requestId !== event.requestId));
+      }
       // The app let go of a run that goes on at the provider (it quit, or the
       // connection's gone): the turn waits, as it is, to be picked up again.
       if (event.type === "error" && event.message === "detached") {
@@ -1869,6 +1887,32 @@ export function AgentChatPanel({
       .finally(() => setRespondingApproval(null));
   };
 
+  /** Answers the question the run asked (null skips it); the run goes on with the answer. */
+  const answerQuestion = (questionId: string, answers: Record<string, string[]> | null) => {
+    const pending = questions.find((q) => q.question.id === questionId);
+    const owner = pending && Object.values(runs).find((r) => r.requestId === pending.requestId);
+    if (!owner) return;
+    console.log("[AgentChat:question]", { kind: owner.provider, skipped: answers === null });
+    setAnsweringQuestion(questionId);
+    gmailApi
+      .agentAnswerQuestion({
+        provider: owner.provider,
+        requestId: owner.requestId,
+        questionId,
+        answers,
+      })
+      .then(
+        () => setQuestions((list) => list.filter((q) => q.question.id !== questionId)),
+        (error: unknown) => {
+          console.log("[AgentChat:question] failed", { error: String(error) });
+          toast.error("Couldn't send the answer", {
+            description: error instanceof Error ? error.message : String(error),
+          });
+        },
+      )
+      .finally(() => setAnsweringQuestion(null));
+  };
+
   /** Interrupts the active run; the queue stays and its next message starts (Otter Code). */
   const stop = () => {
     if (run) void gmailApi.agentCancel(run.provider, run.requestId);
@@ -1877,6 +1921,7 @@ export function AgentChatPanel({
   const activeQueue = queue.filter((m) => m.convoId === activeId);
   // This chat's approvals (other tabs' runs wait in their own tab).
   const activeApprovals = run ? approvals.filter((a) => a.requestId === run.requestId) : [];
+  const activeQuestions = run ? questions.filter((q) => q.requestId === run.requestId) : [];
   // Steer needs a running turn in this chat that isn't waiting on an approval.
   const canSteer = run != null && activeApprovals.length === 0;
   useCommandHandlers({
@@ -2123,6 +2168,7 @@ export function AgentChatPanel({
       ? null
       : (providersState?.settings[providerKind].runtimeMode ?? null);
   const pendingApproval = activeApprovals[0];
+  const pendingQuestion = activeQuestions[0];
 
   // Reasoning / Service Tier of the model in use, with the saved choices.
   const currentModel = provider?.models.find((m) => m.slug === provider.model);
@@ -2542,6 +2588,15 @@ export function AgentChatPanel({
                   responding={respondingApproval === pendingApproval.approval.id}
                   onRespond={(decision) => respondApproval(pendingApproval.approval.id, decision)}
                   onCancel={stop}
+                />
+              ) : pendingQuestion && streamingActive ? (
+                <QuestionCard
+                  key={pendingQuestion.question.id}
+                  agent={providerName}
+                  question={pendingQuestion.question}
+                  pendingCount={activeQuestions.length}
+                  responding={answeringQuestion === pendingQuestion.question.id}
+                  onAnswer={(answers) => answerQuestion(pendingQuestion.question.id, answers)}
                 />
               ) : (
                 <div className={cn("relative", COMPOSER_SURFACE)}>

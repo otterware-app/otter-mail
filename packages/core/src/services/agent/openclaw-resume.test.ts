@@ -24,10 +24,12 @@ vi.mock("@openclaw/gateway-client/browser", () => ({
     acceptHello = vi.fn();
   },
   GatewayProtocolClient: class {
-    constructor(private options: { onHello: () => void; onEvent: typeof fixture.onEvent }) {}
+    constructor(
+      private options: { onHello: (hello: object) => void; onEvent: typeof fixture.onEvent },
+    ) {}
     start() {
       fixture.onEvent = this.options.onEvent;
-      this.options.onHello();
+      this.options.onHello({});
     }
     stop() {}
     request = fixture.request;
@@ -85,7 +87,11 @@ describe("OpenClaw runs picked up again", () => {
         requestId: "req-1",
         type: "transcript",
         messages: [
-          { role: "assistant", text: "", toolCalls: [expect.objectContaining({ title: "Exec" })] },
+          {
+            role: "assistant",
+            text: "",
+            toolCalls: [expect.objectContaining({ title: "Ran make" })],
+          },
           { role: "tool", text: "ok", toolName: "exec" },
           { role: "assistant", text: "The build passes." },
         ],
@@ -135,6 +141,71 @@ describe("OpenClaw runs picked up again", () => {
     expect(events[4]).toMatchObject({
       messages: [{ role: "assistant", text: "The build passes." }],
     });
+  });
+
+  it("asks the user what the run asks, and answers with their choice", async () => {
+    gateway(() => ({ messages: [sent], sessionInfo: { hasActiveRun: true } }));
+    const resolved = vi.fn();
+    const ask = {
+      id: "ask_1",
+      sessionKey: "s",
+      runId: "req-1",
+      status: "pending",
+      expiresAtMs: 5000,
+      questions: [
+        {
+          questionId: "target",
+          header: "Target",
+          question: "Where should I deploy?",
+          options: [{ label: "Staging", description: "Safe" }, { label: "Production" }],
+        },
+      ],
+    };
+    fixture.request.mockImplementation(async (method: string, params: unknown) => {
+      if (method === "chat.history")
+        return { messages: [sent], sessionInfo: { hasActiveRun: true } };
+      if (method === "question.list")
+        return { questions: [ask, { ...ask, id: "ask_2", sessionKey: "other" }] };
+      if (method === "question.resolve") return resolved(params);
+      return [];
+    });
+    const { events, ended } = await resume("req-1");
+    await vi.waitFor(() => expect(events.some((e) => e.type === "question")).toBe(true));
+    expect(events.filter((e) => e.type === "question")).toEqual([
+      {
+        requestId: "req-1",
+        type: "question",
+        question: {
+          id: "ask_1",
+          expiresAt: 5000,
+          questions: [
+            {
+              id: "target",
+              header: "Target",
+              question: "Where should I deploy?",
+              options: [{ label: "Staging", description: "Safe" }, { label: "Production" }],
+              multiSelect: false,
+              secret: false,
+            },
+          ],
+        },
+      },
+    ]);
+    await openClawProvider.answerQuestion!("req-1", "ask_1", { target: ["Production"] });
+    expect(resolved).toHaveBeenCalledWith({
+      id: "ask_1",
+      answers: { answers: { target: ["Production"] } },
+    });
+    expect(events.at(-1)).toEqual({
+      requestId: "req-1",
+      type: "questionResolved",
+      questionId: "ask_1",
+    });
+    fixture.onEvent({
+      event: "chat",
+      payload: { sessionKey: "s", runId: "req-1", state: "aborted" },
+    });
+    await ended;
   });
 
   it("says so when the message never reached the gateway", async () => {

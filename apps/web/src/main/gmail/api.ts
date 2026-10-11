@@ -204,6 +204,8 @@ export type ProviderSettingsView = {
   openclawHasToken: boolean;
   /** The pairing request this device waits on (`openclaw devices approve <id>`). */
   openclawPairingRequest: string | null;
+  /** Whether OpenClaw's questions reach this device (null until connected), and the upgrade it waits on. */
+  openclawQuestions: { allowed: boolean | null; request: string | null };
 };
 export type ProvidersState = {
   providers: ProviderSnapshot[];
@@ -229,6 +231,22 @@ export type ToolStep = {
   source?: string;
 };
 
+/** The agent asking the user something mid-run (OpenClaw's `ask_user`). */
+export type ChatQuestion = {
+  id: string;
+  questions: {
+    id: string;
+    header: string;
+    question: string;
+    options: { label: string; description?: string }[];
+    multiSelect: boolean;
+    /** Asks for a secret, which only the agent's own app takes. */
+    secret: boolean;
+  }[];
+  /** Epoch ms when it stops waiting. */
+  expiresAt: number;
+};
+
 export type ChatEvent =
   | { requestId: string; type: "session"; sessionId: string }
   | { requestId: string; type: "delta"; id?: string; text: string }
@@ -238,6 +256,8 @@ export type ChatEvent =
   | { requestId: string; type: "change"; change: import("@otter-mail/contracts").ChatChange }
   | { requestId: string; type: "approval"; approval: ApprovalRequest }
   | { requestId: string; type: "approvalResolved"; approvalId: string }
+  | { requestId: string; type: "question"; question: ChatQuestion }
+  | { requestId: string; type: "questionResolved"; questionId: string }
   /** The run so far from the provider's record: replaces what follows the turn's message. */
   | { requestId: string; type: "transcript"; messages: ChatSessionMessage[] }
   | { requestId: string; type: "steerReturned"; text: string }
@@ -735,6 +755,17 @@ export const gmailApi = {
     approvalId: string;
     decision: ApprovalDecision;
   }): Promise<{ ok: boolean }> => ipc("agent:respondApproval", params),
+
+  /** Answers a question the run asked (answers by question id); null skips it. */
+  agentAnswerQuestion: (params: {
+    provider: ProviderKind;
+    requestId: string;
+    questionId: string;
+    answers: Record<string, string[]> | null;
+  }): Promise<{ ok: boolean }> => ipc("agent:answerQuestion", params),
+
+  /** Asks the OpenClaw gateway to let this device answer the agent's questions. */
+  agentAllowOpenClawQuestions: (): Promise<ProvidersState> => ipc("agent:allowOpenClawQuestions"),
 
   /** Adds a message to the running turn; `accepted: false` → queue it instead. */
   agentSteer: (

@@ -19,9 +19,9 @@ vi.mock("@openclaw/gateway-client/browser", () => ({
     acceptHello = vi.fn();
   },
   GatewayProtocolClient: class {
-    constructor(private options: { onHello: () => void }) {}
+    constructor(private options: { onHello: (hello: object) => void }) {}
     start() {
-      this.options.onHello();
+      this.options.onHello({});
     }
     stop() {}
     request = fixture.request;

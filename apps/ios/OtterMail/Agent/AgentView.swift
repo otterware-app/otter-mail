@@ -105,6 +105,8 @@ struct AgentView: View {
             .safeAreaBar(edge: .bottom) {
                 if let approval = agent.pendingApproval {
                     ApprovalCard(approval: approval)
+                } else if let question = agent.pendingQuestion {
+                    QuestionCard(question: question).id(question.id)
                 } else {
                     composer
                 }
@@ -332,6 +334,123 @@ private struct TurnView: View {
     static func markdown(_ text: String) -> AttributedString {
         (try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
             ?? AttributedString(text)
+    }
+}
+
+/**
+ * OpenClaw asking the user something mid-run (its `ask_user`; the desktop's
+ * question-card), in the composer's place: each question with its options
+ * (one or several), room for an answer of their own, then Skip or Answer. A
+ * single question with one choice answers on a tap.
+ */
+private struct QuestionCard: View {
+    @Environment(Session.self) private var session
+    @Environment(\.palette) private var palette
+    let question: OpenClaw.Question
+    @State private var chosen: [String: [String]] = [:]
+    @State private var own: [String: String] = [:]
+
+    private var secret: Bool { question.items.contains(where: \.secret) }
+    private var quick: Bool { question.items.count == 1 && !question.items[0].multiSelect && !secret }
+    private var answers: [String: [String]] {
+        Dictionary(uniqueKeysWithValues: question.items.map { item in
+            let typed = (own[item.id] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            return (item.id, (chosen[item.id] ?? []) + (typed.isEmpty ? [] : [typed]))
+        })
+    }
+    private var complete: Bool { !secret && question.items.allSatisfy { answers[$0.id]?.isEmpty == false } }
+
+    var body: some View {
+        let agent = session.agent
+        VStack(alignment: .leading, spacing: 12) {
+            Label("\(agent.providerName) asks", systemImage: "questionmark.bubble")
+                .font(.caption)
+                .foregroundStyle(palette.muted)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    ForEach(question.items) { item in
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(item.question).foregroundStyle(palette.text)
+                            if item.secret {
+                                Text("This asks for a secret, which only goes through OpenClaw's own app.")
+                                    .font(.footnote).foregroundStyle(palette.muted)
+                            } else {
+                                if item.multiSelect {
+                                    Text("Choose any that apply.").font(.caption).foregroundStyle(palette.muted)
+                                }
+                                ForEach(item.options, id: \.label) { option in
+                                    let on = chosen[item.id]?.contains(option.label) == true
+                                    Button {
+                                        choose(item, option.label)
+                                    } label: {
+                                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                            Image(systemName: on ? (item.multiSelect ? "checkmark.square.fill" : "largecircle.fill.circle") : (item.multiSelect ? "square" : "circle"))
+                                                .foregroundStyle(on ? palette.action : palette.muted)
+                                            VStack(alignment: .leading, spacing: 2) {
+                                                Text(option.label).foregroundStyle(palette.text)
+                                                if let description = option.description {
+                                                    Text(description).font(.footnote).foregroundStyle(palette.muted)
+                                                }
+                                            }
+                                            Spacer(minLength: 0)
+                                        }
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 8)
+                                        .background(palette.canvas, in: .rect(cornerRadius: 12))
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                                TextField("Or answer in your own words", text: Binding(
+                                    get: { own[item.id] ?? "" },
+                                    set: { value in
+                                        own[item.id] = value
+                                        // Typing replaces a single choice.
+                                        if !item.multiSelect, !value.isEmpty { chosen[item.id] = [] }
+                                    }
+                                ))
+                                .font(.subheadline)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(palette.canvas, in: .rect(cornerRadius: 12))
+                            }
+                        }
+                    }
+                }
+            }
+            .scrollBounceBehavior(.basedOnSize)
+            .frame(maxHeight: 360)
+            HStack(spacing: 8) {
+                Spacer()
+                Button("Skip") { agent.answer(question, nil) }
+                    .buttonStyle(.bordered)
+                if !secret {
+                    Button("Answer") { agent.answer(question, answers) }
+                        .buttonStyle(.borderedProminent)
+                        .tint(palette.action)
+                        .foregroundStyle(palette.actionText)
+                        .disabled(!complete)
+                }
+            }
+            .buttonBorderShape(.capsule)
+            .tint(palette.text)
+            .font(.subheadline.weight(.medium))
+        }
+        .padding(16)
+        .glassEffect(.regular, in: .rect(cornerRadius: 26))
+        .padding(.horizontal, 16)
+        .padding(.bottom, 6)
+    }
+
+    private func choose(_ item: OpenClaw.Question.Item, _ label: String) {
+        if quick { return session.agent.answer(question, [item.id: [label]]) }
+        var current = chosen[item.id] ?? []
+        if item.multiSelect {
+            if let i = current.firstIndex(of: label) { current.remove(at: i) } else { current.append(label) }
+        } else {
+            current = [label]
+            own[item.id] = ""
+        }
+        chosen[item.id] = current
     }
 }
 
