@@ -206,6 +206,12 @@ export type ChatEvent =
   | { requestId: string; type: "change"; change: import("@otter-mail/contracts").ChatChange }
   | { requestId: string; type: "approval"; approval: ApprovalRequest }
   | { requestId: string; type: "approvalResolved"; approvalId: string }
+  /**
+   * What the run has written so far, from the provider's own record: it
+   * replaces what the panel shows after the turn's message (a run picked up
+   * again after the app quit or lost its connection).
+   */
+  | { requestId: string; type: "transcript"; messages: ChatSessionMessage[] }
   /** A steer the agent didn't get to before finishing: send it as the next message. */
   | { requestId: string; type: "steerReturned"; text: string }
   | { requestId: string; type: "done"; responseId: string | null }
@@ -264,6 +270,8 @@ export type SendTurnInput = {
   previousResponseId?: string;
 };
 
+export type ResumeTurnInput = { requestId: string; sessionId: string };
+
 /**
  * One provider. `checkStatus` probes health; the session methods exist only
  * when the provider keeps chats server-side.
@@ -274,6 +282,15 @@ export interface ChatProvider {
   checkStatus(settings: ProviderSettings): Promise<Omit<ProviderSnapshot, "checkedAt" | "enabled">>;
   /** Runs one turn to completion, reporting progress through `emit`. */
   sendTurn(input: SendTurnInput, settings: ProviderSettings, emit: Emit): Promise<void>;
+  /**
+   * Picks up a run sent earlier with this request id, which the panel lost
+   * (the app quit, the window closed): emits the run so far as a
+   * `transcript`, then streams the rest like `sendTurn`. Errors `detached`
+   * when the provider can't be reached (try again later), `not_received`
+   * when the message never got there. Only providers whose runs outlive
+   * the app have it.
+   */
+  resume?(input: ResumeTurnInput, settings: ProviderSettings, emit: Emit): Promise<void>;
   cancel(requestId: string): void;
   /** Adds a message to the running turn; false when it can't (then queue it). */
   steer(requestId: string, input: string): Promise<boolean>;

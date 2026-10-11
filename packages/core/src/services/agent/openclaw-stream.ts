@@ -49,6 +49,10 @@ export class OpenClawText {
     this.held = undefined;
   }
 
+  replay(): void {
+    this.stream.replay();
+  }
+
   assistant(data: Record<string, unknown>): void {
     const text = typeof data.text === "string" ? data.text : undefined;
     const delta = typeof data.delta === "string" ? data.delta : "";

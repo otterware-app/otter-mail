@@ -46,6 +46,7 @@ import {
   type ApprovalRequest,
   type AgentSettingsPatch,
   type ProviderKind,
+  type ProviderSnapshot,
   type ToolStep,
   type Skill,
 } from "./api";
@@ -328,6 +329,11 @@ type Conversation = {
   /** Created by this app (deleting the chat deletes the session) vs. opened from the provider. */
   sessionOwned: boolean;
   lastResponseId: string | null;
+  /**
+   * The turn in flight (its request id), saved so one the app quits during is
+   * picked up again on the next launch, where the provider's runs outlive it.
+   */
+  openRequest?: string | null;
   updatedAt: number;
 };
 
@@ -444,6 +450,37 @@ function turnsFromMessages(messages: ChatSessionMessage[]): ChatTurn[] {
   return turns.filter((t) => t.role === "user" || itemsOf(t).length > 0);
 }
 
+/**
+ * A run's turns as the provider recorded them, after the message that
+ * started it (`u-<requestId>`): the agent turns take the record's items one
+ * for one when the steers line up; else the record replaces them, steers and
+ * all. It ends on an agent turn, for the rest of the run to stream into.
+ */
+function withTranscript(
+  turns: ChatTurn[],
+  requestId: string,
+  messages: ChatSessionMessage[],
+): ChatTurn[] {
+  let at = turns.findIndex((t) => t.id === `u-${requestId}`);
+  if (at < 0) at = turns.findLastIndex((t) => t.role === "user");
+  const local = turns.slice(at + 1);
+  const recorded = turnsFromMessages(messages);
+  const startedAt = local.find((t) => t.role === "assistant")?.startedAt;
+  let next: ChatTurn[];
+  if (recorded.length === local.length && recorded.every((t, i) => t.role === local[i].role)) {
+    next = local.map((t, i) =>
+      t.role === "assistant"
+        ? { ...t, text: "", items: recorded[i].items, error: undefined, finishedAt: undefined }
+        : t,
+    );
+  } else {
+    next = recorded.map((t, i) => (i === 0 && t.role === "assistant" ? { ...t, startedAt } : t));
+  }
+  if (next[next.length - 1]?.role !== "assistant")
+    next.push({ id: `a-${requestId}-rest`, role: "assistant", text: "", items: [], startedAt });
+  return [...turns.slice(0, at + 1), ...next];
+}
+
 function loadStore(): Store {
   let conversations: Conversation[] = [];
   let activeId: string | null = null;
@@ -457,6 +494,8 @@ function loadStore(): Store {
         provider: c.provider ?? "hermes",
         sessionId: c.sessionId ?? null,
         sessionOwned: c.sessionOwned ?? false,
+        // A turn can only be picked up again in the session it was sent to.
+        openRequest: c.sessionId ? (c.openRequest ?? null) : null,
       }));
       activeId = v2.activeId ?? null;
       tabs = Array.isArray(v2.tabs) ? v2.tabs : [];
@@ -559,6 +598,8 @@ function friendlyError(code: string, provider: ProviderKind): string {
       return "The OpenClaw gateway doesn't allow this site yet — see Settings → Agents.";
     case "session_not_found":
       return `This chat's ${name} session no longer exists — send again to start a new one.`;
+    case "not_received":
+      return `${name} never got this message — send it again.`;
     default:
       return code.startsWith("agent_error: ")
         ? code.slice("agent_error: ".length)
@@ -604,6 +645,17 @@ function WorkingRow({ startedAt }: { startedAt?: number }) {
             "Working…"
           )}
         </span>
+      </div>
+    </div>
+  );
+}
+
+/** A run the app lost track of, waiting to be picked up again from the provider. */
+function DetachedRow({ providerName }: { providerName: string }) {
+  return (
+    <div className="border-b border-border/40 pb-2 pt-1">
+      <div className="flex h-6 min-w-0 items-baseline px-1 text-sm leading-relaxed text-muted-foreground">
+        Lost {providerName} mid-reply — the rest shows here once it's back.
       </div>
     </div>
   );
@@ -1263,6 +1315,27 @@ export function AgentChatPanel({
       }
       if (event.type === "done" || event.type === "error")
         setApprovals((list) => list.filter((a) => a.requestId !== event.requestId));
+      // The app let go of a run that goes on at the provider (it quit, or the
+      // connection's gone): the turn waits, as it is, to be picked up again.
+      if (event.type === "error" && event.message === "detached") {
+        endRunForEffect.current(event.requestId);
+        return;
+      }
+      if (event.type === "transcript") {
+        setStore((prev) => ({
+          ...prev,
+          conversations: prev.conversations.map((c) =>
+            c.id === s.convoId
+              ? {
+                  ...c,
+                  turns: withTranscript(c.turns, event.requestId, event.messages),
+                  updatedAt: Date.now(),
+                }
+              : c,
+          ),
+        }));
+        return;
+      }
       setStore((prev) => ({
         ...prev,
         conversations: prev.conversations.map((c) => {
@@ -1325,6 +1398,12 @@ export function AgentChatPanel({
       }));
       if (event.type === "done" || event.type === "error") {
         endRunForEffect.current(event.requestId);
+        setStore((prev) => ({
+          ...prev,
+          conversations: prev.conversations.map((c) =>
+            c.openRequest === event.requestId ? { ...c, openRequest: null } : c,
+          ),
+        }));
         if (s.convoId !== activeIdRef.current) setUnseen((u) => new Set(u).add(s.convoId));
       }
       // A steer the agent never got to: it goes first in line.
@@ -1380,6 +1459,46 @@ export function AgentChatPanel({
       (error) => console.log("[AgentChat:upgrade] failed", { error: String(error) }),
     );
   }, [active, runs, providersState, patchConversationForEffect, upgraded]);
+
+  // A turn the app quit during (or lost the connection in) is picked up
+  // again: the provider shows how far its run got, then streams the rest.
+  // Tried once per provider state, so a gateway that comes back retries it.
+  const resumeTried = useRef(new Map<string, ProviderSnapshot>());
+  useEffect(() => {
+    for (const c of store.conversations) {
+      const requestId = c.openRequest;
+      const host = providersState?.providers.find((p) => p.kind === c.provider);
+      if (!requestId || !c.sessionId || runs[c.id] || !host || !isProviderUsable(host)) continue;
+      if (resumeTried.current.get(requestId) === host) continue;
+      resumeTried.current.set(requestId, host);
+      console.log("[AgentChat:resume]", { provider: c.provider, requestId });
+      const resumed: Run = { requestId, convoId: c.id, provider: c.provider };
+      runsRef.current = { ...runsRef.current, [c.id]: resumed };
+      setRuns((all) => ({ ...all, [c.id]: resumed }));
+      const giveUp = () => {
+        endRunForEffect.current(requestId);
+        patchConversationForEffect.current(c.id, (current) =>
+          current.openRequest === requestId ? { ...current, openRequest: null } : current,
+        );
+      };
+      gmailApi.agentResume({ provider: c.provider, requestId, sessionId: c.sessionId }).then(
+        ({ resumed }) => {
+          if (!resumed) giveUp();
+        },
+        (error) => {
+          console.log("[AgentChat:resume] failed", { error: String(error) });
+          endRunForEffect.current(requestId);
+        },
+      );
+    }
+  }, [
+    store.conversations,
+    runs,
+    providersState,
+    runsRef,
+    endRunForEffect,
+    patchConversationForEffect,
+  ]);
 
   /** Consumes the composer (text, skill, attached context) into a message. */
   const compose = (): Outgoing | null => {
@@ -1509,6 +1628,7 @@ export function AgentChatPanel({
       // The first turn pins the chat to the provider it was sent with.
       provider: firstTurn ? kind : c.provider,
       title: firstTurn ? msg.title : c.title,
+      openRequest: requestId,
     }));
     appendExchange(msg.convoId, msg, requestId, intent);
     const started: Run = { requestId, convoId: msg.convoId, provider: kind };
@@ -1539,6 +1659,7 @@ export function AgentChatPanel({
                 }
               : t,
           ),
+          openRequest: null,
         }));
         endRun(requestId);
       });
@@ -2305,6 +2426,9 @@ export function AgentChatPanel({
                           </div>
                         ) : null}
                         {live ? <WorkingRow startedAt={turn.startedAt} /> : null}
+                        {isLast && !streamingActive && active?.openRequest ? (
+                          <DetachedRow providerName={providerName} />
+                        ) : null}
                         {turn.error ? (
                           <ErrorRow message={turn.error} providerName={providerName} />
                         ) : null}

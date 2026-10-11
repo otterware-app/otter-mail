@@ -53,6 +53,7 @@ import {
   type ProviderSettings,
   type ProviderSnapshot,
   type ProvidersState,
+  type ResumeTurnInput,
   type SendTurnInput,
   type Skill,
 } from "./types.js";
@@ -345,6 +346,22 @@ export async function sendTurn(kind: ProviderKind, turn: SendTurnInput): Promise
         message: "unreachable",
       });
     });
+}
+
+/**
+ * Picks up a turn the panel lost (the app quit mid-run); false when the
+ * provider's runs end with the app. Progress streams as chat events.
+ */
+export async function resumeTurn(kind: ProviderKind, turn: ResumeTurnInput): Promise<boolean> {
+  const found = provider(kind);
+  const settings = await getProviderSettings();
+  if (!found.resume || !settings[kind].enabled) return false;
+  logger.info("agent", "resume", { provider: kind, requestId: turn.requestId });
+  void found.resume(turn, settings, emit).catch((error: unknown) => {
+    logger.info("agent", "resume crashed", { provider: kind, error: String(error) });
+    emit({ requestId: turn.requestId, type: "error", message: "detached" });
+  });
+  return true;
 }
 
 export async function respondApproval(

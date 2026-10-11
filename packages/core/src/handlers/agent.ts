@@ -184,6 +184,15 @@ export function registerAgentHandlers(): void {
     return { ok: true };
   });
 
+  handle("agent:resume", async (params: unknown) => {
+    const p = params as Params;
+    const requestId = str(p?.requestId);
+    if (!requestId) throw new Error("A request id is required.");
+    return {
+      resumed: await agent.resumeTurn(providerOf(p), { requestId, sessionId: sessionIdOf(p) }),
+    };
+  });
+
   // Dropped, picked or pasted files are copied into the attachments folder;
   // the renderer sends the returned records with a turn.
   handle("agent:stageAttachments", async (params: unknown) => {
