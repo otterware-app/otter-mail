@@ -84,6 +84,26 @@ describe("OpenClaw text projections", () => {
     expect(transcript(nextEvents)).toEqual(["Checking", "Done"]);
   });
 
+  it("shows a reply re-sent under a new item, or again as the final message, once", () => {
+    const events: ChatEvent[] = [];
+    const text = new OpenClawText("run", (event) => events.push(event));
+    text.assistant({ itemId: "a", text: "Done." });
+    text.assistant({ itemId: "b", delta: "Do" });
+    text.assistant({ itemId: "b", delta: "ne." });
+    text.assistant({ itemId: "c", text: "" });
+    text.chat({ message: { content: "Done." } }, true);
+    expect(transcript(events)).toEqual(["Done."]);
+  });
+
+  it("still shows a new item that only starts like the one before", () => {
+    const events: ChatEvent[] = [];
+    const text = new OpenClawText("run", (event) => events.push(event));
+    text.assistant({ itemId: "a", text: "Done." });
+    text.assistant({ itemId: "b", delta: "Do" });
+    text.assistant({ itemId: "b", delta: "ing more." });
+    expect(transcript(events)).toEqual(["Done.", "Doing more."]);
+  });
+
   it("keeps generated image references in live replies and session history", () => {
     const message = {
       content: [

@@ -32,6 +32,11 @@ export class OpenClawText {
   private agentSeen = false;
   private itemId: string | undefined;
   private chatText = "";
+  // What was said since the last tool call: a new item that only repeats it
+  // (the reply re-sent under another id, or again as the final message) stays
+  // held back, unless it goes on to say something else.
+  private said = "";
+  private held: string | undefined;
 
   constructor(requestId: string, emit: Emit) {
     this.stream = new TextStream(requestId, emit);
@@ -40,6 +45,8 @@ export class OpenClawText {
   boundary(): void {
     this.stream.start();
     this.itemId = undefined;
+    this.said = "";
+    this.held = undefined;
   }
 
   assistant(data: Record<string, unknown>): void {
@@ -48,11 +55,24 @@ export class OpenClawText {
     if (text === undefined && !delta) return;
     this.agentSeen = true;
     const id = typeof data.itemId === "string" ? data.itemId : undefined;
-    if (id && id !== this.itemId) this.stream.start(id);
+    if (id && id !== this.itemId) {
+      this.said = this.stream.text || this.said;
+      this.stream.start(id);
+      this.held = this.said ? "" : undefined;
+    }
     this.itemId = id;
-    if (text !== undefined) this.stream.snapshot(text);
-    else if (data.replace) this.stream.snapshot(delta);
-    else this.stream.append(delta);
+    this.show(text ?? (data.replace ? delta : (this.held ?? this.stream.text) + delta));
+  }
+
+  private show(text: string): void {
+    if (this.held !== undefined) {
+      if (this.said.startsWith(text)) {
+        this.held = text;
+        return;
+      }
+      this.held = undefined;
+    }
+    this.stream.snapshot(text);
   }
 
   chat(payload: Record<string, unknown>, final = false): void {
@@ -66,7 +86,7 @@ export class OpenClawText {
       this.chatText = next;
     } else if (final && !this.stream.text) {
       // A non-streaming final message after the last tool call.
-      this.stream.snapshot(next);
+      this.show(next);
     } else if (final) {
       const content = (payload.message as { content?: unknown })?.content;
       if (Array.isArray(content)) {
