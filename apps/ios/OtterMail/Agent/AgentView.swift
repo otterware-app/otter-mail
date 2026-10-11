@@ -162,7 +162,7 @@ struct AgentView: View {
                 .scrollIndicators(.hidden)
             }
             HStack(alignment: .bottom, spacing: 10) {
-                TextField(agent.running ? (agent.selected == "hermes" ? "Steer Hermes…" : "Agent is working…") : "Ask \(agent.providerName)", text: $draft, axis: .vertical)
+                TextField(agent.running ? (agent.selected == "openrouter" ? "Agent is working…" : "Steer \(agent.providerName)…") : "Ask \(agent.providerName)", text: $draft, axis: .vertical)
                     .lineLimit(1...6)
                     .focused($focused)
                     .disabled(agent.running && agent.selected == "openrouter")
@@ -320,6 +320,9 @@ private struct TurnView: View {
                     Label(error, systemImage: "exclamationmark.triangle")
                         .font(.footnote)
                         .foregroundStyle(palette.error)
+                }
+                if let note = turn.note {
+                    Text(note).font(.footnote).foregroundStyle(palette.muted)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)

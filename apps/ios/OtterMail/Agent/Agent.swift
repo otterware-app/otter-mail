@@ -3,8 +3,10 @@ import Observation
 
 /**
  * The agent, as on the desktop (core's agent service and the renderer's
- * chat). OpenRouter runs on the Otter server; Hermes on the user's server.
- * Chats and settings follow the account. Codex and Claude run on the Mac.
+ * chat). OpenRouter runs on the Otter server; Hermes and OpenClaw on the
+ * user's servers. Chats and settings follow the account, except OpenClaw's
+ * gateway, which each device pairs with on its own. Codex and Claude run on
+ * the Mac.
  */
 @Observable
 final class Agent {
@@ -49,6 +51,23 @@ final class Agent {
         }
     }
 
+    /** This iPhone's OpenClaw gateway: kept here, as each device pairs with it on its own. */
+    struct OpenClawSettings: Codable, Equatable {
+        var enabled = true
+        /** The gateway's WebSocket, `wss://<machine>.<tailnet>.ts.net`. */
+        var url = ""
+        /** The gateway agent new chats use; empty → its default. */
+        var model = ""
+
+        init() {}
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            enabled = try c.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
+            url = try c.decodeIfPresent(String.self, forKey: .url) ?? ""
+            model = try c.decodeIfPresent(String.self, forKey: .model) ?? ""
+        }
+    }
+
     enum Status: Equatable {
         case notConfigured
         case checking
@@ -85,12 +104,20 @@ final class Agent {
         var context: [String] = []
         var approval: Approval?
         var error: String?
+        /** Not an error: what's going on with a reply (a run waiting to be picked up again). */
+        var note: String?
     }
 
     // ── Settings, shared with the account ────────────────────────────────────
 
     var hermes: HermesSettings { didSet { settingsChanged() } }
     var openrouter: OpenRouterSettings { didSet { settingsChanged() } }
+    var openclaw: OpenClawSettings {
+        didSet {
+            UserDefaults.standard.set(try? JSONEncoder().encode(openclaw), forKey: Self.openClawKey)
+            if !isOn && running { stop() }
+        }
+    }
     var selected: String {
         didSet {
             guard oldValue != selected else { return }
@@ -114,6 +141,9 @@ final class Agent {
 
     private static let settingsKey = "assistant" // stored and synced under its old name
     private static let keychainKey = "hermes-key"
+    private static let openClawKey = "openclaw"
+    private static let openRunKey = "openclaw-run"
+    private static let providers = ["openrouter", "hermes", "openclaw"]
 
     init() {
         let data = UserDefaults.standard.data(forKey: Self.settingsKey) ?? Data()
@@ -122,9 +152,12 @@ final class Agent {
         let hermesSettings = Self.decode(savedSection["hermes"]) ?? HermesSettings()
         hermes = hermesSettings
         openrouter = Self.decode(savedSection["openrouter"]) ?? OpenRouterSettings()
-        let saved = savedSection["selected"] as? String
-        selected = saved == "hermes" || saved == "openrouter" ? saved! : (hermesSettings.baseUrl.isEmpty ? "openrouter" : "hermes")
+        openclaw = UserDefaults.standard.data(forKey: Self.openClawKey)
+            .flatMap { try? JSONDecoder().decode(OpenClawSettings.self, from: $0) } ?? OpenClawSettings()
+        let saved = savedSection["selected"] as? String ?? ""
+        selected = Self.providers.contains(saved) ? saved : (hermesSettings.baseUrl.isEmpty ? "openrouter" : "hermes")
         hasKey = Keychain.get(Self.keychainKey) != nil
+        openRun = UserDefaults.standard.data(forKey: Self.openRunKey).flatMap { try? JSONDecoder().decode(OpenRun.self, from: $0) }
     }
 
     private static func decode<T: Decodable>(_ value: Any?) -> T? {
@@ -140,7 +173,7 @@ final class Agent {
         let router = ((try? JSONSerialization.jsonObject(with: JSONEncoder().encode(openrouter))) as? [String: Any]) ?? [:]
         section["openrouter"] = ((section["openrouter"] as? [String: Any]) ?? [:]).merging(router) { _, mine in mine }
         // Keep the Mac's local provider selection when merely syncing other settings.
-        if ["openrouter", "hermes"].contains(section["selected"] as? String ?? "") || section["selected"] == nil {
+        if Self.providers.contains(section["selected"] as? String ?? "") || section["selected"] == nil {
             section["selected"] = selected
         }
         return section
@@ -163,7 +196,7 @@ final class Agent {
             if next != hermes { hermes = next }
             let router = Self.decode(remote["openrouter"]) ?? OpenRouterSettings()
             if router != openrouter { openrouter = router }
-            if let provider = remote["selected"] as? String, ["openrouter", "hermes"].contains(provider) { selected = provider }
+            if let provider = remote["selected"] as? String, Self.providers.contains(provider) { selected = provider }
         }
         if let key, key != Keychain.get(Self.keychainKey) {
             Keychain.set(Self.keychainKey, key)
@@ -209,12 +242,36 @@ final class Agent {
     private(set) var status: Status = .notConfigured
     private(set) var models: [Hermes.Model] = []
 
-    /** Whether the phone has an agent on: Hermes, the one that runs here (Codex and Claude run on the Mac). Off, the agent's buttons go. */
-    var isOn: Bool { selected == "openrouter" ? openrouter.enabled : hermes.enabled }
-    var providerName: String { selected == "openrouter" ? "OpenRouter" : "Hermes" }
+    /** Whether the phone has an agent on: the one chosen here (Codex and Claude run on the Mac). Off, the agent's buttons go. */
+    var isOn: Bool {
+        switch selected {
+        case "openrouter": openrouter.enabled
+        case "openclaw": openclaw.enabled
+        default: hermes.enabled
+        }
+    }
+    var providerName: String {
+        switch selected {
+        case "openrouter": "OpenRouter"
+        case "openclaw": "OpenClaw"
+        default: "Hermes"
+        }
+    }
     var chosenModel: String {
-        get { selected == "openrouter" ? openrouter.model : hermes.model }
-        set { if selected == "openrouter" { openrouter.model = newValue } else { hermes.model = newValue } }
+        get {
+            switch selected {
+            case "openrouter": openrouter.model
+            case "openclaw": openclaw.model
+            default: hermes.model
+            }
+        }
+        set {
+            switch selected {
+            case "openrouter": openrouter.model = newValue
+            case "openclaw": openclaw.model = newValue
+            default: hermes.model = newValue
+            }
+        }
     }
     private var routerClient: OpenRouter? { relay.flatMap { try? OpenRouter(relay: $0) } }
 
@@ -245,6 +302,7 @@ final class Agent {
     }
 
     func check() async {
+        if selected == "openclaw" { return await checkOpenClaw() }
         if selected == "openrouter" {
             guard let client = routerClient, openrouter.enabled else { status = .notConfigured; return }
             status = .checking
@@ -309,6 +367,17 @@ final class Agent {
     @ObservationIgnored private var allowedTools: Set<String> = []
     @ObservationIgnored private var approvalTool: String?
     @ObservationIgnored private var generation = UUID()
+    /** This iPhone's connection to its OpenClaw gateway. */
+    @ObservationIgnored private var gateway: OpenClaw?
+    /** The approval this iPhone waits for on the gateway (`openclaw devices approve <id>`). */
+    private(set) var openClawPairing: String?
+    @ObservationIgnored private var openRun: OpenRun? {
+        didSet {
+            guard openRun != oldValue else { return }
+            if let openRun { UserDefaults.standard.set(try? JSONEncoder().encode(openRun), forKey: Self.openRunKey) }
+            else { UserDefaults.standard.removeObject(forKey: Self.openRunKey) }
+        }
+    }
 
     func newChat() {
         stop()
@@ -320,6 +389,7 @@ final class Agent {
     /** Asks, with the conversations as pointers (the desktop's handoff block). */
     func send(_ text: String, context: [MailContext] = []) {
         if selected == "openrouter" { sendOpenRouter(text, context: context); return }
+        if selected == "openclaw" { sendOpenClaw(text, context: context); return }
         let question = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let client, !question.isEmpty || !context.isEmpty else { return }
         if running, let run {
@@ -435,7 +505,10 @@ final class Agent {
 
     func stop() {
         generation = UUID()
-        if let run, let client = openRouterRunClient { Task { await client.stop(run) } }
+        if let run, selected == "openclaw", let session, let gateway = openClawClient {
+            openRun = nil
+            Task { await gateway.abort(session: session, run: run) }
+        } else if let run, let client = openRouterRunClient { Task { await client.stop(run) } }
         else if let run, let client { Task { await client.stop(run: run) } }
         approvalAnswer?.resume(returning: false)
         approvalAnswer = nil
@@ -455,6 +528,13 @@ final class Agent {
             answer.resume(returning: ["once", "session"].contains(choice))
             return
         }
+        if selected == "openclaw", let gateway = openClawClient {
+            Task {
+                try? await gateway.approve(approval.id, choice: choice)
+                updateLast { if $0.approval?.id == approval.id { $0.approval = nil } }
+            }
+            return
+        }
         guard let client, let run else { return }
         Task {
             try? await client.approve(run: run, request: approval.id, choice: choice)
@@ -467,6 +547,13 @@ final class Agent {
     private(set) var history: [Hermes.Session] = []
 
     func loadHistory() async {
+        if selected == "openclaw" {
+            guard let gateway = openClawClient, let chats = try? await gateway.chats() else { return }
+            if selected == "openclaw" {
+                history = chats.map { Hermes.Session(id: $0.id, title: $0.title, preview: $0.preview, lastActive: $0.lastActive, messageCount: $0.preview == nil ? 0 : 1) }
+            }
+            return
+        }
         if selected == "openrouter" {
             guard let client = routerClient else { return }
             let chats = try? await client.sessions()
@@ -485,6 +572,9 @@ final class Agent {
         session = chat.id
         let messages: [Hermes.Message]
         if selected == "openrouter", let client = routerClient { messages = (try? await client.messages(of: chat.id)) ?? [] }
+        else if selected == "openclaw", let gateway = openClawClient {
+            messages = ((try? await gateway.messages(of: chat.id)) ?? []).map { Hermes.Message(role: $0.role, text: $0.text, tools: $0.steps.map(\.name)) }
+        }
         else if let client { messages = (try? await client.messages(of: chat.id)) ?? [] }
         else { return }
         guard self.generation == generation, selected == provider, relay?.token == token else { return }
@@ -511,10 +601,201 @@ final class Agent {
 
     func delete(_ chat: Hermes.Session) async {
         if selected == "openrouter", let client = routerClient { try? await client.delete(session: chat.id) }
+        else if selected == "openclaw", let gateway = openClawClient { try? await gateway.delete(session: chat.id) }
         else if let client { try? await client.delete(session: chat.id) }
         else { return }
         if session == chat.id { newChat() }
         history.removeAll { $0.id == chat.id }
+    }
+}
+
+// ── OpenClaw ─────────────────────────────────────────────────────────────────
+
+extension Agent {
+    /** The run in flight, kept so one the app left (in the background, or quit) is picked up again. */
+    struct OpenRun: Codable, Equatable {
+        var session: String
+        var run: String
+    }
+
+    private static let openClawSecrets = OpenClaw.Secrets(
+        get: { Keychain.get($0) },
+        set: { Keychain.set($0, $1, thisDeviceOnly: true) }
+    )
+
+    var openClawClient: OpenClaw? {
+        guard openclaw.enabled, !openclaw.url.isEmpty, let url = URL(string: openclaw.url) else { return nil }
+        if gateway?.url != url {
+            gateway?.disconnect()
+            gateway = OpenClaw(url: url, secrets: Self.openClawSecrets,
+                               appVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "")
+        }
+        return gateway
+    }
+
+    /** Introduces this iPhone with a setup code from `openclaw qr --setup-code-only`. */
+    func connectOpenClaw(code: String) async throws {
+        guard let setup = OpenClaw.setupCode(code) else {
+            throw Hermes.Failure(message: "That isn't a setup code. Copy what openclaw qr --setup-code-only prints.")
+        }
+        if let expires = setup.expires, expires < .now {
+            throw Hermes.Failure(message: "That setup code has expired. Make a new one with openclaw qr --setup-code-only.")
+        }
+        forgetOpenClawDevice()
+        Keychain.set(OpenClaw.tokenName, nil)
+        Keychain.set(OpenClaw.bootstrapName, setup.bootstrapToken, thisDeviceOnly: true)
+        await useOpenClaw(url: setup.url)
+    }
+
+    /** Or with the gateway's address and token. */
+    func connectOpenClaw(url: String, token: String) async {
+        forgetOpenClawDevice()
+        Keychain.set(OpenClaw.bootstrapName, nil)
+        Keychain.set(OpenClaw.tokenName, token.trimmingCharacters(in: .whitespacesAndNewlines), thisDeviceOnly: true)
+        await useOpenClaw(url: url)
+    }
+
+    func disconnectOpenClaw() {
+        forgetOpenClawDevice()
+        Keychain.set(OpenClaw.tokenName, nil)
+        Keychain.set(OpenClaw.bootstrapName, nil)
+        openclaw.url = ""
+        status = .notConfigured
+    }
+
+    private func useOpenClaw(url: String) async {
+        openclaw.url = OpenClaw.normalized(url)
+        openclaw.enabled = true
+        if selected == "openclaw" { await check() } else { selected = "openclaw" }
+    }
+
+    /** A new gateway or token: the old connection and device token go. */
+    private func forgetOpenClawDevice() {
+        gateway?.disconnect()
+        gateway = nil
+        openClawPairing = nil
+        openRun = nil
+        Keychain.set(OpenClaw.deviceTokenName, nil)
+    }
+
+    func checkOpenClaw() async {
+        guard let gateway = openClawClient, gateway.hasCredentials else {
+            status = .notConfigured
+            models = []
+            return
+        }
+        status = .checking
+        do {
+            let agents = try await gateway.agents()
+            guard selected == "openclaw" else { return }
+            models = agents.map {
+                Hermes.Model(slug: $0.id, name: $0.name, isDefault: $0.isDefault, reasoning: false, canDisableReasoning: false, fast: false)
+            }
+            openClawPairing = nil
+            status = .ready
+            await resumeOpenClaw()
+        } catch {
+            guard selected == "openclaw" else { return }
+            openClawPairing = gateway.pairingRequest
+            status = .failed(Self.openClawProblem(error))
+        }
+    }
+
+    private static func openClawProblem(_ error: Error) -> String {
+        let failure = error as? OpenClaw.Failure
+        switch failure?.code {
+        case "PAIRING_REQUIRED": return "Approve this iPhone on the gateway."
+        case "unreachable", "timeout": return "Can't reach the gateway. Are you on Tailscale?"
+        default:
+            let message = error.localizedDescription
+            return message.range(of: "token|unauthori[sz]ed", options: [.regularExpression, .caseInsensitive]) != nil
+                ? "The gateway refused the setup code or token. Make a new setup code."
+                : message
+        }
+    }
+
+    func sendOpenClaw(_ text: String, context: [MailContext]) {
+        let question = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let gateway = openClawClient, !question.isEmpty || !context.isEmpty else { return }
+        if running, let session {
+            // Mid-turn: it lands after the current tool calls.
+            Task { if await gateway.steer(session: session, question) { self.turns.append(Turn(role: .user, text: question)) } }
+            return
+        }
+        turns.append(Turn(role: .user, text: question, context: context.map(\.subject)))
+        turns.append(Turn(role: .agent, text: ""))
+        let chat = session ?? "agent:\(model?.slug ?? "main"):otter-mail:\(UUID().uuidString.lowercased())"
+        session = chat
+        let run = UUID().uuidString.lowercased()
+        follow(gateway.send(MailContext.handoff(question, context), session: chat, run: run), session: chat, run: run)
+    }
+
+    /**
+     * Back in the foreground, or opened again: the run the app let go of, as
+     * far as it got, then the rest if it's still going.
+     */
+    func resumeOpenClaw() async {
+        guard selected == "openclaw", !running, let pending = openRun, let gateway = openClawClient else { return }
+        if session != pending.session {
+            // Opened anew (the app was quit): the chat the run is in.
+            await open(Hermes.Session(id: pending.session, title: nil, preview: nil, lastActive: .now, messageCount: 0))
+            guard selected == "openclaw", session == pending.session, !running, openRun == pending else { return }
+            if turns.last?.role != .agent { turns.append(Turn(role: .agent, text: "")) }
+        }
+        updateLast { $0.note = nil }
+        follow(gateway.resume(session: pending.session, run: pending.run), session: pending.session, run: pending.run)
+    }
+
+    /** The app went to the background: let go of the run, which goes on on the gateway. */
+    func suspendOpenClaw() {
+        guard selected == "openclaw" else { return }
+        if running {
+            generation = UUID()
+            streaming?.cancel()
+            streaming = nil
+            running = false
+            run = nil
+        }
+        gateway?.disconnect()
+    }
+
+    /** Shows a run in the last agent turn; its id is kept until it ends, to pick it up again. */
+    private func follow(_ events: AsyncStream<OpenClaw.Event>, session: String, run: String) {
+        self.run = run
+        running = true
+        openRun = OpenRun(session: session, run: run)
+        let generation = self.generation
+        streaming = Task {
+            for await event in events {
+                guard self.generation == generation else { return }
+                switch event {
+                case .reply(let reply):
+                    updateLast {
+                        $0.text = reply.text
+                        $0.tools = reply.steps.map { Tool(name: $0.name, output: $0.output) }
+                    }
+                case .approval(let approval):
+                    updateLast {
+                        $0.approval = Approval(id: approval.id, question: "Allow OpenClaw to run this command?", detail: approval.command,
+                                               isCommand: approval.command != nil, choices: ["once", "always", "deny"])
+                    }
+                case .approvalResolved(let id):
+                    updateLast { if $0.approval?.id == id { $0.approval = nil } }
+                case .done:
+                    openRun = nil
+                case .failed(let message):
+                    openRun = nil
+                    updateLast { $0.error = message }
+                case .detached:
+                    updateLast { $0.note = "Lost OpenClaw mid-reply. The rest shows here once it's back." }
+                }
+            }
+            guard self.generation == generation else { return }
+            running = false
+            self.run = nil
+            updateLast { $0.approval = nil }
+            await loadHistory()
+        }
     }
 }
 

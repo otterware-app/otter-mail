@@ -277,12 +277,12 @@ optional fix PRs. See [support.md](support.md).
 
 | Feature                                                      | Mac                                                                     | Web                                           | iPhone                                              |
 | ------------------------------------------------------------ | ----------------------------------------------------------------------- | --------------------------------------------- | --------------------------------------------------- |
-| Providers                                                    | OpenRouter, Claude, Codex, Hermes, OpenClaw                             | OpenRouter, Hermes, OpenClaw                  | OpenRouter, Hermes                                  |
+| Providers                                                    | OpenRouter, Claude, Codex, Hermes, OpenClaw                             | OpenRouter, Hermes, OpenClaw                  | OpenRouter, Hermes, OpenClaw                        |
 | Chat, models, steer / stop, tool approval, history           | ✓                                                                       | ✓                                             | ✓                                                   |
 | Select and copy chat text                                    | ✓                                                                       | ✓                                             | —                                                   |
 | Cite part of a reply, with a comment, in the next message    | ✓                                                                       | ✓                                             | —                                                   |
 | Changes after each agent turn, linking to results            | ✓ (Otter Mail tools)                                                    | ✓ (OpenRouter)                                | —                                                   |
-| Turn an agent off                                            | ✓                                                                       | ✓ (both)                                      | ✓ (both; their buttons go)                          |
+| Turn an agent off                                            | ✓                                                                       | ✓ (each)                                      | ✓ (each; their buttons go)                          |
 | Chat about a conversation (pointers, not mail)               | ✓ (also selections, quotes)                                             | ✓                                             | ✓ (a thread)                                        |
 | Attach images and files to a chat                            | ✓                                                                       | ✓                                             | —                                                   |
 | Assistant progress messages retained in the work toggle      | ✓                                                                       | ✓                                             | —                                                   |
@@ -343,7 +343,9 @@ to pick. Replies, tool steps, steering and command approvals come through; it wo
 its own skills. A run belongs to the gateway, not the app: when the connection drops it's
 followed again on the next one, and a chat whose reply was cut off by quitting picks the run up
 on the next launch, showing what it did meanwhile and streaming the rest (the chat says so while
-the gateway is out of reach). The token and device key stay on the device.
+the gateway is out of reach). The token and device key stay on the device. The iPhone pairs the
+same way (Settings › Agents, a setup code), and picks a reply back up when it comes back to the
+foreground or is opened again.
 
 Other agents on the Mac (Claude Code or Codex in a terminal, Cursor, …) get the same tools from
 that server while the app is open, with a token made in Settings › Agents (its address stays the
