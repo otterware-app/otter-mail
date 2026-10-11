@@ -7,7 +7,14 @@ import { useLatest } from "../use-latest";
  * files as rows, in the composer and in the sent message.
  */
 
-import { useEffect, useState, type DragEvent, type ReactNode } from "react";
+import {
+  Children,
+  useEffect,
+  useState,
+  type DragEvent,
+  type MouseEvent,
+  type ReactNode,
+} from "react";
 import { FileTextIcon, ImageIcon, LoaderCircleIcon, PaperclipIcon, XIcon } from "lucide-react";
 import { toast } from "./toast";
 import { gmailApi, type ChatAttachment } from "./api";
@@ -264,7 +271,7 @@ export function AttachmentChip({
   pending?: boolean;
   /** Left out of the message (the attached mail, toggled off). */
   off?: boolean;
-  onClick?: () => void;
+  onClick?: (event: MouseEvent<HTMLButtonElement>) => void;
   onRemove?: () => void;
 }) {
   return (
@@ -335,7 +342,7 @@ export function ComposerAttachments({
   onRemove: (key: string) => void;
   children?: ReactNode;
 }) {
-  if (items.length === 0 && !children) return null;
+  if (items.length === 0 && Children.toArray(children).length === 0) return null;
   return (
     <div className="flex gap-2 overflow-x-auto px-3 pb-0.5 pt-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       {children}
