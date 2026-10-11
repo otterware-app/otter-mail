@@ -231,7 +231,8 @@ export type ToolStep = {
 
 export type ChatEvent =
   | { requestId: string; type: "session"; sessionId: string }
-  | { requestId: string; type: "delta"; text: string }
+  | { requestId: string; type: "delta"; id?: string; text: string }
+  | { requestId: string; type: "text"; id: string; text: string }
   | { requestId: string; type: "tool"; id?: string; step: ToolStep }
   | { requestId: string; type: "toolResult"; id?: string; output: string }
   | { requestId: string; type: "change"; change: import("@otter-mail/contracts").ChatChange }
@@ -745,6 +746,17 @@ export const gmailApi = {
     provider: ProviderKind,
     sessionId: string,
   ): Promise<ChatSessionMessage[]> => ipc("agent:sessionMessages", { provider, sessionId }),
+
+  agentReadFile: (
+    provider: ProviderKind,
+    sessionId: string,
+    href: string,
+  ): Promise<{
+    name: string;
+    mimeType: string;
+    data: string;
+    size: number;
+  }> => task("agent:readFile", { provider, sessionId, href }),
 
   agentDeleteSession: (provider: ProviderKind, sessionId: string): Promise<{ ok: boolean }> =>
     ipc("agent:deleteSession", { provider, sessionId }),

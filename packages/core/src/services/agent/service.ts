@@ -396,6 +396,15 @@ export async function deleteSession(kind: ProviderKind, sessionId: string): Prom
   await provider(kind).deleteSession(await getProviderSettings(), sessionId);
 }
 
+export async function readFile(kind: ProviderKind, sessionId: string, href: string) {
+  const found = provider(kind);
+  if (!found.readFile)
+    throw new Error(
+      `${found.displayName} hasn't made this file available. Ask it to attach the image directly.`,
+    );
+  return found.readFile(await getProviderSettings(), sessionId, href);
+}
+
 export function shutdownProviders(): void {
   for (const found of Object.values(available())) found.shutdown();
 }

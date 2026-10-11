@@ -5,6 +5,7 @@
  */
 
 import { handle } from "../ipc.js";
+import { runAsTask } from "./ipc-budget.js";
 import { ATTACHMENTS_DIR, stageAttachment } from "../services/agent/attachments.js";
 import {
   connectOpenRouter,
@@ -238,6 +239,13 @@ export function registerAgentHandlers(): void {
   handle("agent:sessionMessages", async (params: unknown) => {
     const p = params as Params;
     return agent.readSession(providerOf(p), sessionIdOf(p));
+  });
+
+  handle("agent:readFile", (params: unknown) => {
+    const p = params as Params;
+    const href = str(p?.href);
+    if (!href) throw new Error("A file link is required.");
+    return runAsTask(str(p?.taskId), () => agent.readFile(providerOf(p), str(p?.sessionId), href));
   });
 
   handle("agent:deleteSession", async (params: unknown) => {

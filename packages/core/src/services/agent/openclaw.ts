@@ -18,10 +18,12 @@ import {
   type GatewayBrowserDeviceAuthPlan,
   type GatewayBrowserDeviceIdentity,
 } from "@openclaw/gateway-client/browser";
-import { toBase64 } from "../../bytes.js";
+import { toBase64, fromBase64, utf8Encode } from "../../bytes.js";
 import { logger } from "../../logger.js";
 import { platform } from "../../platform.js";
 import { readAttachment } from "./attachments.js";
+import { chatFile, chatFilePath, downloadChatFile } from "./files.js";
+import { OpenClawText, openClawMessageText as textOf } from "./openclaw-stream.js";
 import {
   clearOpenClawBootstrapToken,
   clearOpenClawDeviceToken,
@@ -315,16 +317,6 @@ async function whoAmI(g: Gateway): Promise<{ label: string } | null> {
   }
 }
 
-/** Text of a gateway message: a string or content parts. */
-function textOf(message: unknown): string {
-  const content = (message as { content?: unknown })?.content;
-  if (typeof content === "string") return content;
-  if (!Array.isArray(content)) return "";
-  return (content as { type?: string; text?: string }[])
-    .map((part) => (part?.type === "text" ? (part.text ?? "") : ""))
-    .join("");
-}
-
 /** A failed connection, as the chat's error codes. */
 function connectError(error: unknown): string {
   const code = gatewayCode(error);
@@ -469,18 +461,7 @@ export const openClawProvider: ChatProvider = {
       );
     };
 
-    // The reply arrives as snapshots of the message being written; after a
-    // tool call the next message starts a new paragraph.
-    let text = "";
-    const showText = (next: string) => {
-      if (!next || next === text) return;
-      emit({
-        requestId,
-        type: "delta",
-        text: next.startsWith(text) ? next.slice(text.length) : `${text ? "\n\n" : ""}${next}`,
-      });
-      text = next;
-    };
+    const text = new OpenClawText(requestId, emit);
 
     const onEvent = ({ event, payload }: EventFrame) => {
       const p = (payload ?? {}) as Record<string, unknown>;
@@ -507,30 +488,34 @@ export const openClawProvider: ChatProvider = {
         return;
       }
       if (p.sessionKey !== sessionKey) return;
+      if (state.runId && p.runId && p.runId !== state.runId) return;
       resetIdle();
+      if (event === "agent" && p.stream === "assistant") {
+        text.assistant((p.data ?? {}) as Record<string, unknown>);
+        return;
+      }
       if (event === "agent" && p.stream === "tool") {
         const data = (p.data ?? {}) as Record<string, unknown>;
         const id = typeof data.toolCallId === "string" ? data.toolCallId : undefined;
-        if (data.phase === "start")
+        if (data.phase === "start") {
+          text.boundary();
           emit({
             requestId,
             type: "tool",
             id,
             step: openClawStep(String(data.name ?? "tool"), data.args),
           });
-        else if (data.phase === "result")
+        } else if (data.phase === "result")
           emit({ requestId, type: "toolResult", id, output: data.isError ? "(failed)" : "(done)" });
         return;
       }
       if (event !== "chat") return;
       switch (p.state) {
         case "delta":
-          showText(
-            p.message ? textOf(p.message) : `${p.replace ? "" : text}${String(p.deltaText ?? "")}`,
-          );
+          text.chat(p);
           break;
         case "final":
-          showText(textOf(p.message));
+          text.chat(p, true);
           finish({ requestId, type: "done", responseId: null });
           break;
         case "aborted":
@@ -678,6 +663,65 @@ export const openClawProvider: ChatProvider = {
       if (!text && toolCalls.length === 0) return [];
       return [{ role: "assistant", text, ...(toolCalls.length > 0 ? { toolCalls } : {}) }];
     });
+  },
+
+  async readFile(settings, sessionId, href) {
+    if (!sessionId) throw new Error("Open the image from its OpenClaw chat.");
+    const g = await gateway(settings);
+    if (href.startsWith("otter-artifact:")) {
+      const result = await g.client.request<{
+        artifact: { title: string; mimeType?: string };
+        data?: string;
+        encoding?: string;
+        url?: string;
+      }>("artifacts.download", {
+        sessionKey: sessionId,
+        artifactId: decodeURIComponent(href.slice("otter-artifact:".length)),
+      });
+      if (result.encoding === "base64" && result.data)
+        return chatFile(result.artifact.title, fromBase64(result.data), result.artifact.mimeType);
+      if (result.url) {
+        const base = `${settings.openclaw.url.replace(/^ws/i, "http").replace(/\/$/, "")}/`;
+        const file = await downloadChatFile(new URL(result.url.replace(/^\//, ""), base).href);
+        return {
+          ...file,
+          name: result.artifact.title,
+          mimeType: result.artifact.mimeType || file.mimeType,
+        };
+      }
+      throw new Error("OpenClaw hasn't made this image available to download.");
+    }
+    const path = chatFilePath(href);
+    // The file preview's text cap is small; media assets have their own larger budget.
+    if (/\.(png|jpe?g|gif|webp|avif|bmp|svg)$/i.test(path)) {
+      const ref = encodeURIComponent(path.split("/").pop() || "image");
+      const result = await g.client.request<{
+        assets: { content?: string; mimeType?: string; error?: string }[];
+      }>("sessions.files.assets", { sessionKey: sessionId, path, refs: [ref] });
+      const asset = result.assets[0];
+      if (asset?.content !== undefined)
+        return chatFile(
+          path.split("/").pop() || "Image",
+          fromBase64(asset.content),
+          asset.mimeType,
+        );
+      throw new Error("OpenClaw couldn't read this image. Ask it to attach the image directly.");
+    }
+    const result = await g.client.request<{
+      file?: { name?: string; content?: string; contentEncoding?: string; mimeType?: string };
+      reason?: string;
+    }>("sessions.files.get", { sessionKey: sessionId, path });
+    if (result.file?.content === undefined)
+      throw new Error("OpenClaw couldn't read this file. Ask it to attach the image directly.");
+    const bytes =
+      result.file.contentEncoding === "base64"
+        ? fromBase64(result.file.content)
+        : utf8Encode(result.file.content);
+    return chatFile(
+      result.file.name || path.split("/").pop() || "Image",
+      bytes,
+      result.file.mimeType,
+    );
   },
 
   async deleteSession(settings, sessionId) {

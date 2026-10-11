@@ -92,6 +92,8 @@ export { runAsTask } from "./handlers/ipc-budget.js";
 export { ATTACHMENTS_DIR, dataUrl, readAttachment } from "./services/agent/attachments.js";
 export { shutdownProviders } from "./services/agent/service.js";
 export { TOOL_OUTPUT_CHARS, claudeStep, codexStep } from "./services/agent/steps.js";
+export { TextStream } from "./services/agent/text-stream.js";
+export { chatFile, chatFilePath, MAX_CHAT_FILE_BYTES } from "./services/agent/files.js";
 export {
   OTTER_TOOLS_SERVER,
   agentTools,

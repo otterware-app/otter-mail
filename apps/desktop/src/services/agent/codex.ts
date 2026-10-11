@@ -16,8 +16,8 @@ import {
   type Notification,
   type ServerRequest,
 } from "./codex-app-server.js";
-import { TOOL_OUTPUT_CHARS, codexStep, dataUrl } from "@otter-mail/core";
-import { agentWorkspace, withAttachmentPaths } from "./local.js";
+import { TOOL_OUTPUT_CHARS, codexStep, dataUrl, TextStream } from "@otter-mail/core";
+import { agentWorkspace, withAttachmentPaths, readAgentFile } from "./local.js";
 import { AGENT_INSTRUCTIONS } from "./instructions.js";
 import { MCP_SERVER_NAME, toolAccess, type ToolAccess } from "./mcp-server.js";
 import type {
@@ -118,7 +118,7 @@ type ActiveTurn = {
   emit: Emit;
   turnId: string | null;
   cancelRequested: boolean;
-  streamedText: boolean;
+  text: TextStream;
   /** Last non-retried error, reported if the turn then fails. */
   error: string | null;
   /** Approval requests waiting on the user, by approval id. */
@@ -292,15 +292,12 @@ function handleNotification(session: Session, { method, params }: Notification):
     case "item/agentMessage/delta": {
       const delta = String(params.delta ?? "");
       if (!delta) break;
-      turn.streamedText = true;
-      emit({ requestId, type: "delta", text: delta });
+      turn.text.append(delta);
       break;
     }
     case "item/started": {
       const item = params.item as Item;
-      // A new message after tool calls: keep paragraphs apart.
-      if (item.type === "agentMessage" && turn.streamedText)
-        emit({ requestId, type: "delta", text: "\n\n" });
+      if (item.type === "agentMessage") turn.text.start(item.id);
       const step = codexStep(item);
       if (step) emit({ requestId, type: "tool", id: item.id, step });
       break;
@@ -309,10 +306,8 @@ function handleNotification(session: Session, { method, params }: Notification):
       const item = params.item as Item;
       if (codexStep(item))
         emit({ requestId, type: "toolResult", id: item.id, output: toolOutput(item) });
-      else if (item.type === "agentMessage" && !turn.streamedText && item.text) {
-        turn.streamedText = true;
-        emit({ requestId, type: "delta", text: String(item.text) });
-      }
+      else if (item.type === "agentMessage" && typeof item.text === "string")
+        turn.text.snapshot(item.text);
       break;
     }
     case "error": {
@@ -748,7 +743,7 @@ export const codexProvider: ChatProvider = {
         emit,
         turnId: null,
         cancelRequested: false,
-        streamedText: false,
+        text: new TextStream(requestId, emit),
         error: null,
         approvals: new Map(),
         finish: resolve,
@@ -945,6 +940,8 @@ export const codexProvider: ChatProvider = {
   },
 
   /** Archived, not destroyed: it stays recoverable from the Codex CLI. */
+  readFile: (_settings, _sessionId, href) => readAgentFile(href),
+
   async deleteSession(settings, sessionId) {
     const live = sessions.get(sessionId);
     if (live) stopSession(live);

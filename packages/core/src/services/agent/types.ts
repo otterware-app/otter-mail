@@ -197,7 +197,9 @@ export type ToolStep = {
 /** Canonical stream events, one contract for every provider. */
 export type ChatEvent =
   | { requestId: string; type: "session"; sessionId: string }
-  | { requestId: string; type: "delta"; text: string }
+  | { requestId: string; type: "delta"; id?: string; text: string }
+  /** An authoritative replacement for one assistant message. */
+  | { requestId: string; type: "text"; id: string; text: string }
   /** `id` pairs a step with its result. */
   | { requestId: string; type: "tool"; id?: string; step: ToolStep }
   | { requestId: string; type: "toolResult"; id?: string; output: string }
@@ -280,7 +282,11 @@ export interface ChatProvider {
   listSkills(settings: ProviderSettings): Promise<Skill[]>;
   listSessions(settings: ProviderSettings, limit: number): Promise<ChatSession[]>;
   readSession(settings: ProviderSettings, sessionId: string): Promise<ChatSessionMessage[]>;
+  /** A file linked by the agent, read on the machine that owns the session. */
+  readFile?(settings: ProviderSettings, sessionId: string, href: string): Promise<ChatFile>;
   deleteSession(settings: ProviderSettings, sessionId: string): Promise<void>;
   /** Stop background processes (settings changed, app quitting). */
   shutdown(): void;
 }
+
+export type ChatFile = { name: string; mimeType: string; data: string; size: number };

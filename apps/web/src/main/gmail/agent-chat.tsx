@@ -1,5 +1,5 @@
 import { useLatest } from "../use-latest";
-import { useEffect, useRef, useState, type MutableRefObject } from "react";
+import { useCallback, useEffect, useRef, useState, type MutableRefObject } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { MessageScroller } from "@shadcn/react/message-scroller";
 import { ScrollArea } from "~/components/ui/scroll-area";
@@ -65,6 +65,8 @@ import {
   type QuoteContext,
 } from "./chat-context";
 import { ChatMarkdown } from "./chat-markdown";
+import { AttachmentPreview, attachmentPreview, type PreviewFile } from "./attachment-preview";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./menu";
 import { ChatChanges, mergeChatChanges } from "./chat-changes";
 import {
   AttachmentChip,
@@ -95,7 +97,25 @@ import { modKeyName, shortcutText } from "../keybindings/keys";
 
 /** What the attached context items are, so the chip shows a fitting icon. */
 type ContextKind = "draft" | "sent" | "mail" | "mixed" | "quote" | "project";
-type ContextMeta = { subjects: string[]; count: number; kind: ContextKind };
+type ContextMeta = {
+  subjects: string[];
+  count: number;
+  kind: ContextKind;
+  items?: { title: string; target: ChatChange["target"] }[];
+};
+
+function useChatImageLoader(provider?: ProviderKind, sessionId?: string | null) {
+  return useCallback(
+    async (href: string) => {
+      if (!provider) throw new Error("Open the image from its chat.");
+      const file = await gmailApi.agentReadFile(provider, sessionId ?? "", href);
+      const preview = attachmentPreview(file.name, file.mimeType);
+      if (preview?.kind !== "image") throw new Error("This file isn't an image.");
+      return `data:${preview.mimeType};base64,${file.data}`;
+    },
+    [provider, sessionId],
+  );
+}
 
 /** Classify one message from its labels. */
 function kindOf(labelIds: string[]): ContextKind {
@@ -223,17 +243,63 @@ function SkillBadge({
 }
 
 /** Chip recap of the context sent with a user turn. */
-function ContextRecap({ context }: { context: ContextMeta }) {
+function ContextRecap({
+  context,
+  onOpen,
+}: {
+  context: ContextMeta;
+  onOpen: (item: { title: string; target?: ChatChange["target"] }) => void;
+}) {
   const label =
     context.count > 1
       ? `${context.count} conversations`
       : (context.subjects[0] ?? "1 conversation");
+  const items =
+    context.items ??
+    (context.kind !== "quote" && context.kind !== "project"
+      ? context.subjects.map((title) => ({ title }))
+      : []);
+  const chipClass =
+    "flex max-w-64 items-center gap-1.5 rounded-sm border border-border px-2 py-0.5 text-2xs font-medium text-muted-foreground";
   return (
     <div className="mb-1 flex justify-end">
-      <span className="flex max-w-64 items-center gap-1.5 rounded-sm border border-border px-2 py-0.5 text-2xs font-medium text-muted-foreground">
-        <ContextKindIcon kind={context.kind} className="size-3 shrink-0" />
-        <span className="min-w-0 truncate">{label}</span>
-      </span>
+      {items.length === 1 ? (
+        <button
+          type="button"
+          onClick={() => onOpen(items[0])}
+          title={items[0].title}
+          aria-label={`Open context: ${items[0].title}`}
+          className={`${chipClass} cursor-pointer hover:bg-accent-surface hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring`}
+        >
+          <ContextKindIcon kind={context.kind} className="size-3 shrink-0" />
+          <span className="min-w-0 truncate">{label}</span>
+        </button>
+      ) : items.length > 1 ? (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className={`${chipClass} cursor-pointer hover:bg-accent-surface hover:text-foreground`}
+              aria-label={`Open ${label}`}
+            >
+              <ContextKindIcon kind={context.kind} className="size-3 shrink-0" />
+              <span>{label}</span>
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            {items.map((item) => (
+              <DropdownMenuItem key={JSON.stringify(item)} onSelect={() => onOpen(item)}>
+                {item.title}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : (
+        <span className={chipClass}>
+          <ContextKindIcon kind={context.kind} className="size-3 shrink-0" />
+          <span className="min-w-0 truncate">{label}</span>
+        </span>
+      )}
     </div>
   );
 }
@@ -970,6 +1036,21 @@ export function AgentChatPanel({
   const sessionsAvailable = Boolean(provider?.sessions && usable);
   // Finished runs fold their tool rows behind a "Worked for …" summary.
   const [expandedFolds, setExpandedFolds] = useState<Set<string>>(() => new Set());
+  const [previewFile, setPreviewFile] = useState<PreviewFile | null>(null);
+  const loadChatImage = useChatImageLoader(active?.provider, active?.sessionId);
+  const openChatFile = (href: string) => {
+    if (!active) return;
+    void gmailApi
+      .agentReadFile(active.provider, active.sessionId ?? "", href)
+      .then((file) => {
+        if (!attachmentPreview(file.name, file.mimeType))
+          throw new Error("This file type can't be previewed.");
+        setPreviewFile({ ...file, load: async () => file.data });
+      })
+      .catch((error: unknown) =>
+        toast.error(error instanceof Error ? error.message : "Couldn't open the file."),
+      );
+  };
   const toggleFold = (id: string) =>
     setExpandedFolds((prev) => {
       const next = new Set(prev);
@@ -1051,6 +1132,30 @@ export function AgentChatPanel({
   // (cache hit — the reader fetched it). Both are pointer-only; the agent
   // reads the bodies itself.
   const accountsQuery = useAccounts();
+  const openContextItem = (item: { title: string; target?: ChatChange["target"] }) => {
+    void (async () => {
+      let target = item.target;
+      // Older saved turns kept only a subject. Recover an unambiguous conversation.
+      if (!target) {
+        const result = await gmailApi.searchMessages({ q: item.title });
+        const matches = result.messages.filter((m) => m.subject === item.title && m.accountId);
+        const threads = new Map(matches.map((m) => [`${m.accountId}:${m.threadId || m.id}`, m]));
+        if (threads.size !== 1 || result.nextPageToken)
+          throw new Error("This older context doesn't identify a unique conversation.");
+        const message = [...threads.values()][0];
+        target = {
+          kind: "thread",
+          id: message.threadId || message.id,
+          accountId: message.accountId!,
+        };
+      }
+      await onOpenChange({ title: item.title, action: "updated", target });
+    })().catch((error: unknown) =>
+      toast.error("Couldn't open this item", {
+        description: error instanceof Error ? error.message : String(error),
+      }),
+    );
+  };
   const accountEmailById = (id: string | undefined) =>
     accountsQuery.data?.find((a) => a.id === id)?.email ?? id ?? "";
   const openMessage = useMessage(accountId, messageId);
@@ -1144,11 +1249,20 @@ export function AgentChatPanel({
           const last = items[items.length - 1];
           if (event.type === "change") {
             updated.changes = mergeChatChanges([...(turn.changes ?? []), event.change]);
-          } else if (event.type === "delta") {
+          } else if (event.type === "delta" || event.type === "text") {
             // Text continues the text before it; after a step it starts anew.
-            if (last?.kind === "text")
-              items[items.length - 1] = { ...last, text: last.text + event.text };
-            else items.push({ kind: "text", text: event.text });
+            const index = event.id
+              ? items.findIndex((item) => item.kind === "text" && item.id === event.id)
+              : last?.kind === "text"
+                ? items.length - 1
+                : -1;
+            const previous = items[index];
+            if (previous?.kind === "text")
+              items[index] = {
+                ...previous,
+                text: event.type === "text" ? event.text : previous.text + event.text,
+              };
+            else items.push({ kind: "text", id: event.id, text: event.text });
           } else if (event.type === "tool") {
             items.push({ kind: "step", id: event.id, step: event.step });
           } else if (event.type === "toolResult") {
@@ -1273,6 +1387,26 @@ export function AgentChatPanel({
                 ? [attached.project.name]
                 : attached.conversations.map((x) => x.subject),
             kind: attachKind,
+            items: [
+              ...(attached.project
+                ? [
+                    {
+                      title: attached.project.name,
+                      target: { kind: "project" as const, id: attached.project.id },
+                    },
+                  ]
+                : []),
+              ...attached.conversations.map((conversation) => ({
+                title: conversation.subject,
+                target: {
+                  kind: "thread" as const,
+                  id: conversation.threadId,
+                  accountId:
+                    accountsQuery.data?.find((a) => a.email === conversation.account)?.id ??
+                    conversation.account,
+                },
+              })),
+            ],
           }
         : undefined,
     };
@@ -2037,7 +2171,9 @@ export function AgentChatPanel({
                       <MessageScroller.Item key={turn.id} messageId={turn.id} scrollAnchor>
                         <div className="group flex flex-col items-end gap-1 py-3">
                           {turn.intent ? <IntentMarker intent={turn.intent} /> : null}
-                          {turn.context ? <ContextRecap context={turn.context} /> : null}
+                          {turn.context ? (
+                            <ContextRecap context={turn.context} onOpen={openContextItem} />
+                          ) : null}
                           <div className="relative max-w-[80%] select-text whitespace-pre-wrap rounded-2xl bg-message px-4 py-2.5 text-sm leading-relaxed text-message-foreground">
                             {turn.skill ? (
                               <span className="mb-1 mr-1.5 inline-flex align-middle">
@@ -2056,8 +2192,7 @@ export function AgentChatPanel({
                   }
                   const isLast = turn.id === turns[turns.length - 1]?.id;
                   const live = streamingActive && isLast && !turn.finishedAt && !turn.error;
-                  // ChatGPT's fold: the commentary and steps up to the last step
-                  // fold away once the turn is done; the answer after them stays.
+                  // Progress messages and tool steps fold away; the final reply stays.
                   const items = itemsOf(turn).filter(
                     (item) => item.kind === "step" || item.text.trim(),
                   );
@@ -2084,10 +2219,20 @@ export function AgentChatPanel({
                             onToggle={() => toggleFold(turn.id)}
                           />
                         ) : null}
-                        {showWork ? <WorkLog items={work} /> : null}
+                        {showWork ? (
+                          <WorkLog
+                            items={work}
+                            onOpenFile={openChatFile}
+                            loadImage={loadChatImage}
+                          />
+                        ) : null}
                         {answer ? (
                           <div className="group min-w-0 px-1 py-2">
-                            <ChatMarkdown text={answer} />
+                            <ChatMarkdown
+                              text={answer}
+                              onOpenFile={openChatFile}
+                              loadImage={loadChatImage}
+                            />
                             {!live ? (
                               <div className="mt-1">
                                 <CopyMessageButton text={answer} />
@@ -2425,6 +2570,7 @@ export function AgentChatPanel({
           </div>
         </MessageScroller.Provider>
       )}
+      <AttachmentPreview file={previewFile} onClose={() => setPreviewFile(null)} />
     </div>
   );
 }
