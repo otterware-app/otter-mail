@@ -64,7 +64,12 @@ add limited server grants (or an encrypted IMAP password), while mail content st
   chats stay on the server. `AgentMailTools.swift` executes mail tools through `MailStore`,
   with approvals in the chat. Hermes (`Hermes.swift`) connects to the user's agent server;
   its settings and sealed key follow the Otter account. Both share the `assistant` settings
-  section with Mac/web. The Mac's local Codex and Claude providers are omitted.
+  section with Mac/web. OpenClaw (`OpenClaw.swift`) connects to the user's gateway over its
+  WebSocket as the Mac does: this iPhone is a paired device with its own Ed25519 key (a setup
+  code from `openclaw qr`, then `openclaw devices approve`); its gateway and tokens stay here. A
+  run is sent with the turn's id as its idempotency key, so one the app left in the background
+  (or quit during) is picked up again from the gateway's transcript. The Mac's local Codex and
+  Claude providers are omitted.
 - `Mail/`: the model and `MailStore`, which screens render from. `DemoMail.swift` loads the demo.
 - `Home/`, `Reader/`, `Compose/`, `Settings/`: the screens.
 

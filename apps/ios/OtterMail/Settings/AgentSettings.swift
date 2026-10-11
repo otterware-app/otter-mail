@@ -1,7 +1,7 @@
 import SwiftUI
 
 /**
- * Settings › Agents: the two server agents, their connections and models.
+ * Settings › Agents: the server agents, their connections and models.
  */
 struct AgentSettings: View {
     @Environment(Session.self) private var session
@@ -11,6 +11,9 @@ struct AgentSettings: View {
     @State private var key = ""
     @State private var connecting = false
     @State private var routerKey = ""
+    @State private var setupCode = ""
+    @State private var gatewayURL = ""
+    @State private var gatewayToken = ""
     @State private var error: String?
 
     var body: some View {
@@ -20,6 +23,7 @@ struct AgentSettings: View {
                 Picker("Agent", selection: $agent.selected) {
                     Text("OpenRouter").tag("openrouter")
                     Text("Hermes").tag("hermes")
+                    Text("OpenClaw").tag("openclaw")
                 }
             }
             if agent.selected == "openrouter" {
@@ -62,6 +66,8 @@ struct AgentSettings: View {
                 } footer: {
                     Text(session.relay.isSignedIn ? "The API key stays on Otter Mail's server. When you use this agent, your prompts and mail returned by its tools are sent to Otter Mail's server, OpenRouter and the selected model provider. Chat history stays until you delete the chat or your Otter account. Usage is billed to your OpenRouter account." : "Sign in to your Otter account to connect OpenRouter.")
                 }
+            } else if agent.selected == "openclaw" {
+                openClaw
             } else {
                 Section {
                     Toggle(isOn: $agent.hermes.enabled) {
@@ -126,8 +132,88 @@ struct AgentSettings: View {
         .task(id: "\(session.agent.selected):\(session.agent.isOn)") { await session.agent.check() }
     }
 
+    /** OpenClaw: pairing this iPhone with the gateway (each device pairs on its own), then its agents. */
+    @ViewBuilder
+    private var openClaw: some View {
+        @Bindable var agent = session.agent
+        Section {
+            Toggle(isOn: $agent.openclaw.enabled) {
+                Label {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("OpenClaw")
+                        Text(statusText).font(.subheadline).foregroundStyle(statusColor)
+                    }
+                } icon: {
+                    Image("AgentCursor")
+                }
+            }
+            if agent.openclaw.enabled {
+                if !agent.openclaw.url.isEmpty {
+                    LabeledContent("Gateway") {
+                        Text(URL(string: agent.openclaw.url)?.host() ?? agent.openclaw.url).foregroundStyle(palette.muted)
+                    }
+                }
+                if agent.status == .ready {
+                    if !agent.models.isEmpty {
+                        Picker("Agent", selection: $agent.openclaw.model) {
+                            Text("The gateway's default").tag("")
+                            ForEach(agent.models) { Text($0.name).tag($0.slug) }
+                        }
+                    }
+                } else if let request = agent.openClawPairing {
+                    let command = "openclaw devices approve \(request)"
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Approve this iPhone on the gateway:")
+                        Text(command).font(.footnote.monospaced()).foregroundStyle(palette.muted).textSelection(.enabled)
+                    }
+                    Button("Copy the command") { UIPasteboard.general.string = command }
+                    Button("Check again") { Task { await agent.check() } }
+                } else {
+                    SecureField("Setup code", text: $setupCode)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    Button(connecting ? "Connecting…" : "Connect") {
+                        connecting = true
+                        error = nil
+                        Task {
+                            do { try await agent.connectOpenClaw(code: setupCode); setupCode = "" }
+                            catch { self.error = error.localizedDescription }
+                            connecting = false
+                        }
+                    }
+                    .disabled(setupCode.isEmpty || connecting)
+                    DisclosureGroup("Use the gateway's token instead") {
+                        TextField("wss://computer.tailnet.ts.net", text: $gatewayURL)
+                            .keyboardType(.URL)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                        SecureField("Gateway token", text: $gatewayToken)
+                        Button("Connect with the token") {
+                            connecting = true
+                            error = nil
+                            Task {
+                                await agent.connectOpenClaw(url: gatewayURL, token: gatewayToken)
+                                gatewayToken = ""
+                                connecting = false
+                            }
+                        }
+                        .disabled(gatewayURL.isEmpty || gatewayToken.isEmpty || connecting)
+                    }
+                    if let error { Text(error).foregroundStyle(palette.error) }
+                    if case .failed(let message) = agent.status { Text(message).foregroundStyle(palette.error) }
+                }
+                if !agent.openclaw.url.isEmpty {
+                    Button("Disconnect", role: .destructive) { agent.disconnectOpenClaw() }
+                }
+            }
+        } footer: {
+            Text("Your OpenClaw gateway, usually over Tailscale. Make a setup code on it with openclaw qr --setup-code-only and paste it here, then approve this iPhone there. Chats live on the gateway, so they're the same everywhere; this iPhone's key and tokens stay on it.")
+        }
+    }
+
     private var statusText: String {
         guard session.agent.isOn else { return "Off" }
+        if session.agent.selected == "openclaw", session.agent.openClawPairing != nil { return "Waiting for approval" }
         return switch session.agent.status {
         case .notConfigured: "Not connected"
         case .checking: "Checking…"
