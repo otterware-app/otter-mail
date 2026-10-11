@@ -11,6 +11,7 @@
 import { utf8Decode } from "../../bytes.js";
 import { logger } from "../../logger.js";
 import { dataUrl, readAttachment } from "./attachments.js";
+import { TextStream } from "./text-stream.js";
 import { getHermesKey } from "./settings.js";
 import { hermesStep, TOOL_OUTPUT_CHARS } from "./steps.js";
 import type {
@@ -433,7 +434,7 @@ async function streamSessionTurn(ctx: TurnContext & { sessionId: string }): Prom
   }
 
   let terminal: "completed" | "failed" | "cancelled" | null = null;
-  let streamedText = false;
+  const textStream = new TextStream(requestId, emit);
 
   await readSse(
     response.body,
@@ -446,35 +447,27 @@ async function streamSessionTurn(ctx: TurnContext & { sessionId: string }): Prom
       switch (event) {
         case "assistant.delta": {
           const text = String(payload.delta ?? payload.text ?? "");
-          if (text) {
-            streamedText = true;
-            emit({ requestId, type: "delta", text });
-          }
+          textStream.append(text);
           break;
         }
         case "assistant.commentary": {
           // Mid-turn commentary beside tool calls; skip when it already streamed as deltas.
-          if (payload.already_streamed) break;
+          if (payload.already_streamed) {
+            textStream.start();
+            break;
+          }
           const text = String(payload.text ?? "").trim();
-          if (text)
-            emit({
-              requestId,
-              type: "delta",
-              text: `${streamedText ? "\n\n" : ""}${text}\n\n`,
-            });
-          streamedText = true;
+          textStream.snapshot(text);
+          textStream.start();
           break;
         }
         case "assistant.completed": {
-          // Fallback for turns that produced no deltas (e.g. a non-streaming provider).
-          const text = String(payload.content ?? "");
-          if (!streamedText && text) {
-            streamedText = true;
-            emit({ requestId, type: "delta", text });
-          }
+          // Also carries resolved MEDIA images that aren't present in raw deltas.
+          textStream.snapshot(contentText(payload.content));
           break;
         }
         case "tool.started":
+          textStream.start();
           emit({
             requestId,
             type: "tool",
@@ -592,6 +585,7 @@ async function streamResponsesTurn(
     });
 
   let responseId: string | null = null;
+  const textStream = new TextStream(requestId, emit);
   await readSse(
     response.body,
     (_name, json) => {
@@ -605,19 +599,24 @@ async function streamResponsesTurn(
         const resp = event.response as { id?: string } | undefined;
         if (resp?.id) responseId = resp.id;
       } else if (type === "response.output_text.delta") {
-        emit({ requestId, type: "delta", text: String(event.delta ?? "") });
-      } else if (type === "response.output_item.added") {
+        textStream.append(String(event.delta ?? ""));
+      } else if (type === "response.output_item.added" || type === "response.output_item.done") {
         const item = event.item as
           | {
               type?: string;
+              id?: string;
+              content?: unknown;
               name?: string;
               arguments?: string;
               output?: { text?: string }[] | string;
             }
           | undefined;
-        if (item?.type === "function_call") {
+        if (item?.type === "message") {
+          if (type === "response.output_item.added") textStream.start(item.id);
+          textStream.snapshot(contentText(item.content));
+        } else if (type === "response.output_item.added" && item?.type === "function_call") {
           emit({ requestId, type: "tool", step: hermesStep(item.name ?? "tool", item.arguments) });
-        } else if (item?.type === "function_call_output") {
+        } else if (type === "response.output_item.added" && item?.type === "function_call_output") {
           const text = (
             typeof item.output === "string"
               ? item.output

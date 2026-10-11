@@ -33,11 +33,17 @@ import {
 } from "@anthropic-ai/claude-agent-sdk";
 import { logger } from "../../logger.js";
 import fs from "node:fs/promises";
-import { attachmentPath, attachmentsDir, agentWorkspace, withAttachmentPaths } from "./local.js";
+import {
+  attachmentPath,
+  attachmentsDir,
+  agentWorkspace,
+  withAttachmentPaths,
+  readAgentFile,
+} from "./local.js";
 import { AGENT_INSTRUCTIONS } from "./instructions.js";
 import { MCP_SERVER_NAME, toolAccess, type ToolAccess } from "./mcp-server.js";
 import { ensureShellPath } from "./shell-path.js";
-import { TOOL_OUTPUT_CHARS, claudeStep } from "@otter-mail/core";
+import { TOOL_OUTPUT_CHARS, claudeStep, TextStream } from "@otter-mail/core";
 import type {
   ApprovalDecision,
   ApprovalRequest,
@@ -178,7 +184,7 @@ type PendingApproval = {
 type ActiveTurn = {
   requestId: string;
   emit: Emit;
-  streamedText: boolean;
+  text: TextStream;
   approvals: Map<string, PendingApproval>;
   /** Steers pushed this turn: a late one gets its own result after this one's. */
   steers: number;
@@ -286,8 +292,7 @@ function handleMessage(session: Session, message: SDKMessage): void {
   if (turn.settle && (message.type === "stream_event" || message.type === "assistant")) {
     clearTimeout(turn.settle);
     turn.settle = null;
-    turn.streamedText = false;
-    emit({ requestId, type: "delta", text: "\n\n" });
+    turn.text.start();
   }
   switch (message.type) {
     case "stream_event": {
@@ -295,28 +300,31 @@ function handleMessage(session: Session, message: SDKMessage): void {
       if (message.parent_tool_use_id) break;
       const event = message.event as {
         type: string;
-        content_block?: { type?: string };
+        content_block?: { type?: string; text?: string };
         delta?: { type?: string; text?: string };
       };
-      if (
-        event.type === "content_block_start" &&
-        event.content_block?.type === "text" &&
-        turn.streamedText
-      ) {
-        emit({ requestId, type: "delta", text: "\n\n" });
+      if (event.type === "message_start") turn.text.start();
+      else if (event.type === "content_block_start" && event.content_block?.type === "text") {
+        turn.text.append(event.content_block.text ?? "");
       } else if (
         event.type === "content_block_delta" &&
         event.delta?.type === "text_delta" &&
         event.delta.text
       ) {
-        turn.streamedText = true;
-        emit({ requestId, type: "delta", text: event.delta.text });
+        turn.text.append(event.delta.text);
       }
       break;
     }
     case "assistant": {
       if (message.parent_tool_use_id) break;
       const content = (message.message as { content?: unknown[] }).content ?? [];
+      const text = content
+        .flatMap((block) => {
+          const b = block as { type?: string; text?: string };
+          return b.type === "text" && b.text ? [b.text] : [];
+        })
+        .join("");
+      turn.text.snapshot(text);
       for (const block of content as {
         type?: string;
         id?: string;
@@ -328,12 +336,9 @@ function handleMessage(session: Session, message: SDKMessage): void {
           const step = claudeStep(block.name, block.input ?? {});
           if (step) emit({ requestId, type: "tool", id: block.id, step });
           else if (block.id) session.hiddenTools.add(block.id);
-        } else if (block.type === "text" && block.text && !turn.streamedText) {
-          // Backfill text the stream didn't deliver.
-          turn.streamedText = true;
-          emit({ requestId, type: "delta", text: block.text });
         }
       }
+      turn.text.start();
       break;
     }
     case "user": {
@@ -780,7 +785,7 @@ export const claudeProvider: ChatProvider = {
       session.turn = {
         requestId,
         emit,
-        streamedText: false,
+        text: new TextStream(requestId, emit),
         approvals: new Map(),
         steers: 0,
         settle: null,
@@ -910,6 +915,8 @@ export const claudeProvider: ChatProvider = {
     }
     return out;
   },
+
+  readFile: (_settings, _sessionId, href) => readAgentFile(href),
 
   async deleteSession(_settings, sessionId) {
     const live = sessions.get(sessionId);

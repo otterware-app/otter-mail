@@ -14,6 +14,9 @@ import {
   type ChatAttachment,
   type Platform,
   type ToolFiles,
+  chatFile,
+  chatFilePath,
+  MAX_CHAT_FILE_BYTES,
 } from "@otter-mail/core";
 
 import { appInfo } from "../../backend-protocol.js";
@@ -27,6 +30,24 @@ export async function agentWorkspace(): Promise<string> {
   const dir = path.join(appInfo().stateDir, "assistant-workspace");
   await fs.mkdir(dir, { recursive: true });
   return dir;
+}
+
+/** Read agent output on this computer, resolving relative links in its workspace. */
+export async function readAgentFile(href: string) {
+  const file = chatFilePath(href);
+  const resolved = file.startsWith("~/")
+    ? path.join(os.homedir(), file.slice(2))
+    : path.resolve(await agentWorkspace(), file);
+  const handle = await fs.open(resolved, "r");
+  try {
+    const stat = await handle.stat();
+    if (!stat.isFile()) throw new Error("That link doesn't point to a file.");
+    if (stat.size > MAX_CHAT_FILE_BYTES)
+      throw new Error("That file is too large to preview (50 MB max).");
+    return chatFile(path.basename(resolved), new Uint8Array(await handle.readFile()));
+  } finally {
+    await handle.close();
+  }
 }
 
 export async function attachmentsDir(): Promise<string> {

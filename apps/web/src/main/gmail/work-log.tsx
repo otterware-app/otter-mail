@@ -25,7 +25,7 @@ import { cn } from "./ui";
 
 /** A turn's content in order: what the agent said, and the steps it took. */
 export type TurnItem =
-  | { kind: "text"; text: string }
+  | { kind: "text"; id?: string; text: string }
   | { kind: "step"; id?: string; step: ToolStep; output?: string };
 
 const STEP_ICONS: Record<ToolStep["kind"], typeof WrenchIcon> = {
@@ -67,13 +67,21 @@ function blocksOf(items: TurnItem[]): Block[] {
 }
 
 /* oxlint-disable react/no-array-index-key -- Transcript blocks append and update in place; position preserves streaming row state. */
-export function WorkLog({ items }: { items: TurnItem[] }) {
+export function WorkLog({
+  items,
+  onOpenFile,
+  loadImage,
+}: {
+  items: TurnItem[];
+  onOpenFile?: (href: string) => void;
+  loadImage?: (href: string) => Promise<string>;
+}) {
   return (
     <div className="flex flex-col py-1">
       {blocksOf(items).map((block, i) =>
         block.kind === "text" ? (
           <div key={i} className="min-w-0 px-1 py-2">
-            <ChatMarkdown text={block.text} />
+            <ChatMarkdown text={block.text} onOpenFile={onOpenFile} loadImage={loadImage} />
           </div>
         ) : block.kind === "group" ? (
           <StepGroup key={i} source={block.source} items={block.items} />
