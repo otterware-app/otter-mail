@@ -8,7 +8,9 @@
  * token the gateway issued.
  *
  * Each chat is a gateway session (`agent:<agentId>:otter-mail:<uuid>`);
- * replies, tool calls and command approvals arrive as gateway events.
+ * replies, tool calls and command approvals arrive as gateway events. A run
+ * belongs to the gateway, not this app: it goes on when the socket drops or
+ * the app quits, and is picked up again from the session's transcript.
  */
 
 import {
@@ -37,6 +39,7 @@ import {
 import { openClawStep } from "./steps.js";
 import type {
   ApprovalDecision,
+  ApprovalRequest,
   ChatEvent,
   ChatProvider,
   ChatSession,
@@ -46,7 +49,6 @@ import type {
 } from "./types.js";
 
 const CONNECT_TIMEOUT_MS = 8_000;
-const IDLE_TIMEOUT_MS = 300_000;
 const SCOPES = ["operator.read", "operator.write", "operator.approvals"];
 
 /** `chris-agent-01.tail1234.ts.net`, `https://…` → `wss://…`. */
@@ -138,7 +140,7 @@ type Gateway = { url: string; client: GatewayProtocolClient<GatewayBrowserDevice
 
 let current: { url: string; ready: Promise<Gateway> } | null = null;
 const listeners = new Set<(event: EventFrame) => void>();
-const closeListeners = new Set<() => void>();
+const closeListeners = new Set<(client: Gateway["client"]) => void>();
 
 /** The gateway's reason for refusing a connection: `PAIRING_REQUIRED`, `CONTROL_UI_ORIGIN_NOT_ALLOWED`, … */
 function gatewayCode(error: unknown): string {
@@ -241,7 +243,7 @@ function open(url: string, { token, bootstrapToken }: Credentials): Promise<Gate
       onClose: () => {
         if (current?.url === url) current = null;
         settle(new Error("Can't reach the gateway."));
-        for (const listener of closeListeners) listener();
+        for (const listener of closeListeners) listener(client);
       },
       onEvent: (event) => {
         for (const listener of listeners) listener(event);
@@ -272,7 +274,13 @@ async function gateway(settings: ProviderSettings): Promise<Gateway> {
 function disconnect(): void {
   const previous = current;
   current = null;
-  void previous?.ready.then((g) => g.client.stop()).catch(() => {});
+  void previous?.ready
+    .then((g) => {
+      g.client.stop();
+      // A stopped client doesn't report its close; runs on it find the next one.
+      for (const listener of closeListeners) listener(g.client);
+    })
+    .catch(() => {});
 }
 
 /** New gateway or token: forget the old connection and device token. */
@@ -329,18 +337,33 @@ function connectError(error: unknown): string {
 
 // ── Turns ────────────────────────────────────────────────────────────────────
 
+/** How long a run may go quiet before asking the gateway whether it's still going. */
+const QUIET_MS = 60_000;
+/** Waits between tries to get the gateway back when the socket drops mid-run. */
+const RECONNECT_DELAYS_MS = [1_000, 2_000, 5_000, 10_000, 20_000, 30_000];
+
+/**
+ * A run this app follows. It's sent with the request id as its idempotency
+ * key, which the gateway keeps on the user's transcript row: a chat reopened
+ * after a quit finds its run by the id it saved.
+ */
 type Turn = {
+  requestId: string;
   sessionKey: string;
-  runId: string | null;
+  runId: string;
   gateway: Gateway;
   emit: Emit;
+  /** The run's live text, sent again to a window that comes back mid-run. */
+  text: OpenClawText;
+  /** Part of the run went unseen (a reconnect, a window back): its end is read from the transcript. */
+  resynced: boolean;
   /** Reports the turn's last event and ends it. */
   finish: (event: ChatEvent) => void;
 };
 
 const turns = new Map<string, Turn>();
-/** Approvals the user hasn't answered: approval id → request id. */
-const approvals = new Map<string, string>();
+/** Approvals the user hasn't answered, by id. */
+const approvals = new Map<string, { requestId: string; approval: ApprovalRequest }>();
 
 const DECISIONS: Record<ApprovalDecision, string> = {
   once: "allow-once",
@@ -348,6 +371,291 @@ const DECISIONS: Record<ApprovalDecision, string> = {
   always: "allow-always",
   deny: "deny",
 };
+
+function newTurn(requestId: string, sessionKey: string, gateway: Gateway, emit: Emit): Turn {
+  return {
+    requestId,
+    sessionKey,
+    runId: requestId,
+    gateway,
+    emit,
+    text: new OpenClawText(requestId, emit),
+    resynced: false,
+    finish: () => {},
+  };
+}
+
+/** The send a user row came from: its idempotency key, less the gateway's `:user` suffix. */
+function sendKeyOf(row: Record<string, unknown>): string | undefined {
+  const meta = row.__openclaw as { idempotencyKey?: unknown } | undefined;
+  const key = meta?.idempotencyKey ?? row.idempotencyKey;
+  return typeof key === "string" ? key.replace(/:user$/, "") : undefined;
+}
+
+/** Transcript rows as the panel shows them. */
+function transcript(messages: Record<string, unknown>[]): ChatSessionMessage[] {
+  // A model's own wrapper around a tool (Codex's `exec`) is mirrored beside
+  // the real call; the gateway marks its result as the provider's response.
+  const mirrored = new Set(
+    messages
+      .filter((m) => {
+        const meta = m.__openclaw as { toolOutput?: { source?: string } } | undefined;
+        return m.role === "toolResult" && meta?.toolOutput?.source === "provider-response";
+      })
+      .map((m) => m.toolCallId),
+  );
+  return messages.flatMap((m): ChatSessionMessage[] => {
+    if (m.role === "user") return [{ role: "user", text: textOf(m) }];
+    if (m.role === "toolResult")
+      return mirrored.has(m.toolCallId)
+        ? []
+        : [{ role: "tool", text: textOf(m), toolName: String(m.toolName ?? "") }];
+    if (m.role !== "assistant") return [];
+    const toolCalls = (Array.isArray(m.content) ? (m.content as Record<string, unknown>[]) : [])
+      .filter((part) => part.type === "toolCall" && !mirrored.has(part.id))
+      .map((part) => openClawStep(String(part.name ?? "tool"), part.arguments));
+    const text = textOf(m);
+    if (!text && toolCalls.length === 0) return [];
+    return [{ role: "assistant", text, ...(toolCalls.length > 0 ? { toolCalls } : {}) }];
+  });
+}
+
+/** Where a run stands on the gateway: whether it got the message, what it wrote since, whether it's going. */
+type RunState = { found: boolean; messages: ChatSessionMessage[]; active: boolean };
+
+async function runState(turn: Turn): Promise<RunState> {
+  const result = await turn.gateway.client.request<{
+    messages?: Record<string, unknown>[];
+    sessionInfo?: { hasActiveRun?: boolean; activeRunIds?: string[] };
+  }>("chat.history", { sessionKey: turn.sessionKey, limit: 200 });
+  const rows = result.messages ?? [];
+  const start = rows.findLastIndex((m) => m.role === "user" && sendKeyOf(m) === turn.requestId);
+  const info = result.sessionInfo ?? {};
+  return {
+    found: start >= 0,
+    messages: start >= 0 ? transcript(rows.slice(start + 1)) : [],
+    active: info.activeRunIds ? info.activeRunIds.includes(turn.runId) : Boolean(info.hasActiveRun),
+  };
+}
+
+/** A command approval, from its `exec.approval.requested` event or `exec.approval.list`. */
+function askApproval(turn: Turn, payload: Record<string, unknown>): void {
+  const request = (payload.request ?? {}) as Record<string, unknown>;
+  if (request.sessionKey !== turn.sessionKey || typeof payload.id !== "string") return;
+  const approval: ApprovalRequest = {
+    id: payload.id,
+    kind: "command",
+    title: "Command approval",
+    detail: String(request.command ?? request.commandPreview ?? "") || undefined,
+    choices: ["once", "always", "deny"],
+  };
+  approvals.set(approval.id, { requestId: turn.requestId, approval });
+  turn.emit({ requestId: turn.requestId, type: "approval", approval });
+}
+
+/** Approvals the run asked for while this app wasn't listening. */
+async function askPendingApprovals(turn: Turn): Promise<void> {
+  try {
+    const pending = await turn.gateway.client.request<Record<string, unknown>[]>(
+      "exec.approval.list",
+      {},
+    );
+    for (const payload of pending) {
+      if (!approvals.has(String(payload.id))) askApproval(turn, payload);
+    }
+  } catch (error) {
+    logger.info("agent", "openclaw approvals unavailable", { error: String(error) });
+  }
+}
+
+/** The run so far, for a panel that missed some of it: the transcript, then the live text. */
+function catchUp(turn: Turn, state: RunState): void {
+  turn.resynced = true;
+  turn.emit({ requestId: turn.requestId, type: "transcript", messages: state.messages });
+  turn.text.replay();
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Follows a run until it ends. The gateway sends every connection its
+ * sessions' events, so when the socket drops the run is picked up again on
+ * the next one, and what went unseen is read from the transcript. A run
+ * that goes quiet (a long command) is asked after, not given up on.
+ */
+async function follow(
+  turn: Turn,
+  settings: ProviderSettings,
+  start: () => Promise<void>,
+): Promise<void> {
+  const { requestId, sessionKey, emit } = turn;
+  let ended: (() => void) | null = null;
+  const finished = new Promise<void>((resolve) => (ended = resolve));
+  // The first ending wins (a final, a cancel, the gateway gone for good).
+  turn.finish = (event) => {
+    if (!ended) return;
+    emit(event);
+    ended();
+    ended = null;
+  };
+  turns.set(requestId, turn);
+
+  /** The run is over: its end as the transcript has it, when some of it went unseen. */
+  const settle = async (state?: RunState) => {
+    if (turn.resynced) {
+      try {
+        state ??= await runState(turn);
+        if (ended) emit({ requestId, type: "transcript", messages: state.messages });
+      } catch (error) {
+        logger.info("agent", "openclaw transcript unavailable", { error: String(error) });
+      }
+    }
+    turn.finish({ requestId, type: "done", responseId: null });
+  };
+
+  let quiet: ReturnType<typeof setTimeout> | undefined;
+  const hush = () => {
+    clearTimeout(quiet);
+    quiet = setTimeout(() => void check(), QUIET_MS);
+  };
+  const check = async () => {
+    try {
+      const state = await runState(turn);
+      if (!ended) return;
+      if (state.active) hush();
+      else {
+        turn.resynced = true;
+        await settle(state);
+      }
+    } catch {
+      hush();
+    }
+  };
+
+  const reconnect = async () => {
+    clearTimeout(quiet);
+    for (const delay of RECONNECT_DELAYS_MS) {
+      await sleep(delay);
+      if (!ended) return;
+      try {
+        turn.gateway = await gateway(settings);
+        // Live text on the new socket starts from a fresh snapshot.
+        turn.text = new OpenClawText(requestId, emit);
+        const state = await runState(turn);
+        if (!ended) return;
+        logger.info("agent", "openclaw run picked up again", { requestId, active: state.active });
+        turn.resynced = true;
+        if (!state.active) return await settle(state);
+        catchUp(turn, state);
+        await askPendingApprovals(turn);
+        return hush();
+      } catch (error) {
+        logger.info("agent", "openclaw reconnect failed", { requestId, error: String(error) });
+      }
+    }
+    turn.finish({ requestId, type: "error", message: "detached" });
+  };
+
+  // Tool calls already shown (`<call id>:start|done`), as both streams may tell of one.
+  const seen = new Set<string>();
+  const onEvent = ({ event, payload }: EventFrame) => {
+    const p = (payload ?? {}) as Record<string, unknown>;
+    if (event === "exec.approval.requested") return askApproval(turn, p);
+    if (event === "exec.approval.resolved") {
+      if (typeof p.id === "string" && approvals.delete(p.id))
+        emit({ requestId, type: "approvalResolved", approvalId: p.id });
+      return;
+    }
+    if (p.sessionKey !== sessionKey) return;
+    if (p.runId && p.runId !== turn.runId) return;
+    hush();
+    if (event === "agent" && p.stream === "assistant") {
+      turn.text.assistant((p.data ?? {}) as Record<string, unknown>);
+      return;
+    }
+    // Only the connection that sent the message gets `tool` events (with the
+    // call's arguments); a run picked up on another sees its tools as items.
+    const tool =
+      event === "agent" && p.stream === "tool"
+        ? ((p.data ?? {}) as Record<string, unknown>)
+        : event === "agent" && p.stream === "item" && turn.resynced
+          ? ((p.data ?? {}) as Record<string, unknown>)
+          : null;
+    if (tool) {
+      if (p.stream === "item" && tool.kind !== "tool") return;
+      const id = typeof tool.toolCallId === "string" ? tool.toolCallId : undefined;
+      const phase =
+        tool.phase === "start"
+          ? "start"
+          : tool.phase === "result" || tool.phase === "end"
+            ? "done"
+            : null;
+      if (!phase || (id && seen.has(`${id}:${phase}`))) return;
+      if (id) seen.add(`${id}:${phase}`);
+      if (phase === "start") {
+        turn.text.boundary();
+        emit({
+          requestId,
+          type: "tool",
+          id,
+          step: openClawStep(String(tool.name ?? "tool"), tool.args),
+        });
+      } else {
+        const failed = tool.isError === true || tool.status === "failed";
+        emit({ requestId, type: "toolResult", id, output: failed ? "(failed)" : "(done)" });
+      }
+      return;
+    }
+    if (event !== "chat") return;
+    switch (p.state) {
+      case "delta":
+        turn.text.chat(p);
+        break;
+      case "final":
+        turn.text.chat(p, true);
+        clearTimeout(quiet);
+        void settle();
+        break;
+      case "aborted":
+        turn.finish({ requestId, type: "error", message: "cancelled" });
+        break;
+      case "error":
+        turn.finish({
+          requestId,
+          type: "error",
+          message: `agent_error: ${String(p.errorMessage ?? "The run failed.")}`,
+        });
+        break;
+    }
+  };
+  const onClose = (client: Gateway["client"]) => {
+    if (client === turn.gateway.client) void reconnect();
+  };
+  listeners.add(onEvent);
+  closeListeners.add(onClose);
+  try {
+    hush();
+    await start();
+    await finished;
+  } catch (error) {
+    logger.info("agent", "openclaw turn failed", { requestId, error: String(error) });
+    turn.finish({
+      requestId,
+      type: "error",
+      message: `agent_error: ${error instanceof Error ? error.message : String(error)}`,
+    });
+  } finally {
+    clearTimeout(quiet);
+    listeners.delete(onEvent);
+    closeListeners.delete(onClose);
+    turns.delete(requestId);
+    for (const [approvalId, owner] of approvals) {
+      if (owner.requestId !== requestId) continue;
+      approvals.delete(approvalId);
+      emit({ requestId, type: "approvalResolved", approvalId });
+    }
+  }
+}
 
 export const openClawProvider: ChatProvider = {
   kind: "openclaw",
@@ -407,8 +715,8 @@ export const openClawProvider: ChatProvider = {
     }
   },
 
-  async sendTurn(turn, settings, emit) {
-    const { requestId } = turn;
+  async sendTurn(input, settings, emit) {
+    const { requestId } = input;
     let g: Gateway;
     try {
       g = await gateway(settings);
@@ -416,7 +724,7 @@ export const openClawProvider: ChatProvider = {
       return emit({ requestId, type: "error", message: connectError(error) });
     }
 
-    let sessionKey = turn.sessionId;
+    let sessionKey = input.sessionId;
     if (!sessionKey) {
       const agentId = settings.openclaw.model || (await listAgents(g)).defaultId;
       sessionKey = `agent:${agentId}:otter-mail:${crypto.randomUUID()}`;
@@ -426,7 +734,7 @@ export const openClawProvider: ChatProvider = {
     let attachments: unknown[];
     try {
       attachments = await Promise.all(
-        (turn.attachments ?? []).map(async (a) => ({
+        (input.attachments ?? []).map(async (a) => ({
           type: a.kind,
           mimeType: a.mime,
           fileName: a.name,
@@ -441,126 +749,53 @@ export const openClawProvider: ChatProvider = {
       });
     }
 
-    let ended: (() => void) | null = null;
-    const finished = new Promise<void>((resolve) => (ended = resolve));
-    // The first ending wins (a final, the socket closing, a cancel).
-    const finish = (event: ChatEvent) => {
-      if (!ended) return;
-      emit(event);
-      ended();
-      ended = null;
-    };
-    const state: Turn = { sessionKey, runId: null, gateway: g, emit, finish };
-    turns.set(requestId, state);
-    let idle: ReturnType<typeof setTimeout> | undefined;
-    const resetIdle = () => {
-      clearTimeout(idle);
-      idle = setTimeout(
-        () => finish({ requestId, type: "error", message: "timeout" }),
-        IDLE_TIMEOUT_MS,
-      );
-    };
-
-    const text = new OpenClawText(requestId, emit);
-
-    const onEvent = ({ event, payload }: EventFrame) => {
-      const p = (payload ?? {}) as Record<string, unknown>;
-      if (event === "exec.approval.requested") {
-        const request = (p.request ?? {}) as Record<string, unknown>;
-        if (request.sessionKey !== sessionKey || typeof p.id !== "string") return;
-        approvals.set(p.id, requestId);
-        emit({
-          requestId,
-          type: "approval",
-          approval: {
-            id: p.id,
-            kind: "command",
-            title: "Command approval",
-            detail: String(request.command ?? request.commandPreview ?? "") || undefined,
-            choices: ["once", "always", "deny"],
-          },
-        });
-        return;
-      }
-      if (event === "exec.approval.resolved") {
-        if (typeof p.id === "string" && approvals.delete(p.id))
-          emit({ requestId, type: "approvalResolved", approvalId: p.id });
-        return;
-      }
-      if (p.sessionKey !== sessionKey) return;
-      if (state.runId && p.runId && p.runId !== state.runId) return;
-      resetIdle();
-      if (event === "agent" && p.stream === "assistant") {
-        text.assistant((p.data ?? {}) as Record<string, unknown>);
-        return;
-      }
-      if (event === "agent" && p.stream === "tool") {
-        const data = (p.data ?? {}) as Record<string, unknown>;
-        const id = typeof data.toolCallId === "string" ? data.toolCallId : undefined;
-        if (data.phase === "start") {
-          text.boundary();
-          emit({
-            requestId,
-            type: "tool",
-            id,
-            step: openClawStep(String(data.name ?? "tool"), data.args),
-          });
-        } else if (data.phase === "result")
-          emit({ requestId, type: "toolResult", id, output: data.isError ? "(failed)" : "(done)" });
-        return;
-      }
-      if (event !== "chat") return;
-      switch (p.state) {
-        case "delta":
-          text.chat(p);
-          break;
-        case "final":
-          text.chat(p, true);
-          finish({ requestId, type: "done", responseId: null });
-          break;
-        case "aborted":
-          finish({ requestId, type: "error", message: "cancelled" });
-          break;
-        case "error":
-          finish({
-            requestId,
-            type: "error",
-            message: `agent_error: ${String(p.errorMessage ?? "The run failed.")}`,
-          });
-          break;
-      }
-    };
-    const onClose = () => finish({ requestId, type: "error", message: "unreachable" });
-    listeners.add(onEvent);
-    closeListeners.add(onClose);
-    try {
-      resetIdle();
+    const turn = newTurn(requestId, sessionKey, g, emit);
+    await follow(turn, settings, async () => {
       const sent = await g.client.request<{ runId?: string }>("chat.send", {
         sessionKey,
-        message: turn.input,
-        idempotencyKey: crypto.randomUUID(),
+        message: input.input,
+        idempotencyKey: requestId,
         ...(attachments.length > 0 ? { attachments } : {}),
       });
-      state.runId = sent.runId ?? null;
-      await finished;
-    } catch (error) {
-      logger.info("agent", "openclaw turn failed", { requestId, error: String(error) });
-      emit({
-        requestId,
-        type: "error",
-        message: `agent_error: ${error instanceof Error ? error.message : String(error)}`,
-      });
-    } finally {
-      clearTimeout(idle);
-      listeners.delete(onEvent);
-      closeListeners.delete(onClose);
-      turns.delete(requestId);
-      for (const [approvalId, owner] of approvals) {
-        if (owner !== requestId) continue;
-        approvals.delete(approvalId);
-        emit({ requestId, type: "approvalResolved", approvalId });
+      turn.runId = sent.runId ?? requestId;
+    });
+  },
+
+  /**
+   * A run the panel lost track of (the app quit, the window closed): still
+   * followed here → the panel gets the run so far; else it's found on the
+   * gateway by its send, shown as far as it got, and followed if it's going.
+   */
+  async resume({ requestId, sessionId }, settings, emit) {
+    const following = turns.get(requestId);
+    if (following) {
+      try {
+        catchUp(following, await runState(following));
+      } catch (error) {
+        logger.info("agent", "openclaw transcript unavailable", { error: String(error) });
       }
+      for (const { requestId: owner, approval } of approvals.values())
+        if (owner === requestId) emit({ requestId, type: "approval", approval });
+      return;
     }
+    let turn: Turn;
+    let state: RunState;
+    try {
+      turn = newTurn(requestId, sessionId, await gateway(settings), emit);
+      state = await runState(turn);
+    } catch (error) {
+      logger.info("agent", "openclaw resume failed", { requestId, error: String(error) });
+      return emit({ requestId, type: "error", message: "detached" });
+    }
+    logger.info("agent", "openclaw resume", {
+      requestId,
+      found: state.found,
+      active: state.active,
+    });
+    if (!state.found) return emit({ requestId, type: "error", message: "not_received" });
+    catchUp(turn, state);
+    if (!state.active) return emit({ requestId, type: "done", responseId: null });
+    await follow(turn, settings, () => askPendingApprovals(turn));
   },
 
   cancel(requestId) {
@@ -569,7 +804,7 @@ export const openClawProvider: ChatProvider = {
     void turn.gateway.client
       .request("chat.abort", {
         sessionKey: turn.sessionKey,
-        ...(turn.runId ? { runId: turn.runId } : {}),
+        runId: turn.runId,
       })
       .catch(() => turn.finish({ requestId, type: "error", message: "cancelled" }));
   },
@@ -593,7 +828,7 @@ export const openClawProvider: ChatProvider = {
 
   async respondApproval(requestId, approvalId, decision) {
     const turn = turns.get(requestId);
-    if (!turn || approvals.get(approvalId) !== requestId) return;
+    if (!turn || approvals.get(approvalId)?.requestId !== requestId) return;
     await turn.gateway.client.request("exec.approval.resolve", {
       id: approvalId,
       decision: DECISIONS[decision],
@@ -638,31 +873,7 @@ export const openClawProvider: ChatProvider = {
       "chat.history",
       { sessionKey: sessionId, limit: 500 },
     );
-    const messages = result.messages ?? [];
-    // A model's own wrapper around a tool (Codex's `exec`) is mirrored beside
-    // the real call; the gateway marks its result as the provider's response.
-    const mirrored = new Set(
-      messages
-        .filter((m) => {
-          const meta = m.__openclaw as { toolOutput?: { source?: string } } | undefined;
-          return m.role === "toolResult" && meta?.toolOutput?.source === "provider-response";
-        })
-        .map((m) => m.toolCallId),
-    );
-    return messages.flatMap((m): ChatSessionMessage[] => {
-      if (m.role === "user") return [{ role: "user", text: textOf(m) }];
-      if (m.role === "toolResult")
-        return mirrored.has(m.toolCallId)
-          ? []
-          : [{ role: "tool", text: textOf(m), toolName: String(m.toolName ?? "") }];
-      if (m.role !== "assistant") return [];
-      const toolCalls = (Array.isArray(m.content) ? (m.content as Record<string, unknown>[]) : [])
-        .filter((part) => part.type === "toolCall" && !mirrored.has(part.id))
-        .map((part) => openClawStep(String(part.name ?? "tool"), part.arguments));
-      const text = textOf(m);
-      if (!text && toolCalls.length === 0) return [];
-      return [{ role: "assistant", text, ...(toolCalls.length > 0 ? { toolCalls } : {}) }];
-    });
+    return transcript(result.messages ?? []);
   },
 
   async readFile(settings, sessionId, href) {
@@ -729,9 +940,10 @@ export const openClawProvider: ChatProvider = {
     await g.client.request("sessions.delete", { key: sessionId });
   },
 
+  /** The runs go on on the gateway: the panel picks them up again (`resume`). */
   shutdown() {
     for (const [requestId, turn] of turns)
-      turn.finish({ requestId, type: "error", message: "cancelled" });
+      turn.finish({ requestId, type: "error", message: "detached" });
     disconnect();
   },
 };

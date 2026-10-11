@@ -340,7 +340,10 @@ account. The web app also
 needs its site in the gateway's `gateway.controlUi.allowedOrigins`. Each chat is a gateway
 session, so the gateway's other conversations can be resumed; the gateway's agents are the models
 to pick. Replies, tool steps, steering and command approvals come through; it works on mail with
-its own skills. The token and device key stay on the device.
+its own skills. A run belongs to the gateway, not the app: when the connection drops it's
+followed again on the next one, and a chat whose reply was cut off by quitting picks the run up
+on the next launch, showing what it did meanwhile and streaming the rest (the chat says so while
+the gateway is out of reach). The token and device key stay on the device.
 
 Other agents on the Mac (Claude Code or Codex in a terminal, Cursor, …) get the same tools from
 that server while the app is open, with a token made in Settings › Agents (its address stays the

@@ -238,6 +238,8 @@ export type ChatEvent =
   | { requestId: string; type: "change"; change: import("@otter-mail/contracts").ChatChange }
   | { requestId: string; type: "approval"; approval: ApprovalRequest }
   | { requestId: string; type: "approvalResolved"; approvalId: string }
+  /** The run so far from the provider's record: replaces what follows the turn's message. */
+  | { requestId: string; type: "transcript"; messages: ChatSessionMessage[] }
   | { requestId: string; type: "steerReturned"; text: string }
   | { requestId: string; type: "done"; responseId: string | null }
   | { requestId: string; type: "error"; message: string };
@@ -713,6 +715,13 @@ export const gmailApi = {
     attachments?: ChatAttachment[];
     previousResponseId?: string;
   }): Promise<{ ok: boolean }> => ipc("agent:send", params),
+
+  /** Picks up a turn lost when the app quit; `resumed: false` → the provider's runs ended with it. */
+  agentResume: (params: {
+    provider: ProviderKind;
+    requestId: string;
+    sessionId: string;
+  }): Promise<{ resumed: boolean }> => ipc("agent:resume", params),
 
   /** Copies dropped, picked or pasted files into the attachments folder. */
   agentStageAttachments: (
