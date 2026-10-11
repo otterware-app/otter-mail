@@ -23,8 +23,10 @@ import {
 import {
   hasOpenClawCredentials,
   normalizeOpenClawUrl,
+  allowOpenClawQuestions as requestOpenClawQuestions,
   openClawPairingRequest,
   openClawProvider,
+  openClawQuestions,
   parseOpenClawSetupCode,
   resetOpenClawConnection,
 } from "./openclaw.js";
@@ -141,6 +143,7 @@ async function getState(): Promise<ProvidersState> {
       hermesHasKey: (await getHermesKey()).length > 0,
       openclawHasToken: await hasOpenClawCredentials(),
       openclawPairingRequest: openClawPairingRequest(),
+      openclawQuestions: openClawQuestions(),
     },
   };
 }
@@ -362,6 +365,26 @@ export async function resumeTurn(kind: ProviderKind, turn: ResumeTurnInput): Pro
     emit({ requestId: turn.requestId, type: "error", message: "detached" });
   });
   return true;
+}
+
+/** Asks the gateway to let this device answer OpenClaw's questions (approved there). */
+export async function allowOpenClawQuestions(): Promise<ProvidersState> {
+  await requestOpenClawQuestions(await getProviderSettings(), () => {
+    checked.delete("openclaw");
+    void check("openclaw");
+  });
+  return getState();
+}
+
+/** Answers a question the run asked; null skips it. */
+export async function answerQuestion(
+  kind: ProviderKind,
+  requestId: string,
+  questionId: string,
+  answers: Record<string, string[]> | null,
+): Promise<void> {
+  logger.info("agent", "question", { provider: kind, requestId, skipped: answers === null });
+  await provider(kind).answerQuestion?.(requestId, questionId, answers);
 }
 
 export async function respondApproval(

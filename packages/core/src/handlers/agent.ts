@@ -222,6 +222,25 @@ export function registerAgentHandlers(): void {
     return { ok: true };
   });
 
+  handle("agent:answerQuestion", async (params: unknown) => {
+    const p = params as Params;
+    const raw = p?.answers;
+    // Answers by question id, each a list of choices (or free text); null skips the question.
+    const answers =
+      raw && typeof raw === "object"
+        ? Object.fromEntries(
+            Object.entries(raw as Record<string, unknown>).map(([id, values]) => [
+              id,
+              Array.isArray(values) ? values.filter((v): v is string => typeof v === "string") : [],
+            ]),
+          )
+        : null;
+    await agent.answerQuestion(providerOf(p), str(p?.requestId), str(p?.questionId), answers);
+    return { ok: true };
+  });
+
+  handle("agent:allowOpenClawQuestions", async () => agent.allowOpenClawQuestions());
+
   handle("agent:steer", async (params: unknown) => {
     const p = params as Params;
     const input = typeof p?.input === "string" ? p.input : "";

@@ -177,6 +177,11 @@ export type ProviderSettingsView = ProviderSettings & {
   openclawHasToken: boolean;
   /** The pairing request this device waits on (`openclaw devices approve <id>`). */
   openclawPairingRequest: string | null;
+  /**
+   * Whether OpenClaw's questions reach this device (null until connected),
+   * and the scope upgrade it waits on to answer them.
+   */
+  openclawQuestions: { allowed: boolean | null; request: string | null };
 };
 
 /**
@@ -194,6 +199,25 @@ export type ToolStep = {
   source?: string;
 };
 
+/**
+ * The agent asking the user something mid-run (OpenClaw's `ask_user`): one
+ * to three questions, each with options and room for an answer of their own.
+ */
+export type ChatQuestion = {
+  id: string;
+  questions: {
+    id: string;
+    header: string;
+    question: string;
+    options: { label: string; description?: string }[];
+    multiSelect: boolean;
+    /** Asks for a secret, which only the agent's own app takes. */
+    secret: boolean;
+  }[];
+  /** Epoch ms when it stops waiting. */
+  expiresAt: number;
+};
+
 /** Canonical stream events, one contract for every provider. */
 export type ChatEvent =
   | { requestId: string; type: "session"; sessionId: string }
@@ -206,6 +230,9 @@ export type ChatEvent =
   | { requestId: string; type: "change"; change: import("@otter-mail/contracts").ChatChange }
   | { requestId: string; type: "approval"; approval: ApprovalRequest }
   | { requestId: string; type: "approvalResolved"; approvalId: string }
+  | { requestId: string; type: "question"; question: ChatQuestion }
+  /** Answered (here or elsewhere), skipped, or expired: the question is no longer asked. */
+  | { requestId: string; type: "questionResolved"; questionId: string }
   /**
    * What the run has written so far, from the provider's own record: it
    * replaces what the panel shows after the turn's message (a run picked up
@@ -296,6 +323,12 @@ export interface ChatProvider {
   steer(requestId: string, input: string): Promise<boolean>;
   /** Answers an approval the turn is waiting on. */
   respondApproval(requestId: string, approvalId: string, decision: ApprovalDecision): Promise<void>;
+  /** Answers a question the run asked (answers by question id); null skips it. */
+  answerQuestion?(
+    requestId: string,
+    questionId: string,
+    answers: Record<string, string[]> | null,
+  ): Promise<void>;
   listSkills(settings: ProviderSettings): Promise<Skill[]>;
   listSessions(settings: ProviderSettings, limit: number): Promise<ChatSession[]>;
   readSession(settings: ProviderSettings, sessionId: string): Promise<ChatSessionMessage[]>;

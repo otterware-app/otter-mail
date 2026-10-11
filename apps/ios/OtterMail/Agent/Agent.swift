@@ -103,6 +103,8 @@ final class Agent {
         /** The conversations attached to a question (their subjects, for the chip). */
         var context: [String] = []
         var approval: Approval?
+        /** What OpenClaw asks the user mid-run, answered in the composer's place. */
+        var question: OpenClaw.Question?
         var error: String?
         /** Not an error: what's going on with a reply (a run waiting to be picked up again). */
         var note: String?
@@ -371,6 +373,10 @@ final class Agent {
     @ObservationIgnored private var gateway: OpenClaw?
     /** The approval this iPhone waits for on the gateway (`openclaw devices approve <id>`). */
     private(set) var openClawPairing: String?
+    /** Whether OpenClaw's questions reach this iPhone (nil until connected). */
+    private(set) var openClawQuestions: Bool?
+    /** The permission for them this iPhone waits on (`openclaw devices approve <id>`). */
+    private(set) var openClawQuestionsRequest: String?
     @ObservationIgnored private var openRun: OpenRun? {
         didSet {
             guard openRun != oldValue else { return }
@@ -497,6 +503,7 @@ final class Agent {
 
     /** What the running turn is waiting on, shown in the composer's place. */
     var pendingApproval: Approval? { turns.last { $0.role == .agent }?.approval }
+    var pendingQuestion: OpenClaw.Question? { turns.last { $0.role == .agent }?.question }
 
     private func updateLast(_ change: (inout Turn) -> Void) {
         guard let i = turns.lastIndex(where: { $0.role == .agent }) else { return }
@@ -512,7 +519,7 @@ final class Agent {
         else if let run, let client { Task { await client.stop(run: run) } }
         approvalAnswer?.resume(returning: false)
         approvalAnswer = nil
-        updateLast { $0.approval = nil }
+        updateLast { $0.approval = nil; $0.question = nil }
         streaming?.cancel()
         streaming = nil
         running = false
@@ -674,8 +681,11 @@ extension Agent {
         gateway?.disconnect()
         gateway = nil
         openClawPairing = nil
+        openClawQuestions = nil
+        openClawQuestionsRequest = nil
         openRun = nil
         Keychain.set(OpenClaw.deviceTokenName, nil)
+        Keychain.set(OpenClaw.scopesName, nil)
     }
 
     func checkOpenClaw() async {
@@ -692,6 +702,7 @@ extension Agent {
                 Hermes.Model(slug: $0.id, name: $0.name, isDefault: $0.isDefault, reasoning: false, canDisableReasoning: false, fast: false)
             }
             openClawPairing = nil
+            openClawQuestions = gateway.questionsAllowed
             status = .ready
             await resumeOpenClaw()
         } catch {
@@ -717,9 +728,9 @@ extension Agent {
     func sendOpenClaw(_ text: String, context: [MailContext]) {
         let question = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let gateway = openClawClient, !question.isEmpty || !context.isEmpty else { return }
-        if running, let session {
-            // Mid-turn: it lands after the current tool calls.
-            Task { if await gateway.steer(session: session, question) { self.turns.append(Turn(role: .user, text: question)) } }
+        if running, let session, let run {
+            // Mid-turn: it lands after the current tool calls, or runs after the turn, which waits for it.
+            Task { if await gateway.steer(session: session, run: run, question) { self.turns.append(Turn(role: .user, text: question)) } }
             return
         }
         turns.append(Turn(role: .user, text: question, context: context.map(\.subject)))
@@ -781,6 +792,10 @@ extension Agent {
                     }
                 case .approvalResolved(let id):
                     updateLast { if $0.approval?.id == id { $0.approval = nil } }
+                case .question(let question):
+                    updateLast { $0.question = question }
+                case .questionResolved(let id):
+                    updateLast { if $0.question?.id == id { $0.question = nil } }
                 case .done:
                     openRun = nil
                 case .failed(let message):
@@ -793,8 +808,37 @@ extension Agent {
             guard self.generation == generation else { return }
             running = false
             self.run = nil
-            updateLast { $0.approval = nil }
+            updateLast { $0.approval = nil; $0.question = nil }
             await loadHistory()
+        }
+    }
+
+    /** Answers what OpenClaw asks (answers by question id); nil skips it. The run goes on with the answer. */
+    func answer(_ question: OpenClaw.Question, _ answers: [String: [String]]?) {
+        guard let gateway = openClawClient else { return }
+        Task {
+            do {
+                try await gateway.answer(question.id, answers)
+                updateLast { if $0.question?.id == question.id { $0.question = nil } }
+            } catch {
+                updateLast { $0.error = "Couldn't send the answer: \(error.localizedDescription)" }
+            }
+        }
+    }
+
+    /**
+     * Asks the gateway to let this iPhone answer OpenClaw's questions; the
+     * user approves it there (`openclaw devices approve <id>`).
+     */
+    func allowOpenClawQuestions() async {
+        guard let gateway = openClawClient else { return }
+        do {
+            let allowed = try await gateway.allowQuestions { self.openClawQuestionsRequest = $0 }
+            openClawQuestionsRequest = nil
+            if allowed { await check() }
+        } catch {
+            openClawQuestionsRequest = nil
+            status = .failed(Self.openClawProblem(error))
         }
     }
 }

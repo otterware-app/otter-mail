@@ -22,6 +22,29 @@ struct OpenClawTests {
         #expect(OpenClaw.setupCode("not a code") == nil)
     }
 
+    @Test func readsWhatTheAgentAsks() throws {
+        let record: [String: Any] = [
+            "id": "ask_1", "status": "pending", "expiresAtMs": 2000.0, "sessionKey": "s",
+            "questions": [[
+                "questionId": "target", "header": "Target", "question": "Where should I deploy?", "multiSelect": true,
+                "options": [["label": "Staging", "description": "Safe"], ["label": "Production"]],
+            ]],
+        ]
+        let question = try #require(OpenClaw.question(record))
+        #expect(question.id == "ask_1")
+        #expect(question.expires == Date(timeIntervalSince1970: 2))
+        let item = try #require(question.items.first)
+        #expect(item.id == "target" && item.multiSelect && !item.secret)
+        #expect(item.options == [.init(label: "Staging", description: "Safe"), .init(label: "Production", description: nil)])
+        // Answered or expired ones aren't asked.
+        #expect(OpenClaw.question(record.merging(["status": "answered"]) { $1 }) == nil)
+    }
+
+    @Test func namesCatalogToolsByWhatTheyCall() {
+        #expect(OpenClaw.stepName("tool_call", ["id": "ask_user", "args": [:]]) == "Ask user")
+        #expect(OpenClaw.stepName("exec", ["command": "make test"]) == "Ran make test")
+    }
+
     @Test func foldsToolResultsIntoTheirCalls() {
         let rows: [[String: Any]] = [
             ["role": "user", "content": "Check the build"],

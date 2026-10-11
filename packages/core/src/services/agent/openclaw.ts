@@ -41,6 +41,7 @@ import type {
   ApprovalDecision,
   ApprovalRequest,
   ChatEvent,
+  ChatQuestion,
   ChatProvider,
   ChatSession,
   ChatSessionMessage,
@@ -49,7 +50,14 @@ import type {
 } from "./types.js";
 
 const CONNECT_TIMEOUT_MS = 8_000;
-const SCOPES = ["operator.read", "operator.write", "operator.approvals"];
+/**
+ * What this device asks for. Answering the agent's questions came later: a
+ * device paired without it signs in with the scopes it has, and asks for it
+ * separately (`allowOpenClawQuestions`), as the gateway refuses a paired
+ * device that just asks for more.
+ */
+const QUESTIONS = "operator.questions";
+const SCOPES = ["operator.read", "operator.write", "operator.approvals", QUESTIONS];
 
 /** `chris-agent-01.tail1234.ts.net`, `https://…` → `wss://…`. */
 export function normalizeOpenClawUrl(raw: string): string {
@@ -136,7 +144,21 @@ export function openClawPairingRequest(): string | null {
   return pairingRequest;
 }
 
-type Gateway = { url: string; client: GatewayProtocolClient<GatewayBrowserDeviceAuthPlan> };
+type Gateway = {
+  url: string;
+  client: GatewayProtocolClient<GatewayBrowserDeviceAuthPlan>;
+  /** What the gateway granted this device. */
+  scopes: string[];
+};
+
+/** Whether the agent's questions reach this device (null until it has connected). */
+let questionsAllowed: boolean | null = null;
+/** The scope upgrade for questions this device waits on (`openclaw devices approve <id>`). */
+let questionsRequest: string | null = null;
+
+export function openClawQuestions(): { allowed: boolean | null; request: string | null } {
+  return { allowed: questionsAllowed, request: questionsRequest };
+}
 
 let current: { url: string; ready: Promise<Gateway> } | null = null;
 const listeners = new Set<(event: EventFrame) => void>();
@@ -168,6 +190,7 @@ function open(url: string, { token, bootstrapToken }: Credentials): Promise<Gate
   return new Promise((resolve, reject) => {
     let requestId = 0;
     let settled = false;
+    let scopes: string[] = [];
     const settle = (error: Error | null) => {
       if (settled) return;
       settled = true;
@@ -175,7 +198,7 @@ function open(url: string, { token, bootstrapToken }: Credentials): Promise<Gate
       if (error) {
         client.stop();
         reject(error);
-      } else resolve({ url, client });
+      } else resolve({ url, client, scopes });
     };
     const timer = setTimeout(
       () => settle(new Error("The gateway didn't answer.")),
@@ -203,11 +226,12 @@ function open(url: string, { token, bootstrapToken }: Credentials): Promise<Gate
         };
       },
       createRequestId: () => `otter-mail-${++requestId}`,
-      buildConnectPlan: ({ nonce, challengeTs }) =>
+      buildConnectPlan: async ({ nonce, challengeTs }) =>
         lifecycle.buildPlan({
           client: clientInfo,
           role: "operator",
-          defaultScopes: SCOPES,
+          // The scopes this device was approved for, when it has been.
+          defaultScopes: (await heldScopes()) ?? SCOPES,
           token: token || undefined,
           bootstrapToken: bootstrapToken || undefined,
           preferBootstrapToken: Boolean(bootstrapToken),
@@ -225,8 +249,10 @@ function open(url: string, { token, bootstrapToken }: Credentials): Promise<Gate
         device: plan.device,
       }),
       onConnectHello: (hello, context) => lifecycle.acceptHello(hello, context.plan),
-      onHello: () => {
+      onHello: (hello) => {
         pairingRequest = null;
+        scopes = hello.auth?.scopes ?? [];
+        questionsAllowed = scopes.includes(QUESTIONS);
         // The device token the gateway just issued replaces the one-time setup code.
         if (bootstrapToken) void clearOpenClawBootstrapToken();
         settle(null);
@@ -287,7 +313,57 @@ function disconnect(): void {
 export async function resetOpenClawConnection(): Promise<void> {
   disconnect();
   pairingRequest = null;
+  questionsAllowed = null;
+  questionsRequest = null;
   await clearOpenClawDeviceToken();
+}
+
+/** The scopes the device token from an earlier pairing carries. */
+async function heldScopes(): Promise<string[] | null> {
+  const stored = JSON.parse((await getOpenClawDeviceToken()) || "null") as {
+    scopes?: string[];
+  } | null;
+  return stored?.scopes?.length ? stored.scopes : null;
+}
+
+/**
+ * Asks the gateway to let this device answer the agent's questions; the user
+ * approves it there (`openclaw devices approve <id>`). Approved, the gateway
+ * issues a new device token, and the next connection signs in with it.
+ */
+export async function allowOpenClawQuestions(
+  settings: ProviderSettings,
+  changed: () => void,
+): Promise<void> {
+  const g = await gateway(settings);
+  if (g.scopes.includes(QUESTIONS)) return;
+  const { requestId } = await g.client.request<{ requestId: string }>(
+    "device.scopes.requestUpgrade",
+    { scopes: [...new Set([...g.scopes, ...SCOPES])] },
+  );
+  questionsRequest = requestId;
+  changed();
+  g.client
+    .request<{ status: string; deviceToken?: string; scopes?: string[] }>(
+      "device.scopes.waitUpgrade",
+      { requestId },
+      { timeoutMs: null },
+    )
+    .then(async (result) => {
+      logger.info("agent", "openclaw questions upgrade", { status: result.status });
+      if (result.status !== "approved" || !result.deviceToken) return;
+      await setOpenClawDeviceToken(
+        JSON.stringify({ token: result.deviceToken, scopes: result.scopes ?? [] }),
+      );
+      if (current?.url === g.url) disconnect();
+    })
+    .catch((error: unknown) =>
+      logger.info("agent", "openclaw questions upgrade failed", { error: String(error) }),
+    )
+    .finally(() => {
+      if (questionsRequest === requestId) questionsRequest = null;
+      changed();
+    });
 }
 
 type Agent = { id: string; name?: string; identity?: { name?: string } };
@@ -351,6 +427,12 @@ type Turn = {
   requestId: string;
   sessionKey: string;
   runId: string;
+  /**
+   * The runs its steers started: a steer the runtime takes mid-turn joins
+   * the run, one it can't runs after it, under its own id. The turn lasts
+   * until they're all over.
+   */
+  steers: Set<string>;
   gateway: Gateway;
   emit: Emit;
   /** The run's live text, sent again to a window that comes back mid-run. */
@@ -364,6 +446,8 @@ type Turn = {
 const turns = new Map<string, Turn>();
 /** Approvals the user hasn't answered, by id. */
 const approvals = new Map<string, { requestId: string; approval: ApprovalRequest }>();
+/** Questions the user hasn't answered, by id. */
+const questions = new Map<string, { requestId: string; question: ChatQuestion }>();
 
 const DECISIONS: Record<ApprovalDecision, string> = {
   once: "allow-once",
@@ -377,6 +461,7 @@ function newTurn(requestId: string, sessionKey: string, gateway: Gateway, emit: 
     requestId,
     sessionKey,
     runId: requestId,
+    steers: new Set(),
     gateway,
     emit,
     text: new OpenClawText(requestId, emit),
@@ -384,6 +469,10 @@ function newTurn(requestId: string, sessionKey: string, gateway: Gateway, emit: 
     finish: () => {},
   };
 }
+
+/** One of the turn's runs: the one its message started, or one a steer did. */
+const ownsRun = (turn: Turn, runId: unknown) =>
+  runId === turn.runId || (typeof runId === "string" && turn.steers.has(runId));
 
 /** The send a user row came from: its idempotency key, less the gateway's `:user` suffix. */
 function sendKeyOf(row: Record<string, unknown>): string | undefined {
@@ -434,7 +523,9 @@ async function runState(turn: Turn): Promise<RunState> {
   return {
     found: start >= 0,
     messages: start >= 0 ? transcript(rows.slice(start + 1)) : [],
-    active: info.activeRunIds ? info.activeRunIds.includes(turn.runId) : Boolean(info.hasActiveRun),
+    active: info.activeRunIds
+      ? info.activeRunIds.some((id) => ownsRun(turn, id))
+      : Boolean(info.hasActiveRun),
   };
 }
 
@@ -453,19 +544,58 @@ function askApproval(turn: Turn, payload: Record<string, unknown>): void {
   turn.emit({ requestId: turn.requestId, type: "approval", approval });
 }
 
-/** Approvals the run asked for while this app wasn't listening. */
-async function askPendingApprovals(turn: Turn): Promise<void> {
-  try {
-    const pending = await turn.gateway.client.request<Record<string, unknown>[]>(
-      "exec.approval.list",
-      {},
-    );
-    for (const payload of pending) {
-      if (!approvals.has(String(payload.id))) askApproval(turn, payload);
-    }
-  } catch (error) {
-    logger.info("agent", "openclaw approvals unavailable", { error: String(error) });
+/** A question the run asks, from its `question.requested` event or `question.list`. */
+function askQuestion(turn: Turn, record: Record<string, unknown>): void {
+  if (record.sessionKey !== turn.sessionKey || typeof record.id !== "string") return;
+  if ((record.runId && !ownsRun(turn, record.runId)) || record.status !== "pending") return;
+  if (questions.has(record.id)) return;
+  const question: ChatQuestion = {
+    id: record.id,
+    questions: ((record.questions ?? []) as Record<string, unknown>[]).map((q) => ({
+      id: String(q.questionId),
+      header: String(q.header ?? ""),
+      question: String(q.question ?? ""),
+      options: ((q.options ?? []) as { label: string; description?: string }[]).map((o) => ({
+        label: o.label,
+        ...(o.description ? { description: o.description } : {}),
+      })),
+      multiSelect: q.multiSelect === true,
+      secret: q.isSecret === true,
+    })),
+    expiresAt: Number(record.expiresAtMs) || 0,
+  };
+  questions.set(question.id, { requestId: turn.requestId, question });
+  turn.emit({ requestId: turn.requestId, type: "question", question });
+}
+
+/** Approvals and questions the run asked while this app wasn't listening. */
+async function askPending(turn: Turn): Promise<void> {
+  const [pendingApprovals, pendingQuestions] = await Promise.all([
+    turn.gateway.client
+      .request<Record<string, unknown>[]>("exec.approval.list", {})
+      .catch(() => []),
+    // Needs `operator.questions`, which a device paired before may not have yet.
+    turn.gateway.client
+      .request<{ questions?: Record<string, unknown>[] }>("question.list", {})
+      .catch(() => ({ questions: [] })),
+  ]);
+  for (const payload of pendingApprovals) {
+    if (!approvals.has(String(payload.id))) askApproval(turn, payload);
   }
+  for (const record of pendingQuestions.questions ?? []) askQuestion(turn, record);
+}
+
+/**
+ * The session's transcript rows as they're written: a run picked up on
+ * another connection gets its tool calls (with their arguments) from them,
+ * as only the connection that sent the message gets `tool` events.
+ */
+function watchTranscript(turn: Turn): void {
+  void turn.gateway.client
+    .request("sessions.messages.subscribe", { key: turn.sessionKey })
+    .catch((error: unknown) =>
+      logger.info("agent", "openclaw transcript watch failed", { error: String(error) }),
+    );
 }
 
 /** The run so far, for a panel that missed some of it: the transcript, then the live text. */
@@ -547,7 +677,8 @@ async function follow(
         turn.resynced = true;
         if (!state.active) return await settle(state);
         catchUp(turn, state);
-        await askPendingApprovals(turn);
+        watchTranscript(turn);
+        await askPending(turn);
         return hush();
       } catch (error) {
         logger.info("agent", "openclaw reconnect failed", { requestId, error: String(error) });
@@ -556,8 +687,24 @@ async function follow(
     turn.finish({ requestId, type: "error", message: "detached" });
   };
 
-  // Tool calls already shown (`<call id>:start|done`), as both streams may tell of one.
+  // Tool calls already shown (`<call id>:start|done`), as both `tool` events and the transcript may tell of one.
   const seen = new Set<string>();
+  // The turn's runs that have ended.
+  const finals = new Set<string>();
+  const startStep = (id: string | undefined, name: string, args: unknown) => {
+    // A catalog tool's own call (`tool_call:<call id>:ask_user:1`) repeats its `tool_call`.
+    if (id?.startsWith("tool_call:")) return;
+    if (id && seen.has(`${id}:start`)) return;
+    if (id) seen.add(`${id}:start`);
+    turn.text.boundary();
+    emit({ requestId, type: "tool", id, step: openClawStep(name, args) });
+  };
+  const endStep = (id: string | undefined, failed: boolean) => {
+    if (id?.startsWith("tool_call:")) return;
+    if (id && seen.has(`${id}:done`)) return;
+    if (id) seen.add(`${id}:done`);
+    emit({ requestId, type: "toolResult", id, output: failed ? "(failed)" : "(done)" });
+  };
   const onEvent = ({ event, payload }: EventFrame) => {
     const p = (payload ?? {}) as Record<string, unknown>;
     if (event === "exec.approval.requested") return askApproval(turn, p);
@@ -566,44 +713,63 @@ async function follow(
         emit({ requestId, type: "approvalResolved", approvalId: p.id });
       return;
     }
+    if (event === "question.requested") return askQuestion(turn, p);
+    if (event === "question.resolved") {
+      if (typeof p.id === "string" && questions.delete(p.id))
+        emit({ requestId, type: "questionResolved", questionId: p.id });
+      return;
+    }
     if (p.sessionKey !== sessionKey) return;
-    if (p.runId && p.runId !== turn.runId) return;
+    if (event === "session.message") {
+      if (!turn.resynced) return;
+      const row = (p.message ?? {}) as Record<string, unknown>;
+      const meta = (row.__openclaw ?? {}) as {
+        runId?: string;
+        mirrorOrigin?: unknown;
+        toolOutput?: { source?: string };
+      };
+      // Another run's rows, or a model's own wrapper mirrored beside the real call.
+      if ((meta.runId && !ownsRun(turn, meta.runId)) || meta.mirrorOrigin) return;
+      if (meta.toolOutput?.source === "provider-response") return;
+      hush();
+      if (row.role === "assistant" && Array.isArray(row.content))
+        for (const part of row.content as Record<string, unknown>[]) {
+          if (part.type === "toolCall")
+            startStep(
+              typeof part.id === "string" ? part.id : undefined,
+              String(part.name ?? "tool"),
+              part.arguments,
+            );
+        }
+      if (row.role === "toolResult")
+        endStep(
+          typeof row.toolCallId === "string" ? row.toolCallId : undefined,
+          row.isError === true,
+        );
+      return;
+    }
+    // A steer's run may end before its id is back from `chat.send`.
+    if (event === "chat" && p.state === "final" && typeof p.runId === "string") finals.add(p.runId);
+    if (p.runId && !ownsRun(turn, p.runId)) return;
     hush();
     if (event === "agent" && p.stream === "assistant") {
       turn.text.assistant((p.data ?? {}) as Record<string, unknown>);
       return;
     }
-    // Only the connection that sent the message gets `tool` events (with the
-    // call's arguments); a run picked up on another sees its tools as items.
-    const tool =
-      event === "agent" && p.stream === "tool"
-        ? ((p.data ?? {}) as Record<string, unknown>)
-        : event === "agent" && p.stream === "item" && turn.resynced
-          ? ((p.data ?? {}) as Record<string, unknown>)
-          : null;
-    if (tool) {
-      if (p.stream === "item" && tool.kind !== "tool") return;
-      const id = typeof tool.toolCallId === "string" ? tool.toolCallId : undefined;
-      const phase =
-        tool.phase === "start"
-          ? "start"
-          : tool.phase === "result" || tool.phase === "end"
-            ? "done"
-            : null;
-      if (!phase || (id && seen.has(`${id}:${phase}`))) return;
-      if (id) seen.add(`${id}:${phase}`);
-      if (phase === "start") {
-        turn.text.boundary();
-        emit({
-          requestId,
-          type: "tool",
-          id,
-          step: openClawStep(String(tool.name ?? "tool"), tool.args),
-        });
-      } else {
-        const failed = tool.isError === true || tool.status === "failed";
-        emit({ requestId, type: "toolResult", id, output: failed ? "(failed)" : "(done)" });
-      }
+    // A tool's end reaches every connection as an activity item (results aren't transcript events).
+    if (event === "agent" && p.stream === "item" && turn.resynced) {
+      const data = (p.data ?? {}) as Record<string, unknown>;
+      if (data.kind === "tool" && data.phase === "end" && typeof data.toolCallId === "string")
+        endStep(data.toolCallId, data.status === "failed");
+      return;
+    }
+    // Only the connection that sent the message gets these (a run picked up
+    // on another reads its tool calls from the transcript).
+    if (event === "agent" && p.stream === "tool") {
+      const data = (p.data ?? {}) as Record<string, unknown>;
+      const id = typeof data.toolCallId === "string" ? data.toolCallId : undefined;
+      if (data.phase === "start") startStep(id, String(data.name ?? "tool"), data.args);
+      else if (data.phase === "result") endStep(id, data.isError === true);
       return;
     }
     if (event !== "chat") return;
@@ -614,7 +780,9 @@ async function follow(
       case "final":
         turn.text.chat(p, true);
         clearTimeout(quiet);
-        void settle();
+        // Over when its runs are; a steer queued behind it may still be going.
+        if ([turn.runId, ...turn.steers].every((id) => finals.has(id))) void settle();
+        else void check();
         break;
       case "aborted":
         turn.finish({ requestId, type: "error", message: "cancelled" });
@@ -654,6 +822,15 @@ async function follow(
       approvals.delete(approvalId);
       emit({ requestId, type: "approvalResolved", approvalId });
     }
+    for (const [questionId, owner] of questions) {
+      if (owner.requestId !== requestId) continue;
+      questions.delete(questionId);
+      emit({ requestId, type: "questionResolved", questionId });
+    }
+    if (turn.resynced)
+      void turn.gateway.client
+        .request("sessions.messages.unsubscribe", { key: sessionKey })
+        .catch(() => {});
   }
 }
 
@@ -776,6 +953,8 @@ export const openClawProvider: ChatProvider = {
       }
       for (const { requestId: owner, approval } of approvals.values())
         if (owner === requestId) emit({ requestId, type: "approval", approval });
+      for (const { requestId: owner, question } of questions.values())
+        if (owner === requestId) emit({ requestId, type: "question", question });
       return;
     }
     let turn: Turn;
@@ -795,16 +974,20 @@ export const openClawProvider: ChatProvider = {
     if (!state.found) return emit({ requestId, type: "error", message: "not_received" });
     catchUp(turn, state);
     if (!state.active) return emit({ requestId, type: "done", responseId: null });
-    await follow(turn, settings, () => askPendingApprovals(turn));
+    await follow(turn, settings, async () => {
+      watchTranscript(turn);
+      await askPending(turn);
+    });
   },
 
   cancel(requestId) {
     const turn = turns.get(requestId);
     if (!turn) return;
     void turn.gateway.client
+      // With steers, everything the chat has running.
       .request("chat.abort", {
         sessionKey: turn.sessionKey,
-        runId: turn.runId,
+        ...(turn.steers.size > 0 ? {} : { runId: turn.runId }),
       })
       .catch(() => turn.finish({ requestId, type: "error", message: "cancelled" }));
   },
@@ -814,12 +997,13 @@ export const openClawProvider: ChatProvider = {
     const turn = turns.get(requestId);
     if (!turn) return false;
     try {
-      await turn.gateway.client.request("chat.send", {
+      const sent = await turn.gateway.client.request<{ runId?: string }>("chat.send", {
         sessionKey: turn.sessionKey,
         message: input,
         idempotencyKey: crypto.randomUUID(),
         queueMode: "steer",
       });
+      if (sent.runId) turn.steers.add(sent.runId);
       return true;
     } catch {
       return false;
@@ -835,6 +1019,17 @@ export const openClawProvider: ChatProvider = {
     });
     approvals.delete(approvalId);
     turn.emit({ requestId, type: "approvalResolved", approvalId });
+  },
+
+  async answerQuestion(requestId, questionId, answers) {
+    const turn = turns.get(requestId);
+    if (!turn || questions.get(questionId)?.requestId !== requestId) return;
+    await turn.gateway.client.request(
+      "question.resolve",
+      answers ? { id: questionId, answers: { answers } } : { id: questionId, cancel: true },
+    );
+    questions.delete(questionId);
+    turn.emit({ requestId, type: "questionResolved", questionId });
   },
 
   async listSkills() {

@@ -68,11 +68,34 @@ final class OpenClaw {
         var command: String?
     }
 
+    /** The agent asking the user something mid-run (`ask_user`): one to three questions. */
+    nonisolated struct Question: Equatable, Identifiable {
+        nonisolated struct Item: Equatable, Identifiable {
+            nonisolated struct Option: Equatable {
+                var label: String
+                var description: String?
+            }
+            var id: String
+            var header: String
+            var question: String
+            var options: [Option]
+            var multiSelect: Bool
+            /** Asks for a secret, which only OpenClaw's own app takes. */
+            var secret: Bool
+        }
+        var id: String
+        var items: [Item]
+        var expires: Date
+    }
+
     /** What a followed run reports. */
     nonisolated enum Event {
         case reply(Reply)
         case approval(Approval)
         case approvalResolved(String)
+        case question(Question)
+        /** Answered (here or elsewhere), skipped, or expired. */
+        case questionResolved(String)
         case done
         case failed(String)
         /** The gateway's out of reach; the run goes on there, to be picked up again later. */
@@ -83,8 +106,17 @@ final class OpenClaw {
     static let deviceTokenName = "openclaw-device-token"
     static let tokenName = "openclaw-token"
     static let bootstrapName = "openclaw-bootstrap-token"
+    /** The scopes the device token carries. */
+    static let scopesName = "openclaw-device-scopes"
 
-    private static let scopes = ["operator.read", "operator.write", "operator.approvals"]
+    /**
+     * What this iPhone asks for. Answering the agent's questions came later:
+     * an iPhone paired without it signs in with the scopes it has and asks for
+     * it separately (`allowQuestions`), as the gateway refuses a paired device
+     * that just asks for more.
+     */
+    private static let questionsScope = "operator.questions"
+    private static let scopes = ["operator.read", "operator.write", "operator.approvals", questionsScope]
     private static let connectTimeout: TimeInterval = 8
     /** How long a run may go quiet before asking the gateway whether it's still going. */
     private static let quietSeconds: TimeInterval = 60
@@ -153,6 +185,11 @@ final class OpenClaw {
 
     /** The approval this iPhone waits for on the gateway (`openclaw devices approve <id>`). */
     private(set) var pairingRequest: String?
+    /** What the gateway granted this iPhone when it last signed in. */
+    private(set) var granted: [String] = []
+    var questionsAllowed: Bool { granted.contains(Self.questionsScope) }
+    /** The runs each run's steers started, by the run's id. */
+    private var steers: [String: Set<String>] = [:]
 
     private var socket: URLSessionWebSocketTask?
     private var ready: Task<Void, Error>?
@@ -207,14 +244,17 @@ final class OpenClaw {
             "id": "gateway-client", "mode": "ui", "displayName": "Otter Mail (iPhone)",
             "version": appVersion, "platform": "ios",
         ]
-        let payload = ["v3", deviceID, "gateway-client", "ui", "operator", Self.scopes.joined(separator: ","),
+        // The scopes this iPhone was approved for, when it has been.
+        let held = (secrets.get(Self.scopesName) ?? "").split(separator: ",").map(String.init)
+        let scopes = held.isEmpty ? Self.scopes : held
+        let payload = ["v3", deviceID, "gateway-client", "ui", "operator", scopes.joined(separator: ","),
                        String(ts), signed, nonce, "ios", ""].joined(separator: "|")
         let signature = try key.signature(for: Data(payload.utf8))
         let hello: [String: Any]
         do {
             hello = try await request("connect", [
                 "minProtocol": 4, "maxProtocol": 4, "client": client, "role": "operator",
-                "scopes": Self.scopes, "caps": ["tool-events", "exec-approvals"], "auth": auth,
+                "scopes": scopes, "caps": ["tool-events", "exec-approvals"], "auth": auth,
                 "device": [
                     "id": deviceID, "publicKey": Self.base64url(key.publicKey.rawRepresentation),
                     "signature": Self.base64url(signature), "signedAt": ts, "nonce": nonce,
@@ -229,8 +269,11 @@ final class OpenClaw {
             throw error
         }
         pairingRequest = nil
-        if let issued = (hello["auth"] as? [String: Any])?["deviceToken"] as? String, !issued.isEmpty {
+        let accepted = hello["auth"] as? [String: Any] ?? [:]
+        granted = accepted["scopes"] as? [String] ?? []
+        if let issued = accepted["deviceToken"] as? String, !issued.isEmpty {
             secrets.set(Self.deviceTokenName, issued)
+            secrets.set(Self.scopesName, granted.joined(separator: ","))
             // The device token replaces the one-time setup code.
             if bootstrap != nil { secrets.set(Self.bootstrapName, nil) }
         }
@@ -377,16 +420,70 @@ final class OpenClaw {
         try await request("sessions.delete", ["key": session])
     }
 
-    /** Asks the gateway to stop the run. */
+    /** Asks the gateway to stop the run (with its steers, everything the chat has running). */
     func abort(session: String, run: String) async {
-        _ = try? await request("chat.abort", ["sessionKey": session, "runId": run])
+        let all = steers[run]?.isEmpty == false
+        _ = try? await request("chat.abort", all ? ["sessionKey": session] : ["sessionKey": session, "runId": run])
     }
 
-    /** A message for the running turn: it lands after the current tool calls. */
-    func steer(session: String, _ message: String) async -> Bool {
-        (try? await request("chat.send", [
+    /**
+     * A message for the running turn: it lands after the current tool calls,
+     * or, when the runtime can't take it mid-turn, runs after it under its own
+     * id, which the turn follows too.
+     */
+    func steer(session: String, run: String, _ message: String) async -> Bool {
+        guard let sent = try? await request("chat.send", [
             "sessionKey": session, "message": message, "idempotencyKey": UUID().uuidString, "queueMode": "steer",
-        ])) != nil
+        ]) as? [String: Any] else { return false }
+        if let id = sent["runId"] as? String { steers[run, default: []].insert(id) }
+        return true
+    }
+
+    /** One of the turn's runs: the one its message started, or one a steer did. */
+    private func owns(_ run: String, _ id: String?) -> Bool {
+        guard let id else { return false }
+        return id == run || steers[run]?.contains(id) == true
+    }
+
+    /** Answers a question the run asked (answers by question id); nil skips it. */
+    func answer(_ question: String, _ answers: [String: [String]]?) async throws {
+        try await request("question.resolve", answers.map { ["id": question, "answers": ["answers": $0]] } ?? ["id": question, "cancel": true])
+    }
+
+    /**
+     * Asks the gateway to let this iPhone answer the agent's questions;
+     * `pending` gets the request the user approves there. Approved, the
+     * gateway issues a new device token, used from the next connection on.
+     */
+    func allowQuestions(pending: (String) -> Void) async throws -> Bool {
+        try await connected()
+        if questionsAllowed { return true }
+        let registered = try await request("device.scopes.requestUpgrade", ["scopes": Array(Set(granted + Self.scopes)).sorted()]) as? [String: Any]
+        guard let id = registered?["requestId"] as? String else { throw Failure(code: nil, message: "The gateway didn't take the request.") }
+        pending(id)
+        let result = try await request("device.scopes.waitUpgrade", ["requestId": id], timeout: 3600) as? [String: Any] ?? [:]
+        guard result["status"] as? String == "approved", let token = result["deviceToken"] as? String else { return false }
+        secrets.set(Self.deviceTokenName, token)
+        secrets.set(Self.scopesName, (result["scopes"] as? [String] ?? []).joined(separator: ","))
+        disconnect()
+        return true
+    }
+
+    nonisolated static func question(_ record: [String: Any]) -> Question? {
+        guard let id = record["id"] as? String, record["status"] as? String == "pending" else { return nil }
+        let items = (record["questions"] as? [[String: Any]] ?? []).map { q in
+            Question.Item(
+                id: q["questionId"] as? String ?? "",
+                header: q["header"] as? String ?? "",
+                question: q["question"] as? String ?? "",
+                options: (q["options"] as? [[String: Any]] ?? []).map {
+                    Question.Item.Option(label: $0["label"] as? String ?? "", description: $0["description"] as? String)
+                },
+                multiSelect: q["multiSelect"] as? Bool == true,
+                secret: q["isSecret"] as? Bool == true
+            )
+        }
+        return Question(id: id, items: items, expires: Date(timeIntervalSince1970: ((record["expiresAtMs"] as? Double) ?? 0) / 1000))
     }
 
     func approve(_ id: String, choice: String) async throws {
@@ -397,7 +494,7 @@ final class OpenClaw {
     // ── Transcripts ──────────────────────────────────────────────────────────
 
     /** Transcript rows as the chat shows them (tool results folded into their calls). */
-    static func transcript(_ rows: [[String: Any]]) -> [Message] {
+    nonisolated static func transcript(_ rows: [[String: Any]]) -> [Message] {
         // A model's own wrapper around a tool (Codex's `exec`) is mirrored beside
         // the real call; the gateway marks its result as the provider's response.
         let mirrored = Set(rows.compactMap { row -> String? in
@@ -434,7 +531,7 @@ final class OpenClaw {
     }
 
     /** A row's text: a string, or its text parts. */
-    static func text(_ content: Any?) -> String {
+    nonisolated static func text(_ content: Any?) -> String {
         if let text = content as? String { return text }
         return (content as? [[String: Any]] ?? [])
             .filter { $0["type"] as? String == "text" }
@@ -443,7 +540,11 @@ final class OpenClaw {
     }
 
     /** "Ran git status" for a shell command, else the tool's name in words. */
-    static func stepName(_ name: String, _ args: Any?) -> String {
+    nonisolated static func stepName(_ name: String, _ args: Any?) -> String {
+        // A tool reached through the tool catalog comes wrapped: `tool_call { id: "ask_user", args }`.
+        if name == "tool_call", let wrapped = args as? [String: Any], let inner = wrapped["id"] as? String {
+            return stepName(inner, wrapped["args"])
+        }
         if ["exec", "bash", "shell"].contains(name), let command = (args as? [String: Any])?["command"] as? String {
             return "Ran \(command.components(separatedBy: "\n").first ?? command)"
         }
@@ -451,7 +552,7 @@ final class OpenClaw {
         return words.prefix(1).uppercased() + words.dropFirst()
     }
 
-    private static func sendKey(_ row: [String: Any]) -> String? {
+    private nonisolated static func sendKey(_ row: [String: Any]) -> String? {
         let key = (row["__openclaw"] as? [String: Any])?["idempotencyKey"] as? String ?? row["idempotencyKey"] as? String
         guard let key else { return nil }
         return key.hasSuffix(":user") ? String(key.dropLast(5)) : key
@@ -477,7 +578,7 @@ final class OpenClaw {
             }
         }
         // `activeRunIds` is the exact set when the gateway knows it; mid-run it may only say `hasActiveRun`.
-        let active = (info["activeRunIds"] as? [String]).map { $0.contains(run) } ?? (info["hasActiveRun"] as? Bool ?? false)
+        let active = (info["activeRunIds"] as? [String]).map { $0.contains { owns(run, $0) } } ?? (info["hasActiveRun"] as? Bool ?? false)
         return RunState(found: start != nil, reply: reply, active: active)
     }
 
@@ -499,10 +600,11 @@ final class OpenClaw {
     }
 
     /**
-     * Follows a run until it ends. The gateway sends every connection its
-     * sessions' events, so when the socket drops the run is picked up on the
-     * next one, and what went unseen is read from the transcript. A run that
-     * goes quiet (a long command) is asked after, not given up on.
+     * Follows a run until it ends, with the runs its steers start. The gateway
+     * sends every connection its sessions' events, so when the socket drops
+     * the run is picked up on the next one, and what went unseen is read from
+     * the transcript. A run that goes quiet (a long command) is asked after,
+     * not given up on.
      */
     private func follow(session: String, run: String, picking: Bool = false,
                         start: (() async throws -> Void)?) -> AsyncStream<Event> {
@@ -513,10 +615,13 @@ final class OpenClaw {
                 var live: [(id: String, text: String)] = []
                 var liveSteps: [Step] = []
                 var seen = Set<String>()
+                var finals = Set<String>()
                 var lastShown = Reply()
                 var activity = Date()
                 var ended = false
                 var dropped = false
+                // Picked up on a connection that didn't send the message: tool calls come from the transcript.
+                var resynced = picking
 
                 func show() {
                     var reply = base
@@ -539,22 +644,78 @@ final class OpenClaw {
                     ended = true
                     continuation.yield(event)
                 }
+                func startStep(_ id: String?, _ name: String, _ args: Any?) {
+                    // A catalog tool's own call (`tool_call:<call id>:ask_user:1`) repeats its `tool_call`.
+                    if id?.hasPrefix("tool_call:") == true { return }
+                    if let id { guard seen.insert("\(id):start").inserted else { return } }
+                    liveSteps.append(Step(id: id, name: Self.stepName(name, args)))
+                    show()
+                }
+                func endStep(_ id: String?, failed: Bool) {
+                    if id?.hasPrefix("tool_call:") == true { return }
+                    if let id { guard seen.insert("\(id):done").inserted else { return } }
+                    guard let i = liveSteps.lastIndex(where: { id == nil ? $0.output == nil : $0.id == id }) else { return }
+                    liveSteps[i].output = failed ? "(failed)" : "(done)"
+                    show()
+                }
+                /** The end, as the transcript has it (one reply, steps with their results). */
+                func settle() async {
+                    if let state = try? await state(session: session, run: run), !ended { catchUp(state) }
+                    finish(.done)
+                }
+                /** Settles once the gateway has nothing of the turn's running. */
+                func settleIfOver() async {
+                    guard let state = try? await state(session: session, run: run), !ended, !state.active else { return }
+                    catchUp(state)
+                    finish(.done)
+                }
+                func watchTranscript() {
+                    Task { @MainActor in _ = try? await request("sessions.messages.subscribe", ["key": session]) }
+                }
 
                 let listener = UUID()
                 listeners[listener] = { name, payload in
                     guard !ended else { return }
-                    if name == "exec.approval.requested" {
+                    switch name {
+                    case "exec.approval.requested":
                         let request = payload["request"] as? [String: Any] ?? [:]
                         guard request["sessionKey"] as? String == session, let id = payload["id"] as? String else { return }
                         continuation.yield(.approval(Approval(id: id, command: request["command"] as? String ?? request["commandPreview"] as? String)))
                         return
-                    }
-                    if name == "exec.approval.resolved", let id = payload["id"] as? String {
-                        continuation.yield(.approvalResolved(id))
+                    case "exec.approval.resolved":
+                        if let id = payload["id"] as? String { continuation.yield(.approvalResolved(id)) }
                         return
+                    case "question.requested":
+                        guard payload["sessionKey"] as? String == session,
+                              payload["runId"] == nil || self.owns(run, payload["runId"] as? String),
+                              let question = Self.question(payload) else { return }
+                        continuation.yield(.question(question))
+                        return
+                    case "question.resolved":
+                        if let id = payload["id"] as? String { continuation.yield(.questionResolved(id)) }
+                        return
+                    default:
+                        break
                     }
                     guard payload["sessionKey"] as? String == session else { return }
-                    if let id = payload["runId"] as? String, id != run { return }
+                    // A steer's run may end before its id is back from `chat.send`.
+                    if name == "chat", payload["state"] as? String == "final", let id = payload["runId"] as? String { finals.insert(id) }
+                    if name == "session.message" {
+                        guard resynced else { return }
+                        let row = payload["message"] as? [String: Any] ?? [:]
+                        let meta = row["__openclaw"] as? [String: Any] ?? [:]
+                        // Another run's rows, or a model's own wrapper mirrored beside the real call.
+                        if let id = meta["runId"] as? String, !self.owns(run, id) { return }
+                        if meta["mirrorOrigin"] != nil { return }
+                        activity = Date()
+                        if row["role"] as? String == "assistant" {
+                            for part in row["content"] as? [[String: Any]] ?? [] where part["type"] as? String == "toolCall" {
+                                startStep(part["id"] as? String, part["name"] as? String ?? "tool", part["arguments"])
+                            }
+                        }
+                        return
+                    }
+                    if let id = payload["runId"] as? String, !self.owns(run, id) { return }
                     activity = Date()
                     let data = payload["data"] as? [String: Any] ?? [:]
                     switch (name, payload["stream"] as? String, payload["state"] as? String) {
@@ -565,26 +726,20 @@ final class OpenClaw {
                         else if data["replace"] as? Bool == true { live[index].text = data["delta"] as? String ?? "" }
                         else { live[index].text += data["delta"] as? String ?? "" }
                         show()
-                    // Only the connection that sent the message gets `tool` events; another sees the tool as an item.
-                    case ("agent", "tool", _), ("agent", "item", _):
-                        if payload["stream"] as? String == "item", data["kind"] as? String != "tool" { return }
+                    // Only the connection that sent the message gets these.
+                    case ("agent", "tool", _):
                         let id = data["toolCallId"] as? String
-                        let phase = data["phase"] as? String == "start" ? "start" : ["result", "end"].contains(data["phase"] as? String) ? "done" : nil
-                        guard let phase else { return }
-                        if let id { guard seen.insert("\(id):\(phase)").inserted else { return } }
-                        if phase == "start" {
-                            liveSteps.append(Step(id: id, name: Self.stepName(data["name"] as? String ?? "tool", data["args"])))
-                        } else if let i = liveSteps.lastIndex(where: { id == nil ? $0.output == nil : $0.id == id }) {
-                            let failed = data["isError"] as? Bool == true || data["status"] as? String == "failed"
-                            liveSteps[i].output = failed ? "(failed)" : "(done)"
+                        if data["phase"] as? String == "start" { startStep(id, data["name"] as? String ?? "tool", data["args"]) }
+                        else if data["phase"] as? String == "result" { endStep(id, failed: data["isError"] as? Bool == true) }
+                    // Every connection gets a tool's end as an activity item.
+                    case ("agent", "item", _):
+                        if resynced, data["kind"] as? String == "tool", data["phase"] as? String == "end" {
+                            endStep(data["toolCallId"] as? String, failed: data["status"] as? String == "failed")
                         }
-                        show()
                     case ("chat", _, "final"):
-                        // The end, as the transcript has it (one reply, steps with their results).
-                        Task { [self] in
-                            if let state = try? await self.state(session: session, run: run) { catchUp(state) }
-                            finish(.done)
-                        }
+                        // Over when its runs are; a steer queued behind it may still be going.
+                        let over = ([run] + (self.steers[run] ?? [])).allSatisfy(finals.contains)
+                        Task { over ? await settle() : await settleIfOver() }
                     case ("chat", _, "aborted"):
                         finish(.failed("Stopped."))
                     case ("chat", _, "error"):
@@ -598,6 +753,8 @@ final class OpenClaw {
                 defer {
                     listeners[listener] = nil
                     closeListeners[closer] = nil
+                    steers[run] = nil
+                    if resynced { Task { @MainActor in _ = try? await request("sessions.messages.unsubscribe", ["key": session]) } }
                     continuation.finish()
                 }
 
@@ -610,7 +767,8 @@ final class OpenClaw {
                         guard state.found else { return finish(.failed("OpenClaw never got this message; send it again.")) }
                         catchUp(state)
                         guard state.active else { return finish(.done) }
-                        await askPending(session: session) { continuation.yield(.approval($0)) }
+                        watchTranscript()
+                        await askPending(session: session, run: run) { continuation.yield($0) }
                     }
                 } catch let failure as Failure where failure.code == "unreachable" || failure.code == "timeout" {
                     return finish(picking ? .detached : .failed("Can't reach the gateway. Are you on Tailscale?"))
@@ -628,9 +786,12 @@ final class OpenClaw {
                         for delay in Self.reconnectDelays where !ended && !Task.isCancelled {
                             try? await Task.sleep(for: .seconds(delay))
                             guard let state = try? await state(session: session, run: run) else { continue }
+                            resynced = true
                             catchUp(state)
-                            if state.active { await askPending(session: session) { continuation.yield(.approval($0)) } }
-                            else { finish(.done) }
+                            if state.active {
+                                watchTranscript()
+                                await askPending(session: session, run: run) { continuation.yield($0) }
+                            } else { finish(.done) }
                             back = true
                             break
                         }
@@ -638,10 +799,7 @@ final class OpenClaw {
                         activity = Date()
                     } else if Date().timeIntervalSince(activity) > Self.quietSeconds {
                         activity = Date()
-                        if let state = try? await state(session: session, run: run), !state.active {
-                            catchUp(state)
-                            finish(.done)
-                        }
+                        await settleIfOver()
                     }
                 }
             }
@@ -649,13 +807,19 @@ final class OpenClaw {
         }
     }
 
-    /** Approvals the run asked for while nobody was listening. */
-    private func askPending(session: String, _ ask: (Approval) -> Void) async {
-        let pending = (try? await request("exec.approval.list", [:])) as? [[String: Any]] ?? []
-        for approval in pending {
+    /** Approvals and questions the run asked while nobody was listening. */
+    private func askPending(session: String, run: String, _ ask: (Event) -> Void) async {
+        let approvals = (try? await request("exec.approval.list", [:])) as? [[String: Any]] ?? []
+        for approval in approvals {
             let request = approval["request"] as? [String: Any] ?? [:]
             guard request["sessionKey"] as? String == session, let id = approval["id"] as? String else { continue }
-            ask(Approval(id: id, command: request["command"] as? String ?? request["commandPreview"] as? String))
+            ask(.approval(Approval(id: id, command: request["command"] as? String ?? request["commandPreview"] as? String)))
+        }
+        // Needs `operator.questions`, which an iPhone paired before may not have yet.
+        let questions = ((try? await request("question.list", [:])) as? [String: Any])?["questions"] as? [[String: Any]] ?? []
+        for record in questions where record["sessionKey"] as? String == session {
+            if record["runId"] != nil, !owns(run, record["runId"] as? String) { continue }
+            if let question = Self.question(record) { ask(.question(question)) }
         }
     }
 }
