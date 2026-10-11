@@ -71,7 +71,8 @@ when a feature lands or goes.
   JSON request on stdin and prints JSON. Building it needs full Xcode (macOS 26 SDK).
 - `scripts/`: dev runner, desktop packaging (`build-desktop-artifact.ts`), release helpers.
 - `assets/`: app icons like T3 Code's: `prod/` for releases, `dev/` for the blueprint variant that
-  unpackaged runs wear. `pnpm icons:export` regenerates the dev icon and both `.icns` files.
+  unpackaged runs wear. Every icon (Mac, Linux, web, iPhone, the picker's per theme) is drawn from
+  the one mark, `prod/otter-mail-symbol.svg`: `pnpm icons:export` regenerates them all.
 - `changelog/`: notes on Mac and web releases (`<version>.md`, images in `images/`), shown on
   otterware.app/mail/changelog (the website repository copies them hourly) and on the version's
   GitHub Release (workflows copy it there); the app only links there. A note is marketing, written only when the user asks for one (the

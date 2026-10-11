@@ -13,7 +13,14 @@ execFileSync("pnpm", ["--filter", "@otter-mail/web", "build"], { cwd: site, stdi
 
 NodeFS.rmSync(dist, { recursive: true, force: true });
 NodeFS.mkdirSync(dist);
-for (const name of ["index.html", "favicon.png", "assets", "todoist-callback"]) {
+for (const name of [
+  "index.html",
+  "favicon.ico",
+  "favicon.svg",
+  "apple-touch-icon.png",
+  "assets",
+  "todoist-callback",
+]) {
   NodeFS.cpSync(NodePath.join(web, name), NodePath.join(dist, name), { recursive: true });
 }
 console.log("Site assembled in site/dist.");
