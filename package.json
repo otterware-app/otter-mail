@@ -16,7 +16,6 @@
     "build": "vp run --filter './apps/*' build",
     "build:translator": "node scripts/build-translator.ts",
     "icons:export": "node scripts/export-brand-icons.ts",
-    "icons:themes": "node scripts/export-theme-icons.ts",
     "dev:ios": "node scripts/dev-ios.ts",
     "ios:resources": "node scripts/export-ios-resources.ts",
     "release:ios": "node scripts/release-ios.ts",

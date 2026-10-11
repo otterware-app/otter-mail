@@ -1,6 +1,6 @@
 import { APP_THEMES } from "./theme-palettes.ts";
 
-/** Bundled icons, independent of the appearance's theme. Codex is the original silver mark. */
+/** Bundled icons, independent of the appearance's theme. Codex is the Otterware mark, ivory and charcoal. */
 export const APP_ICONS = APP_THEMES.map(({ id, label }) => ({ id, label }));
 export const DEFAULT_APP_ICON = "codex";
 

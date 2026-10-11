@@ -19,15 +19,17 @@ function applyIcon(value: unknown): void {
   if (!isAppIcon(value)) return;
   revision++;
   chosen = value;
-  for (const rel of ["icon", "apple-touch-icon"]) {
-    let link = document.querySelector<HTMLLinkElement>(`link[rel="${rel}"]`);
-    if (!link) {
-      link = document.createElement("link");
+  // The default is index.html's own icons, whose favicon follows the system's light or dark.
+  for (const link of document.querySelectorAll("link[data-app-icon]")) link.remove();
+  if (value !== DEFAULT_APP_ICON) {
+    for (const rel of ["icon", "apple-touch-icon"]) {
+      const link = document.createElement("link");
       link.rel = rel;
+      link.type = "image/png";
+      link.href = appIconUrl(value);
+      link.dataset.appIcon = "";
       document.head.appendChild(link);
     }
-    link.type = "image/png";
-    link.href = appIconUrl(value);
   }
   for (const listener of listeners) listener();
 }
