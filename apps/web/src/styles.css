@@ -652,6 +652,10 @@ html[data-window-controls="none"] {
   border-color: color-mix(in srgb, var(--foreground) 10%, transparent);
   box-shadow: 0 24px 64px -24px rgb(0 0 0 / 65%);
 }
+/* A passage of the agent chat being cited, while its comment is open. */
+::highlight(otter-cite) {
+  background-color: color-mix(in srgb, var(--foreground) 16%, transparent);
+}
 /* Dimmed, lightly blurred window behind a modal dialog. */
 @utility dialog-backdrop {
   background: color-mix(in srgb, var(--canvas) 60%, transparent);

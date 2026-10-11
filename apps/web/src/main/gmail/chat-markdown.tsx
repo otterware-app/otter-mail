@@ -157,7 +157,7 @@ export const ChatMarkdown = memo(function ChatMarkdown({
   return (
     <>
       <LinkContext.Provider value={links}>
-        <div className="flex select-text flex-col gap-3 text-sm leading-relaxed text-foreground">
+        <div className="flex select-text flex-col gap-3 text-sm leading-relaxed text-foreground wrap-break-word">
           <Markdown
             remarkPlugins={[remarkGfm]}
             components={COMPONENTS}

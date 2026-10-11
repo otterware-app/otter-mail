@@ -14,6 +14,7 @@ import {
   MailIcon,
   SendIcon,
   TextQuoteIcon,
+  QuoteIcon,
   FolderIcon,
   Trash2Icon,
   XIcon,
@@ -65,6 +66,13 @@ import {
   type QuoteContext,
 } from "./chat-context";
 import { ChatMarkdown } from "./chat-markdown";
+import {
+  CitationCommentEditor,
+  CiteSelectionButton,
+  rangeAnchor,
+  withCitations,
+  type Citation,
+} from "./chat-cite";
 import { AttachmentPreview, attachmentPreview, type PreviewFile } from "./attachment-preview";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./menu";
 import { ChatChanges, mergeChatChanges } from "./chat-changes";
@@ -167,6 +175,8 @@ type ChatTurn = {
   intent?: "queued" | "steer" | "promoted";
   /** Files sent with a user message (thumbnails for images). */
   attachments?: SentAttachment[];
+  /** Passages of earlier replies the user message quotes, with their comments. */
+  citations?: Omit<Citation, "id">[];
   error?: string;
   /** Agent turns: when the run started / settled, for the "Worked for" fold. */
   startedAt?: number;
@@ -339,6 +349,7 @@ type Outgoing = {
   context?: ContextMeta;
   attachments?: ChatAttachment[];
   sent?: SentAttachment[];
+  citations?: Citation[];
 };
 
 /**
@@ -983,6 +994,24 @@ export function AgentChatPanel({
   }
 
   const [draft, setDraft] = useState("");
+  // Passages cited from replies into each tab's next message, and the one whose comment is open.
+  const [citationsByTab, setCitationsByTab] = useState<Record<string, Citation[]>>({});
+  const citations = citationsByTab[activeId] ?? [];
+  const setCitations = (update: (list: Citation[]) => Citation[]) =>
+    setCitationsByTab((all) => ({ ...all, [activeId]: update(all[activeId] ?? []) }));
+  const [commenting, setCommenting] = useState<{
+    id: string;
+    anchor: DOMRect;
+    side: "above" | "below";
+    range?: Range;
+  } | null>(null);
+  const [transcript, setTranscript] = useState<HTMLDivElement | null>(null);
+  const commentingCitation = commenting && citations.find((c) => c.id === commenting.id);
+  const cite = (text: string, range: Range) => {
+    const id = crypto.randomUUID();
+    setCitations((list) => [...list, { id, text }]);
+    setCommenting({ id, anchor: rangeAnchor(range), side: "below", range });
+  };
   // Turns in flight, one per conversation: each streams into its own chat, so
   // tabs can work in parallel.
   const [runs, setRuns] = useState<Record<string, Run>>({});
@@ -1355,7 +1384,12 @@ export function AgentChatPanel({
   /** Consumes the composer (text, skill, attached context) into a message. */
   const compose = (): Outgoing | null => {
     const question = draft.trim();
-    if ((!question && !activeSkill && files.count === 0) || !usable || !active) return null;
+    if (
+      (!question && !activeSkill && files.count === 0 && citations.length === 0) ||
+      !usable ||
+      !active
+    )
+      return null;
     if (files.staging) {
       toast.info("Attachments are still being added");
       return null;
@@ -1363,21 +1397,28 @@ export function AgentChatPanel({
     const { staged, sent } = files.take();
     const attached = attach && context ? context : null;
     const skill = activeSkill ?? undefined;
+    const cited = citations;
+    const text = withCitations(question, cited);
     setDraft("");
     setActiveSkill(null);
+    setCitations(() => []);
+    setCommenting(null);
     // A quote is one-shot — release it once it's been sent.
     if (attached && quote) onClearQuote?.();
     return {
       id: crypto.randomUUID(),
       convoId: active.id,
       question,
-      input: attached ? buildHandoffText(question, attached, providerKind) : question,
+      input: attached ? buildHandoffText(text, attached, providerKind) : text,
       skill,
       title: clampTitle(
-        skill ? `/${skill.name} ${question}` : question || sent[0]?.name || "Attachment",
+        skill
+          ? `/${skill.name} ${question}`
+          : question || cited[0]?.comment || cited[0]?.text || sent[0]?.name || "Attachment",
       ),
       attachments: staged.length > 0 ? staged : undefined,
       sent: sent.length > 0 ? sent : undefined,
+      citations: cited.length > 0 ? cited : undefined,
       context: attached
         ? {
             count: attached.conversations.length || 1,
@@ -1436,6 +1477,7 @@ export function AgentChatPanel({
           skill: msg.skill?.name,
           context: msg.context,
           attachments: msg.sent,
+          citations: msg.citations?.map(({ text, comment }) => ({ text, comment })),
           intent,
         },
         {
@@ -1598,7 +1640,12 @@ export function AgentChatPanel({
               ...m,
               question: text,
               // Keep the attached context block, swap the question above it.
-              input: m.input === m.question ? text : m.input.replace(m.question, text),
+              input:
+                m.input === m.question
+                  ? text
+                  : m.question
+                    ? m.input.replace(m.question, text)
+                    : `${text}\n\n${m.input}`,
               title: clampTitle(text),
             }
           : m,
@@ -1927,6 +1974,7 @@ export function AgentChatPanel({
     setDraft(draftsRef.current[activeId] ?? "");
     setActiveSkill(null);
     setEditing(null);
+    setCommenting(null);
     shownIdRef.current = activeId;
   }, [activeId, draftRef]);
 
@@ -1987,7 +2035,7 @@ export function AgentChatPanel({
 
   // Send button (Otter Code's ComposerPrimaryActions): queue vs steer while a
   // turn runs; holding ⌘ flips it for one message.
-  const hasDraft = Boolean(draft.trim() || activeSkill || files.count > 0);
+  const hasDraft = Boolean(draft.trim() || activeSkill || files.count > 0 || citations.length > 0);
   const alternateAction = followUp === "queue" ? "steer" : "queue";
   const submitMode: "send" | "queue" | "steer" = run
     ? modHeld
@@ -2159,7 +2207,10 @@ export function AgentChatPanel({
               viewportClassName="topbar-scroll-fade px-3 pb-3 pt-(--workspace-titlebar-scroll-fade-height)"
               render={<MessageScroller.Viewport />}
             >
-              <MessageScroller.Content className="mx-auto flex w-full max-w-3xl flex-col gap-2 px-2">
+              <MessageScroller.Content
+                ref={setTranscript}
+                className="mx-auto flex w-full max-w-3xl flex-col gap-2 px-2"
+              >
                 {turns.length === 0 && hydrating === activeId ? (
                   <div className="px-2 pt-6 text-center text-sm text-placeholder">
                     Loading this session from {providerName}…
@@ -2174,7 +2225,7 @@ export function AgentChatPanel({
                           {turn.context ? (
                             <ContextRecap context={turn.context} onOpen={openContextItem} />
                           ) : null}
-                          <div className="relative max-w-[80%] select-text whitespace-pre-wrap rounded-2xl bg-message px-4 py-2.5 text-sm leading-relaxed text-message-foreground">
+                          <div className="relative max-w-[80%] select-text whitespace-pre-wrap rounded-2xl bg-message px-4 py-2.5 text-sm leading-relaxed text-message-foreground wrap-anywhere">
                             {turn.skill ? (
                               <span className="mb-1 mr-1.5 inline-flex align-middle">
                                 <SkillBadge name={turn.skill} onAccent />
@@ -2183,6 +2234,17 @@ export function AgentChatPanel({
                             {turn.attachments ? (
                               <SentAttachments attachments={turn.attachments} />
                             ) : null}
+                            {turn.citations?.map((citation, at) => (
+                              // oxlint-disable-next-line react/no-array-index-key -- A sent message's citations never change.
+                              <div key={at} className="mb-2">
+                                <div className="line-clamp-3 border-l-2 border-message-foreground/25 pl-2.5 text-message-foreground/70">
+                                  {citation.text}
+                                </div>
+                                {citation.comment ? (
+                                  <div className="mt-1">{citation.comment}</div>
+                                ) : null}
+                              </div>
+                            ))}
                             {turn.text}
                           </div>
                           {turn.text ? <CopyMessageButton text={turn.text} /> : null}
@@ -2228,11 +2290,13 @@ export function AgentChatPanel({
                         ) : null}
                         {answer ? (
                           <div className="group min-w-0 px-1 py-2">
-                            <ChatMarkdown
-                              text={answer}
-                              onOpenFile={openChatFile}
-                              loadImage={loadChatImage}
-                            />
+                            <div data-cite-source>
+                              <ChatMarkdown
+                                text={answer}
+                                onOpenFile={openChatFile}
+                                loadImage={loadChatImage}
+                              />
+                            </div>
                             {!live ? (
                               <div className="mt-1">
                                 <CopyMessageButton text={answer} />
@@ -2268,6 +2332,26 @@ export function AgentChatPanel({
                 ) : null
               }
             />
+            <CiteSelectionButton root={transcript} onCite={cite} />
+            {commentingCitation && commenting ? (
+              <CitationCommentEditor
+                key={commenting.id}
+                citation={commentingCitation}
+                anchor={commenting.anchor}
+                side={commenting.side}
+                range={commenting.range}
+                onSave={(comment) => {
+                  setCitations((list) =>
+                    list.map((c) =>
+                      c.id === commenting.id ? { ...c, comment: comment.trim() || undefined } : c,
+                    ),
+                  );
+                  setCommenting(null);
+                  inputRef.current?.focus();
+                }}
+                onCancel={() => setCommenting(null)}
+              />
+            ) : null}
             {/* An empty chat shows its headline in the middle of the column. */}
             {hero ? (
               <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-4 px-6">
@@ -2368,6 +2452,30 @@ export function AgentChatPanel({
                         onClick={() => setAttach((a) => !a)}
                       />
                     ) : null}
+                    {citations.map((citation) => (
+                      <AttachmentChip
+                        key={citation.id}
+                        name={`“${citation.text}”`}
+                        detail={citation.comment || "Quote"}
+                        title={
+                          citation.comment
+                            ? `${citation.text}\n\n${citation.comment}`
+                            : citation.text
+                        }
+                        tile={<QuoteIcon />}
+                        onClick={(e) =>
+                          setCommenting({
+                            id: citation.id,
+                            anchor: e.currentTarget.getBoundingClientRect(),
+                            side: "above",
+                          })
+                        }
+                        onRemove={() => {
+                          if (commenting?.id === citation.id) setCommenting(null);
+                          setCitations((list) => list.filter((c) => c.id !== citation.id));
+                        }}
+                      />
+                    ))}
                   </ComposerAttachments>
                   {activeSkill ? (
                     <div className="px-4 pt-3">
