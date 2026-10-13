@@ -40,22 +40,23 @@ from GitHub Releases. Everything in the Mac column works the same, except:
 
 ## Mailboxes & accounts
 
-| Feature                                     | Mac                | Web                                 | iPhone                  |
-| ------------------------------------------- | ------------------ | ----------------------------------- | ----------------------- |
-| Add a Gmail mailbox (Google sign-in)        | ✓ (loopback OAuth) | ✓ (popup; tokens kept by the relay) | ✓ (PKCE)                |
-| Add an IMAP mailbox, servers discovered     | ✓                  | ✓ (no domain autoconfig file: CORS) | ✓                       |
-| Add an Outlook mailbox (Microsoft sign-in)  | ✓ (loopback OAuth) | ✓ (popup; tokens kept by the relay) | ✓ (PKCE)                |
-| IMAP through the relay tunnel               | — (direct)         | ✓ (TLS 1.3 servers only)            | — (direct)              |
-| Several mailboxes: on/off, reorder          | ✓                  | ✓                                   | ✓                       |
-| Rail: switch, unread dots (a setting)       | ✓                  | ✓                                   | — (drawer)              |
-| Rail of spaces: mailboxes, views, Projects  | ✓                  | ✓                                   | —                       |
-| Sidebar collapsed: hover a space to peek    | ✓                  | ✓                                   | —                       |
-| Combined mailbox (all accounts)             | ✓                  | ✓                                   | ✓ ("All")               |
-| Rename and color a mailbox (synced)         | ✓                  | ✓                                   | ✓                       |
-| Google profile picture per mailbox          | ✓ (kept current)   | ✓ (kept current)                    | —                       |
-| Remove a mailbox (unlinks it everywhere)    | ✓                  | ✓                                   | ✓                       |
-| Mailbox linked elsewhere shows "signed out" | ✓                  | ✓                                   | ✓                       |
-| Demo mailbox                                | —                  | `pnpm dev:fake` only                | TestFlight / Xcode only |
+| Feature                                                   | Mac                | Web                                 | iPhone                  |
+| --------------------------------------------------------- | ------------------ | ----------------------------------- | ----------------------- |
+| Add a Gmail mailbox (Google sign-in)                      | ✓ (loopback OAuth) | ✓ (popup; tokens kept by the relay) | ✓ (PKCE)                |
+| Add an IMAP mailbox, servers discovered                   | ✓                  | ✓ (no domain autoconfig file: CORS) | ✓                       |
+| Add an Outlook mailbox (Microsoft sign-in)                | ✓ (loopback OAuth) | ✓ (popup; tokens kept by the relay) | ✓ (PKCE)                |
+| Provider icons in mailbox settings (Gmail, Outlook, IMAP) | ✓                  | ✓                                   | ✓                       |
+| IMAP through the relay tunnel                             | — (direct)         | ✓ (TLS 1.3 servers only)            | — (direct)              |
+| Several mailboxes: on/off, reorder                        | ✓                  | ✓                                   | ✓                       |
+| Rail: switch, unread dots (a setting)                     | ✓                  | ✓                                   | — (drawer)              |
+| Rail of spaces: mailboxes, views, Projects                | ✓                  | ✓                                   | —                       |
+| Sidebar collapsed: hover a space to peek                  | ✓                  | ✓                                   | —                       |
+| Combined mailbox (all accounts)                           | ✓                  | ✓                                   | ✓ ("All")               |
+| Rename and color a mailbox (synced)                       | ✓                  | ✓                                   | ✓                       |
+| Google profile picture per mailbox                        | ✓ (kept current)   | ✓ (kept current)                    | —                       |
+| Remove a mailbox (unlinks it everywhere)                  | ✓                  | ✓                                   | ✓                       |
+| Mailbox linked elsewhere shows "signed out"               | ✓                  | ✓                                   | ✓                       |
+| Demo mailbox                                              | —                  | `pnpm dev:fake` only                | TestFlight / Xcode only |
 
 ## Reading
 
