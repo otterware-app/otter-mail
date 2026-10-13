@@ -25,7 +25,7 @@ when a feature lands or goes.
     implement: window frame, menu, badge, login items, secrets, default mail app,
     terminals, updates. `features.ts` is what each OS's app shows (`desktopBridge.features`).
     The rest of the app asks `hostOS` / `backendOS` and never checks `process.platform`.
-  - `src/handlers/`: the desktop-only handlers (default mail app, app icon, …); `backend.ts` there holds
+  - `src/handlers/`: the desktop-only handlers (default mail app, …); `backend.ts` there holds
     the ones the backend serves.
   - `src/services/`: Google and Microsoft sign-in (loopback OAuth), the agent panel's
     browser (`browser.ts`: its session, the Web Store, popups and permissions; `extensions.ts`
@@ -70,8 +70,8 @@ when a feature lands or goes.
 - `native/translator`: a Swift command-line helper for Apple's on-device Translation. It reads a
   JSON request on stdin and prints JSON. Building it needs full Xcode (macOS 26 SDK).
 - `scripts/`: dev runner, desktop packaging (`build-desktop-artifact.ts`), release helpers.
-- `assets/`: app icons like T3 Code's: `prod/` for releases, `dev/` for the blueprint variant that
-  unpackaged runs wear. Every icon (Mac, Linux, web, iPhone, the picker's per theme) is drawn from
+- `assets/`: app icons like Otter Code's: `prod/` for stable, `nightly/` for the night sky, and `dev/`
+  for the blueprint. The iPhone has stable and dev icons. Every icon is drawn from
   the one mark, `prod/otter-mail-symbol.svg`: `pnpm icons:export` regenerates them all.
 - `changelog/`: notes on Mac and web releases (`<version>.md`, images in `images/`), shown on
   otterware.app/mail/changelog (the website repository copies them hourly) and on the version's
@@ -127,12 +127,15 @@ it; the web app needs it (the relay keeps its Gmail sign-ins alive).
 
 ## Releases
 
-Stable only (no nightlies). The desktop app (Mac, Linux, and web) and the iPhone app release separately, each with
-its own version:
+The desktop app (Mac and Linux) has stable and nightly channels. Web deploys on pushes to main.
+The iPhone app releases separately, with its own version:
 
-- Mac and Linux: run the Release workflow from `main` with a patch/minor/major bump, or push a
-  `vX.Y.Z` tag. It builds the DMG and the .debs (x64, arm64) into one GitHub Release. Installed
-  apps download updates on their own and offer "Restart to update" in the sidebar.
+- Mac and Linux: the Release workflow publishes a nightly on every push to main (each merge).
+  Run it with `channel=nightly` for an immediate nightly, or `channel=stable` to promote the latest published
+  nightly commit (an optional stable version overrides its previewed version). A `vX.Y.Z` tag
+  releases that exact commit. Each release builds the DMG and .debs (x64, arm64). Settings → General
+  selects Stable or Nightly on this computer; updates offer "Restart to update" in the sidebar.
+  Both channels use the same app identity and data; their icons change with the installed build.
   A release never needs a changelog note: don't write one, or ask about one, unless the user asks.
 - iPhone: run the Release iPhone workflow from `main` when `apps/ios` (or what it bundles from
   `packages/shared`) has changed. It uploads to TestFlight and tags `ios-vX.Y.Z`.

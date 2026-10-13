@@ -109,13 +109,6 @@ struct SettingsView: View {
                             Label("Theme", systemImage: "paintpalette")
                         }
                     }
-                    if UIApplication.shared.supportsAlternateIcons {
-                        NavigationLink {
-                            AppIconSettings()
-                        } label: {
-                            Label("App icon", systemImage: "app")
-                        }
-                    }
                     Toggle(isOn: $preferences.fullWidthMessages) {
                         Label("Full-width messages", systemImage: "arrow.left.and.right")
                     }

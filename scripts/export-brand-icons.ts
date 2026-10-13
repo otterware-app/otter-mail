@@ -1,24 +1,13 @@
 #!/usr/bin/env node
-// Regenerates every app icon from the mark, assets/prod/otter-mail-symbol.svg (Otterware's
-// envelope, a charcoal path on a 1024 canvas). The released icon is the mark on an ivory tile
-// (charcoal in dark mode); the development ("blueprint") variant, like T3 Code's assets/dev, is
-// it in white on a blue drafting sheet; the picker's icons are it in a theme's accent on its
-// sidebar.
-//   assets/prod/otter-mail-{macos,ios}-1024.png, assets/dev/blueprint-{macos,ios}-1024.png
-//   apps/desktop/resources/icon.icns, icon-dev.icns  the released app, and dev / `pnpm start` runs
-//   apps/desktop/resources/icon.png                  the released Linux app
-//   apps/desktop/resources/app-icons/<theme>.png     the picker's icons (Dock, Linux windows)
-//   apps/web/src/main/assets/app-icons/<theme>.png   their pictures, and the web's favicon
-//   apps/web/public/favicon.{svg,ico}, apple-touch-icon.png
-//   the iPhone's AppIcon (light, dark, tinted), AppIcon-<theme>, AppIconPreview-<theme>, OtterMark
+// Regenerates the stable, nightly (night sky) and dev (blueprint) icons from
+// assets/prod/otter-mail-symbol.svg. Desktop and web use all three; iPhone
+// uses its primary AppIcon for releases and AppIconDev for Debug builds.
 // Renders with playwright-core's Chromium (`pnpm exec playwright-core install
 // chromium-headless-shell` once). Run with `pnpm icons:export`.
 
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import { chromium } from "playwright-core";
-import { APP_THEMES, getThemeColorsForAppearance } from "../packages/shared/src/theme-palettes.ts";
-import { DEFAULT_APP_ICON } from "../packages/shared/src/app-icons.ts";
 
 const root = NodePath.resolve(import.meta.dirname, "..");
 const at = (file: string) => NodePath.join(root, file);
@@ -75,6 +64,32 @@ function blueprint(): Art {
     defs: `<linearGradient id="sheet" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3f86f4"/><stop offset="1" stop-color="#1b4fd1"/></linearGradient>`,
     background: `<rect width="1024" height="1024" fill="url(#sheet)"/>${lines}${ticks}`,
     color: "#ffffff",
+  };
+}
+
+/** Otter Code's nightly treatment: ivory on a purple night sky, above clouds. */
+function nightSky(): Art {
+  const stars = [
+    [156, 190, 2],
+    [287, 106, 3],
+    [415, 180, 2],
+    [674, 108, 3],
+    [812, 202, 2],
+    [918, 310, 3],
+    [109, 412, 2],
+    [740, 288, 2],
+  ];
+  return {
+    defs: `<linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#10143f"/><stop offset="1" stop-color="#393064"/></linearGradient>`,
+    background:
+      `<rect width="1024" height="1024" fill="url(#sky)"/>` +
+      stars
+        .map(([x, y, r]) => `<circle cx="${x}" cy="${y}" r="${r}" fill="${IVORY}" opacity=".65"/>`)
+        .join("") +
+      `<path d="M804 139h22m-11-11v22M218 304h14m-7-7v14" stroke="${IVORY}" stroke-width="3" stroke-linecap="round" opacity=".8"/>` +
+      `<path d="M0 900Q56 782 154 824Q224 653 365 763Q421 865 522 865Q660 740 745 787Q851 639 1024 738V1024H0Z" fill="#62518e"/>` +
+      `<path d="M0 955Q133 854 243 901Q340 1013 475 946Q563 829 689 890Q817 971 921 855Q981 798 1024 833V1024H0Z" fill="#8270b3"/>`,
+    color: IVORY,
   };
 }
 
@@ -150,8 +165,26 @@ try {
   write("apps/desktop/resources/icon.icns", await icns((size) => png(mac(light), size)));
   write("apps/desktop/resources/icon-dev.icns", await icns((size) => png(mac(dev), size)));
   write("apps/desktop/resources/icon.png", await png(tile(light), 512));
+  write("apps/desktop/resources/icon-dev.png", await png(tile(dev), 512));
+  const nightly = nightSky();
+  write("assets/nightly/nightly-macos-1024.png", await png(mac(nightly), 1024));
+  write("assets/nightly/nightly-linux-1024.png", await png(tile(nightly), 1024));
+  write("apps/desktop/resources/icon-nightly.icns", await icns((size) => png(mac(nightly), size)));
+  write("apps/desktop/resources/icon-nightly.png", await png(tile(nightly), 512));
 
-  // The web's favicon follows the system's light or dark; the picker's icons are pictures.
+  for (const [channel, icon] of [
+    ["dev", dev],
+    ["nightly", nightly],
+  ] as const) {
+    const directory = `apps/web/public/icons/${channel}`;
+    write(`${directory}/favicon.svg`, tile(icon));
+    const sizes = [];
+    for (const size of [16, 32, 48]) sizes.push({ size, data: await png(tile(icon), size) });
+    write(`${directory}/favicon.ico`, ico(sizes));
+    write(`${directory}/apple-touch-icon.png`, await png(square(icon), 180));
+  }
+
+  // The stable web favicon follows the system's light or dark.
   write(
     "apps/web/public/favicon.svg",
     svg(
@@ -186,27 +219,13 @@ try {
   });
   write(`${catalog}/OtterMark.imageset/otter-mark.png`, await png(square(light), 512));
 
-  for (const theme of APP_THEMES) {
-    const colors = getThemeColorsForAppearance(theme, "dark")!;
-    const icon = theme.id === DEFAULT_APP_ICON ? light : flat(colors.sidebar, colors.accent);
-    write(`apps/desktop/resources/app-icons/${theme.id}.png`, await png(mac(icon), 512));
-    write(`apps/web/src/main/assets/app-icons/${theme.id}.png`, await png(square(icon), 192));
-    write(`${catalog}/AppIconPreview-${theme.id}.imageset/icon.png`, await png(square(icon), 192));
-    json(`${catalog}/AppIconPreview-${theme.id}.imageset/Contents.json`, {
-      images: [{ filename: "icon.png", idiom: "universal" }],
-      info,
-    });
-    // The default is the primary AppIcon, restored with setAlternateIconName(nil).
-    if (theme.id === DEFAULT_APP_ICON) continue;
-    write(`${catalog}/AppIcon-${theme.id}.appiconset/icon-1024.png`, await png(square(icon), 1024));
-    json(`${catalog}/AppIcon-${theme.id}.appiconset/Contents.json`, {
-      images: [
-        { filename: "icon-1024.png", idiom: "universal", platform: "ios", size: "1024x1024" },
-      ],
-      info,
-    });
-  }
+  const devIcon = `${catalog}/AppIconDev.appiconset`;
+  write(`${devIcon}/icon-1024.png`, await png(square(dev), 1024));
+  json(`${devIcon}/Contents.json`, {
+    images: [{ filename: "icon-1024.png", idiom: "universal", platform: "ios", size: "1024x1024" }],
+    info,
+  });
 } finally {
   await browser.close();
 }
-console.log(`Icons exported from assets/prod/otter-mail-symbol.svg (${APP_THEMES.length} themes).`);
+console.log(`Icons exported from assets/prod/otter-mail-symbol.svg (stable, nightly and dev).`);

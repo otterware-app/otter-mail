@@ -4,9 +4,7 @@
  * .desktop files and xdg-mime for mail and terminal apps.
  */
 
-import { app, BrowserWindow, nativeTheme, safeStorage, type NativeImage } from "electron";
-
-import { DEFAULT_APP_ICON } from "@otter-mail/shared/app-icons";
+import { app, nativeTheme, safeStorage } from "electron";
 
 import { logger } from "../../logger.js";
 import { appIconImage } from "../../resources.js";
@@ -24,10 +22,6 @@ const background = () => (nativeTheme.shouldUseDarkColors ? "#000000" : "#fafafa
 /** The window controls' glyphs: the renderer's muted foreground. */
 const symbolColor = () => (nativeTheme.shouldUseDarkColors ? "#d4d4d4" : "#525252");
 
-/** Linux shows an app's icon on each of its windows (taskbars, Alt+Tab). */
-let appIcon: NativeImage | null = null;
-const icon = () => (appIcon ??= appIconImage(DEFAULT_APP_ICON));
-
 export const linuxOS: HostOS = {
   nativeMessagingDirectories,
   modifierKey: "ctrlKey",
@@ -39,7 +33,7 @@ export const linuxOS: HostOS = {
     titleBarStyle: "hidden",
     titleBarOverlay: { color: "#00000000", symbolColor: symbolColor(), height: TOPBAR_HEIGHT },
     backgroundColor: background(),
-    icon: icon(),
+    icon: appIconImage(),
   }),
   windowFollowsTheme(win) {
     const update = () => {
@@ -98,10 +92,6 @@ export const linuxOS: HostOS = {
   },
   // No Dock to badge.
   setBadge: () => {},
-  setAppIcon(image) {
-    appIcon = image;
-    for (const win of BrowserWindow.getAllWindows()) win.setIcon(image);
-  },
 
   mailApps: { list: listMailApps, setDefault: setDefaultMailApp },
   terminals: linuxTerminals,

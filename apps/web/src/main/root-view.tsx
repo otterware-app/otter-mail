@@ -5,7 +5,6 @@ import { applyAppTheme, startAppTheme } from "./theme/apply-theme";
 import { applyInterfaceSettings, startInterfaceSettings } from "./theme/interface-settings";
 import { UpdateNotifier } from "./updates";
 import { ThemeEditorHost } from "./settings/theme/ThemeEditorHost";
-import { startAppIcon } from "./theme/app-icon";
 
 // Color theme (Settings → Appearance) for the current appearance, applied
 // before first paint. It also owns the `dark` class on <html>.
@@ -16,7 +15,6 @@ applyInterfaceSettings();
 export function RootView() {
   // Re-theme live on appearance switches and theme picks from any window.
   React.useEffect(() => startAppTheme(), []);
-  React.useEffect(() => startAppIcon(), []);
   React.useEffect(() => startInterfaceSettings(), []);
   React.useEffect(() => startSyncedPreferences(), []);
 

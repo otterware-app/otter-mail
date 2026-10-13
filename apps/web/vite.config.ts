@@ -8,6 +8,7 @@ import { defineConfig, type Plugin } from "vite-plus";
 import { demoAgentServer } from "./dev-agent-server";
 
 import pkg from "./package.json" with { type: "json" };
+import { releaseChannel } from "../../packages/shared/src/release-channel";
 
 const port = Number(process.env.PORT ?? 5833);
 
@@ -38,6 +39,21 @@ export default defineConfig(({ command }) => ({
   // paths, so a page loaded at a deep route (/you@gmail.com/INBOX/…) finds them.
   base: "/",
   plugins: [
+    {
+      name: "otter-build-icons",
+      transformIndexHtml(html) {
+        const channel =
+          command === "serve"
+            ? "dev"
+            : releaseChannel(process.env.OTTER_MAIL_VERSION || pkg.version);
+        return channel === "stable"
+          ? html
+          : html.replace(
+              /href="\/(favicon\.(?:ico|svg)|apple-touch-icon\.png)"/g,
+              `href="/icons/${channel}/$1"`,
+            );
+      },
+    },
     demoAgentServer(),
     demoMailboxes(),
     react(),
@@ -46,7 +62,7 @@ export default defineConfig(({ command }) => ({
   ],
   define: {
     __APP_DISPLAY_NAME__: JSON.stringify("Otter Mail"),
-    __APP_VERSION__: JSON.stringify(pkg.version),
+    __APP_VERSION__: JSON.stringify(process.env.OTTER_MAIL_VERSION?.trim() || pkg.version),
     // `pnpm dev:fake`: a made-up mailbox, no Google or Otter account.
     __DEMO__: JSON.stringify(process.env.VITE_DEMO === "1"),
     // `pnpm dev:demo`: real demo mailboxes, kept apart from the mail you develop with.

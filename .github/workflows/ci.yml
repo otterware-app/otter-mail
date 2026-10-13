@@ -58,6 +58,7 @@ jobs:
 
       - name: Check release scripts
         run: |
+          node --test scripts/release.test.ts .github/scripts/release-source.test.cjs
           node scripts/resolve-release-version.ts --bump patch
           node scripts/build-desktop-artifact.ts --help > /dev/null
           node scripts/dev-runner.ts dev --dry-run

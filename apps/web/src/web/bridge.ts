@@ -20,7 +20,6 @@ import type {
 } from "@otter-mail/contracts";
 
 import { connectBackend } from "./backend";
-import { DEFAULT_APP_ICON, isAppIcon } from "@otter-mail/shared/app-icons";
 import { detectLanguage, hasBuiltInTranslator, translate } from "./translator";
 import {
   SIGN_IN_CANCELLED,
@@ -32,7 +31,6 @@ import {
 const RELAY_URL = import.meta.env.VITE_RELAY_URL || "https://relay.mail.otterware.app";
 const THEME_SOURCE_KEY = "otter:theme-source";
 const TITLE = __DEMO__ ? "Otter Mail (demo)" : "Otter Mail";
-const APP_ICON_KEY = "otter:app-icon";
 if (__DEMO__) document.title = TITLE;
 
 type Listener = (params: unknown) => void;
@@ -41,15 +39,6 @@ const listeners = new Map<string, Set<Listener>>();
 function emit(channel: string, params?: unknown): void {
   for (const listener of listeners.get(channel) ?? []) listener(params);
 }
-
-function appIcon(): string {
-  const stored = localStorage.getItem(APP_ICON_KEY);
-  return isAppIcon(stored) ? stored : DEFAULT_APP_ICON;
-}
-
-window.addEventListener("storage", (event) => {
-  if (event.key === APP_ICON_KEY || event.key === null) emit("appIcon:changed", appIcon());
-});
 
 // ── Things that need the user's click ──────────────────────────────────────
 
@@ -237,13 +226,6 @@ const backend = connectBackend({
 let settingsTarget: unknown = null;
 
 const pageChannels: Record<string, (params: unknown) => unknown> = {
-  "appIcon:get": appIcon,
-  "appIcon:set": (id) => {
-    if (!isAppIcon(id)) throw new Error("Unknown app icon.");
-    localStorage.setItem(APP_ICON_KEY, id);
-    emit("appIcon:changed", id);
-    return id;
-  },
   "window:openSettings": (params) => {
     settingsTarget = params;
     emit("settings:open");
@@ -333,6 +315,7 @@ function themeInfo(): NativeThemeInfo {
 
 const updatesDisabled: UpdateState = {
   status: "disabled",
+  channel: "stable",
   currentVersion: __APP_VERSION__,
   availableVersion: null,
   downloadPercent: null,
@@ -376,6 +359,7 @@ export const webBridge: DesktopBridge = {
   updates: {
     getState: async () => updatesDisabled,
     check: async () => updatesDisabled,
+    setChannel: async () => updatesDisabled,
     download: async () => updatesDisabled,
     install: async () => {},
     onState: () => () => {},

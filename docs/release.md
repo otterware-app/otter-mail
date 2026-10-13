@@ -7,32 +7,45 @@ New releases support Apple Silicon Macs only (arm64). Intel Macs can keep using 
 but no longer receive compatible updates.
 The iPhone app ships separately, with its own version, through `.github/workflows/release-ios.yml`
 ([The iPhone app](#the-iphone-app)).
-There is one channel, stable, like T3 Code's stable train (no nightlies). Installed apps check for
-a new release at launch and every few hours, download it in the background, and show a card at
-the bottom of the sidebar: "Restart to update". It also installs the next time the app quits (⌘Q,
-Dock → Quit, logging out).
+The Mac and Linux app follow [Otter Code's stable and nightly release trains](https://github.com/otterware-app/otter-code/blob/main/.github/workflows/release.yml). Settings → General
+chooses the update channel on this computer. Both channels use the same installed app, mailbox
+cache and account data; switching installs the selected channel's build and icon. The default
+channel follows the installed build until the user chooses one.
+
+Installed apps check at launch and every four hours, download updates in the background, and
+show "Restart to update" in the sidebar. macOS also installs when the app quits; Linux asks for
+the admin password on restart. The default ivory icon identifies stable, the purple night sky
+identifies nightly, and the blue blueprint identifies unpackaged development runs. The web's
+favicon follows its build too; the hosted web app still deploys from main. iPhone has only stable
+(TestFlight and App Store) and dev (Debug) icons.
 
 ## Release cycle
 
 1. Land changes on `main` through pull requests (CI must pass).
-2. Cut a release from `main`:
-   - Actions → Release → Run workflow, choose `patch`, `minor` or `major`; or
-   - `gh workflow run release.yml -f bump=patch` (or `-f version=1.0.0` for an exact version).
+2. **Nightly:** the Release workflow publishes on every push to `main`, including every merged PR.
+   Each run builds that push's exact commit; there is no time gate or scheduled polling.
+   For an immediate build, run Actions → Release → `channel=nightly`, or
+   `gh workflow run release.yml -f channel=nightly`.
+3. A nightly previews the next patch version after the latest stable tag, for example
+   `0.13.10-nightly.20261013.123`. It is a GitHub prerelease, never the latest stable release,
+   and carries only `nightly-mac.yml`, `nightly-linux.yml` and `nightly-linux-arm64.yml` feeds.
+   Nightly runs do not change package versions on main.
+4. **Stable:** run Actions → Release → `channel=stable`, or
+   `gh workflow run release.yml -f channel=stable`. It builds the exact commit of the newest
+   published nightly, using the stable version that nightly previewed. An optional
+   `-f version=1.0.0` overrides the version, keeping that tested commit. A published nightly
+   must exist first. To release another commit already on main, push a stable `vX.Y.Z` tag.
+5. Both channels build an Apple Silicon DMG + ZIP on `macos-15` and Linux .debs (x64 and arm64)
+   on `ubuntu-24.04`, with the same signing and notarization settings. Stable publishes as
+   GitHub's latest release with only `latest-*` feeds, includes an existing changelog note if
+   there is one, and records the released version in `apps/*/package.json` on main.
 
-   The version is the latest `vX.Y.Z` tag with that bump. The very first release ships
-   `apps/desktop/package.json`'s version (`0.1.0`).
-
-3. The workflow builds `main`'s HEAD for arm64 on `macos-15` (DMG + ZIP, with
-   `latest-mac.yml` and blockmaps for the updater) and for Linux on `ubuntu-24.04` (a .deb each
-   for x64 and arm64, with `latest-linux.yml` and `latest-linux-arm64.yml`), publishes the
-   GitHub Release as the latest
-   with the version's changelog note (`changelog/<version>.md`, if `main` has one) above notes
-   generated since the previous release, and commits the new version to
-   `apps/*/package.json` on `main`.
-
-To release a specific commit instead (say, a fix on a release branch), push a tag:
-`git tag v1.2.4 <commit> && git push origin v1.2.4`. A version with a suffix (`1.3.0-rc.1`) is
-published as a GitHub prerelease with no update feed, for testing by hand.
+Each train queues its releases without canceling publishers, so consecutive merges each get
+their own nightly. Version-bump commits pushed by the workflows' `GITHUB_TOKEN` do not trigger
+another workflow run. Manual runs must select the default branch;
+release commits must belong to it. Nightly tags are excluded from the tag trigger. Returning
+from nightly to stable allows the version downgrade until the stable build is installed; automatic
+stable checks never take prereleases. Other local prerelease builds have no update feed.
 
 ### Testing the updater locally
 

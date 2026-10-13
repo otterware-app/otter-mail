@@ -43,6 +43,8 @@ const bridge: DesktopBridge = {
   updates: {
     getState: () => ipcRenderer.invoke("updates:getState") as Promise<UpdateState>,
     check: () => ipcRenderer.invoke("updates:check") as Promise<UpdateState>,
+    setChannel: (channel) =>
+      ipcRenderer.invoke("updates:setChannel", channel) as Promise<UpdateState>,
     download: () => ipcRenderer.invoke("updates:download") as Promise<UpdateState>,
     install: () => ipcRenderer.invoke("updates:install") as Promise<void>,
     onState: (listener) =>

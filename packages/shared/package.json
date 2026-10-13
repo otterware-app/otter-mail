@@ -5,7 +5,7 @@
   "description": "What every app shows the same, the iPhone app included: the color themes, the demo mailbox and what views can wear; and the changelog's format, for the website and the GitHub Releases.",
   "type": "module",
   "exports": {
-    "./app-icons": "./src/app-icons.ts",
+    "./release-channel": "./src/release-channel.ts",
     "./themes": "./src/theme-palettes.ts",
     "./theme-display": "./src/theme-display.ts",
     "./demo-mailboxes": "./src/demo-mailboxes.ts",

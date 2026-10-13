@@ -1,7 +1,8 @@
 /**
  * Auto-update from GitHub Releases through electron-updater. The feed comes
  * from app-update.yml, which electron-builder writes from the publish config
- * (see scripts/build-desktop-artifact.ts); only stable releases are offered.
+ * (see scripts/build-desktop-artifact.ts). Stable and nightly are separate
+ * feeds; Settings → General chooses which to follow on this computer.
  *
  * A new version downloads in the background as soon as it's found. The
  * sidebar then offers "Restart to update"; on macOS it also installs whenever
@@ -14,7 +15,8 @@ import electronUpdater from "electron-updater";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-import { UPDATE_STATE_CHANNEL, type UpdateState } from "@otter-mail/contracts";
+import { UPDATE_STATE_CHANNEL, type UpdateState, type UpdateChannel } from "@otter-mail/contracts";
+import { releaseChannel, versionMatchesChannel } from "@otter-mail/shared/release-channel";
 
 import { broadcast } from "./ipc.js";
 import { logger } from "./logger.js";
@@ -28,6 +30,7 @@ const RELEASES_URL = "https://github.com/otterware-app/otter-mail/releases";
 
 let state: UpdateState = {
   status: "idle",
+  channel: releaseChannel(app.getVersion()),
   currentVersion: app.getVersion(),
   availableVersion: null,
   downloadPercent: null,
@@ -68,7 +71,7 @@ function describeError(err: Error): string {
 }
 
 async function check(): Promise<UpdateState> {
-  if (state.status === "disabled" || state.status === "downloading") return state;
+  if (["disabled", "checking", "downloading"].includes(state.status)) return state;
   if (state.status === "downloaded" || state.manualDownloadUrl) return state;
   setState({ status: "checking", message: null });
   try {
@@ -101,12 +104,59 @@ function asError(err: unknown): Error {
   return err instanceof Error ? err : new Error(String(err));
 }
 
+function configureChannel(channel: UpdateChannel): void {
+  // Setting channel also enables downgrades in electron-updater: set it back
+  // explicitly. A saved channel switch must still work after a failed check
+  // or a restart, including returning from nightly to an older stable build.
+  autoUpdater.channel = channel === "nightly" ? "nightly" : "latest";
+  autoUpdater.allowPrerelease = channel === "nightly";
+  autoUpdater.allowDowngrade =
+    channel === "nightly" || releaseChannel(app.getVersion()) !== channel;
+}
+
+async function setChannel(channel: unknown): Promise<UpdateState> {
+  if (channel !== "stable" && channel !== "nightly") throw new Error("Unknown update channel.");
+  if (state.status === "disabled" || channel === state.channel) return state;
+  if (["checking", "available", "downloading", "downloaded"].includes(state.status)) {
+    throw new Error("Finish the current update before changing channels.");
+  }
+  fs.writeFileSync(
+    path.join(app.getPath("userData"), "update-channel.json"),
+    JSON.stringify(channel),
+  );
+  configureChannel(channel);
+  setState({
+    channel,
+    status: "idle",
+    availableVersion: null,
+    downloadPercent: null,
+    checkedAt: null,
+    message: null,
+    manualDownloadUrl: null,
+  });
+  return check();
+}
+
 export function initUpdates(): void {
+  try {
+    const chosen: unknown = JSON.parse(
+      fs.readFileSync(path.join(app.getPath("userData"), "update-channel.json"), "utf8"),
+    );
+    if (chosen === "stable" || chosen === "nightly") state.channel = chosen;
+  } catch {
+    // First launch, or an invalid preference: follow the installed build.
+  }
   ipcMain.handle("updates:getState", () => state);
   ipcMain.handle("updates:check", () => check());
+  ipcMain.handle("updates:setChannel", (_event, channel: unknown) => setChannel(channel));
   ipcMain.handle("updates:download", () => download());
   ipcMain.handle("updates:install", () => {
-    if (state.status !== "downloaded") return;
+    if (
+      state.status !== "downloaded" ||
+      !state.availableVersion ||
+      !versionMatchesChannel(state.availableVersion, state.channel)
+    )
+      return;
     logger.info("updates", "Restarting to install", { version: state.availableVersion });
     autoUpdater.quitAndInstall(true, true);
   });
@@ -118,18 +168,27 @@ export function initUpdates(): void {
   }
 
   autoUpdater.logger = null;
-  autoUpdater.autoDownload = true;
+  // Validate the offered version's channel before starting its download.
+  autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = hostOS.installsUpdatesOnQuit;
-  autoUpdater.allowPrerelease = false;
-  autoUpdater.allowDowngrade = false;
+  configureChannel(state.channel);
 
   autoUpdater.on("update-available", (info) => {
+    if (!versionMatchesChannel(info.version, state.channel)) {
+      logger.warn("updates", "Ignoring an update from another channel", {
+        version: info.version,
+        channel: state.channel,
+      });
+      setState({ status: "up-to-date", availableVersion: null, checkedAt: Date.now() });
+      return;
+    }
     setState({
-      status: "downloading",
+      status: "available",
       availableVersion: info.version,
       downloadPercent: 0,
       checkedAt: Date.now(),
     });
+    void download();
   });
   autoUpdater.on("update-not-available", () => {
     setState({ status: "up-to-date", availableVersion: null, checkedAt: Date.now() });
@@ -142,6 +201,7 @@ export function initUpdates(): void {
     }
   });
   autoUpdater.on("update-downloaded", (info) => {
+    if (!versionMatchesChannel(info.version, state.channel)) return;
     setState({ status: "downloaded", availableVersion: info.version, downloadPercent: 100 });
   });
   autoUpdater.on("error", (err) => {
