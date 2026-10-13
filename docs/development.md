@@ -36,6 +36,52 @@ then symlinks to the main checkout's `.env.local` and `infra/relay/.dev.vars`) a
 commands as scripts. These files are shared, so editing them in a worktree changes the main
 checkout's copy too.
 
+## GPUI desktop preview
+
+The Rust desktop rewrite lives in `crates/otter-mail` (GPUI UI) and `crates/mail-core`
+(mail backend). It uses `gpui-kit` standard buttons, inputs, menus, lists, settings and
+resize handles, with Otter's original theme colors exported from `packages/shared`.
+
+With Rust installed, run `pnpm dev:native`. It builds the native app, opens the made-up
+mailboxes with `--demo`, and rebuilds/relaunches after Rust or bundled theme changes.
+On macOS it creates the development bundle at
+`.otter-mail/native-app/Otter Mail GPUI.app`. Development data is isolated under
+`.otter-mail/native`; `OTTER_MAIL_HOME` overrides it. Demo mail and preferences are
+in memory, and browser tabs use an incognito session.
+
+Persistent macOS runs encrypt Gmail tokens and saved passwords with a key in the
+login Keychain, through `keyring`'s native macOS backend. Development uses
+`Otter Mail (Dev) Safe Storage` / `Otter Mail (Dev) Key`, separate from the installed
+app's item. Earlier base64-only native development credentials are encrypted on
+open. Keychain errors stop credential loading without clearing the saved files;
+there is no plaintext fallback on macOS. `--demo` keeps mailbox credentials in memory
+and does not access the Keychain for mailbox storage.
+
+`cargo test -p mail-core apple_keychain_persists_across_reopen -- --ignored`
+checks the real login Keychain using a temporary, made-up credential and removes
+its test item. Normal Rust tests use a mock store.
+
+`pnpm build:native` builds without launching; `sh scripts/launch-native.sh --demo`
+opens that build. `pnpm native:resources` regenerates the original theme palette.
+Run `cargo test --workspace` and `cargo fmt --all --check` for native verification,
+in addition to the repository's pnpm checks.
+
+Settings stay in the main window. The macOS right pane embeds WKWebView through
+`gpui-wry`, with tabs, navigation and an address/search field. Linux hides this pane
+and opens links in the system browser; its native build still needs verification.
+
+For Apple Passwords in the embedded browser, right-click a password field and
+choose `AutoFill → Passwords…`. On the tested macOS version, focusing the field and
+pressing Control–Return also opens this native menu. This uses the system's menu,
+separately from the backend's mailbox encryption, and is available in demo mode.
+Only opening the menu has been verified; do not test by filling real credentials.
+Automatic password suggestions and save prompts are not implemented. Arbitrary-site
+passkeys need Apple's [managed browser entitlement](https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.developer.web-browser.public-key-credential),
+which the development bundle does not have.
+
+This preview is not yet the shipping Electron replacement. See
+[GPUI preview coverage](features.md#gpui-desktop-preview) for remaining gaps.
+
 ## Linux
 
 What differs between macOS and Linux lives in `apps/desktop/src/os` (`HostOS`); a new
