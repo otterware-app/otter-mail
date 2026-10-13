@@ -255,7 +255,10 @@ nonisolated extension GraphAPI {
         var found: [String: [GraphMessage]] = [:]
         for (id, answer) in zip(ids, try await batch(requests)) {
             if answer.ok {
-                found[id] = try JSONDecoder().decode(Page<GraphMessage>.self, from: answer.body).value ?? []
+                let page = try JSONDecoder().decode(Page<GraphMessage>.self, from: answer.body)
+                var messages = page.value ?? []
+                if let next = page.nextLink { messages += try await all(next) }
+                found[id] = messages
             } else if answer.status == 404 {
                 found[id] = []
             } else {
@@ -341,6 +344,25 @@ nonisolated extension GraphAPI {
             }
             next = page.nextLink
             if let link = page.deltaLink { delta.link = link }
+        }
+        // Read-state events can omit the conversation and date even when
+        // selected. Resolve them before choosing threads or advancing the cursor.
+        var seen = Set<String>()
+        let missing = delta.changed.filter { $0.conversationId == nil || $0.receivedDateTime == nil }
+            .map(\.id).filter { seen.insert($0).inserted }
+        if !missing.isEmpty {
+            let requests = missing.map { BatchRequest(url: Self.path(Self.messagePath($0), [("$select", "id,conversationId,receivedDateTime")])) }
+            var resolved: [String: GraphMessage] = [:]
+            for (id, answer) in zip(missing, try await batch(requests)) {
+                if answer.ok {
+                    resolved[id] = try JSONDecoder().decode(GraphMessage.self, from: answer.body)
+                } else if answer.status == 404 {
+                    delta.removed.append(id)
+                } else {
+                    throw Self.failure(answer.status, answer.body)
+                }
+            }
+            delta.changed = delta.changed.compactMap { seen.contains($0.id) ? resolved[$0.id] : $0 }
         }
         return delta
     }

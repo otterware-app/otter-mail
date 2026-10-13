@@ -43,6 +43,7 @@ export function useDraftAutosave({
   enabled = true,
   initialDraftId,
   initialMessageId,
+  initialRevision,
   onRemoteChange,
 }: {
   accountId: string | null;
@@ -67,6 +68,7 @@ export function useDraftAutosave({
   initialDraftId?: string | null;
   /** The version the resumed draft was opened at. */
   initialMessageId?: string;
+  initialRevision?: string;
   /** Loads another version into the composer's fields. */
   onRemoteChange?: (detail: GmailMessageDetail) => void | Promise<void>;
 }) {
@@ -79,7 +81,8 @@ export function useDraftAutosave({
   const draftAccountRef = useRef<string | null>(initialDraftId ? accountId : null);
   // The version this composer's content builds on (our last save, or the one
   // we opened / loaded). Anything else on Gmail was written elsewhere.
-  const versionRef = useRef<string | null>(initialMessageId ?? null);
+  const versionRef = useRef<string | null>(initialRevision ?? initialMessageId ?? null);
+  const messageIdRef = useRef<string | null>(initialMessageId ?? null);
   // Thread Gmail assigned on the first save. Without pinning it, every update
   // re-threads the draft — a new list row per save until sync reconciles.
   const adoptedThreadRef = useRef<string | null>(null);
@@ -143,7 +146,8 @@ export function useDraftAutosave({
     pausedRef.current = true;
     try {
       await onRemoteChangeRef.current?.(detail);
-      versionRef.current = detail.id;
+      versionRef.current = detail.draftRevision ?? detail.id;
+      messageIdRef.current = detail.id;
       adoptCurrentSoon();
     } finally {
       pausedRef.current = false;
@@ -198,13 +202,15 @@ export function useDraftAutosave({
         }
         draftIdRef.current = null;
         versionRef.current = null;
+        messageIdRef.current = null;
         adoptedThreadRef.current = null;
       }
       const res = await gmailApi.saveDraft({
         accountId: account,
         draftId: draftIdRef.current ?? undefined,
         sessionKey: sessionKeyRef.current,
-        expectMessageId: draftIdRef.current ? (versionRef.current ?? undefined) : undefined,
+        expectMessageId: draftIdRef.current ? (messageIdRef.current ?? undefined) : undefined,
+        expectRevision: draftIdRef.current ? (versionRef.current ?? undefined) : undefined,
         ...payload,
         threadId: threadRef.current ?? adoptedThreadRef.current ?? undefined,
       });
@@ -220,7 +226,10 @@ export function useDraftAutosave({
       }
       draftIdRef.current = res.draftId;
       draftAccountRef.current = account;
-      if (res.messageId) versionRef.current = res.messageId;
+      if (res.messageId) {
+        messageIdRef.current = res.messageId;
+        versionRef.current = res.revision ?? res.messageId;
+      }
       if (!threadRef.current && res.threadId) adoptedThreadRef.current = res.threadId;
       snapshotRef.current = snapshotAtSave;
       setSaveState("saved");
@@ -266,11 +275,11 @@ export function useDraftAutosave({
       if (doneRef.current || pausedRef.current || savingRef.current) return;
       if (typeof document !== "undefined" && !document.hasFocus()) return;
       try {
-        const { messageId } = await gmailApi.getDraftVersion(account, draftId);
+        const { messageId, revision } = await gmailApi.getDraftVersion(account, draftId);
         // Re-check: a save of ours may have landed while we asked.
         if (doneRef.current || savingRef.current || pausedRef.current) return;
         if (messageId === null) markGoneForEffect.current();
-        else if (messageId !== versionRef.current)
+        else if ((revision ?? messageId) !== versionRef.current)
           await handleRemoteVersionForEffect.current(messageId);
       } catch (err) {
         console.log("[useDraftAutosave:checkFailed]", { error: String(err) });
@@ -294,6 +303,7 @@ export function useDraftAutosave({
       if (remoteRef.current) {
         draftIdRef.current = null;
         versionRef.current = null;
+        messageIdRef.current = null;
         pausedRef.current = false;
       }
       void Promise.resolve(triggerRef.current?.()).finally(() => refreshRef.current());
@@ -313,7 +323,8 @@ export function useDraftAutosave({
   const keepMine = () => {
     const current = remoteRef.current;
     if (current?.kind !== "conflict") return;
-    versionRef.current = current.detail.id;
+    versionRef.current = current.detail.draftRevision ?? current.detail.id;
+    messageIdRef.current = current.detail.id;
     setRemote(null);
     pausedRef.current = false;
     void triggerRef.current?.();
@@ -323,6 +334,7 @@ export function useDraftAutosave({
   const saveAsNew = () => {
     draftIdRef.current = null;
     versionRef.current = null;
+    messageIdRef.current = null;
     snapshotRef.current = "";
     setRemote(null);
     pausedRef.current = false;
@@ -360,7 +372,7 @@ export function useDraftAutosave({
       await new Promise((r) => setTimeout(r, 100));
     }
     const account = draftAccountRef.current;
-    const messageId = versionRef.current;
+    const messageId = messageIdRef.current;
     return account && messageId ? { accountId: account, messageId } : null;
   };
 

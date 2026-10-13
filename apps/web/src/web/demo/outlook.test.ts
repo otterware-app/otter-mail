@@ -300,6 +300,221 @@ async function boot() {
 type Row = { id: string; threadId: string; subject: string; labelIds: string[] };
 
 describe("core's Outlook provider on the demo mailbox", () => {
+  it("saves draft edits and same-named replacement attachments without duplicating drafts", async () => {
+    const { invoke } = await boot();
+    const file = (text: string) => ({
+      name: "notes.txt",
+      mimeType: "text/plain",
+      base64: btoa(text),
+    });
+    const first = await invoke<{ draftId: string; messageId: string; revision: string }>(
+      "gmail:saveDraft",
+      {
+        accountId: EMAIL,
+        to: EMAIL,
+        subject: "Draft test",
+        body: "First",
+        bcc: "private@contoso.example",
+        attachments: [file("old")],
+      },
+    );
+    const detail = await invoke<{ attachments: { id: string }[] }>("gmail:getMessage", {
+      accountId: EMAIL,
+      messageId: first.messageId,
+    });
+    const cached = await invoke<{ bcc: string }>("gmail:getMessage", {
+      accountId: EMAIL,
+      messageId: first.messageId,
+    });
+    expect(cached.bcc).toContain("private@contoso.example");
+    const oldBytes = await invoke<{ base64: string }>("gmail:getAttachmentData", {
+      accountId: EMAIL,
+      messageId: first.messageId,
+      attachmentId: detail.attachments[0].id,
+    });
+    expect(atob(oldBytes.base64)).toBe("old");
+    const second = await invoke<{ draftId: string; messageId: string; revision: string }>(
+      "gmail:saveDraft",
+      {
+        accountId: EMAIL,
+        draftId: first.draftId,
+        expectMessageId: first.messageId,
+        expectRevision: first.revision,
+        to: EMAIL,
+        subject: "Draft test",
+        body: "Second",
+        bcc: "private@contoso.example",
+        attachments: [file("new")],
+      },
+    );
+    expect(second.draftId).toBe(first.draftId);
+    expect(second.messageId).toBe(first.messageId);
+    expect(second.revision).not.toBe(first.revision);
+    const files = await graph(`/me/messages/${second.messageId}/attachments`);
+    expect(files.value).toHaveLength(1);
+    expect(atob(files.value[0].contentBytes as string)).toBe("new");
+    const nextDetail = await invoke<{ attachments: { id: string }[] }>("gmail:getMessage", {
+      accountId: EMAIL,
+      messageId: second.messageId,
+    });
+    const newBytes = await invoke<{ base64: string }>("gmail:getAttachmentData", {
+      accountId: EMAIL,
+      messageId: second.messageId,
+      attachmentId: nextDetail.attachments[0].id,
+    });
+    expect(atob(newBytes.base64)).toBe("new");
+    const saved = await graph<Item>(`/me/messages/${second.messageId}`);
+    expect((saved.body as { content: string }).content).toContain("Second");
+    await invoke("gmail:deleteDraft", { accountId: EMAIL, draftId: second.draftId });
+    expect(
+      await invoke("gmail:getDraftVersion", { accountId: EMAIL, draftId: second.draftId }),
+    ).toMatchObject({ messageId: null });
+  });
+
+  it("detects external Outlook draft edits despite the message ID staying fixed", async () => {
+    const { invoke } = await boot();
+    const draft = await invoke<{ draftId: string; messageId: string; revision: string }>(
+      "gmail:saveDraft",
+      { accountId: EMAIL, to: EMAIL, subject: "Shared draft", body: "Initial" },
+    );
+    await graph(`/me/messages/${draft.messageId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ body: { contentType: "html", content: "<p>Edited elsewhere</p>" } }),
+    });
+    const result = await invoke("gmail:saveDraft", {
+      accountId: EMAIL,
+      draftId: draft.draftId,
+      expectMessageId: draft.messageId,
+      expectRevision: draft.revision,
+      to: EMAIL,
+      subject: "Shared draft",
+      body: "My edit",
+    });
+    expect(result).toMatchObject({ conflict: true, messageId: draft.messageId });
+    expect((await graph<Item>(`/me/messages/${draft.messageId}`)).body).toMatchObject({
+      content: "<p>Edited elsewhere</p>",
+    });
+    const fresh = await invoke<{ draftRevision: string; bodyHtml: string }>(
+      "gmail:loadDraftVersion",
+      { accountId: EMAIL, draftId: draft.draftId, messageId: draft.messageId },
+    );
+    expect(fresh.draftRevision).not.toBe(draft.revision);
+    expect(fresh.bodyHtml).toContain("Edited elsewhere");
+  });
+
+  it("rejects a draft edit that races between the revision check and the write", async () => {
+    const { invoke } = await boot();
+    const draft = await invoke<{ draftId: string; messageId: string; revision: string }>(
+      "gmail:saveDraft",
+      { accountId: EMAIL, to: EMAIL, subject: "Race", body: "Initial" },
+    );
+    const transport = globalThis.fetch;
+    let raced = false;
+    vi.stubGlobal("fetch", async (input: string | URL | Request, init?: RequestInit) => {
+      if (!raced && init?.method === "PATCH" && new Headers(init.headers).has("If-Match")) {
+        raced = true;
+        await transport(`${GRAPH}/me/messages/${draft.messageId}`, {
+          method: "PATCH",
+          headers: { ...AUTH, "Content-Type": "application/json" },
+          body: JSON.stringify({ body: { contentType: "html", content: "<p>Other edit</p>" } }),
+        });
+      }
+      return transport(input, init);
+    });
+    expect(
+      await invoke("gmail:saveDraft", {
+        accountId: EMAIL,
+        draftId: draft.draftId,
+        expectRevision: draft.revision,
+        to: EMAIL,
+        subject: "Race",
+        body: "My edit",
+      }),
+    ).toMatchObject({ conflict: true, messageId: draft.messageId });
+    expect(raced).toBe(true);
+    expect((await graph<Item>(`/me/messages/${draft.messageId}`)).body).toMatchObject({
+      content: "<p>Other edit</p>",
+    });
+  });
+
+  it("deleting a draft that another client already sent leaves the sent message alone", async () => {
+    const { invoke } = await boot();
+    const draft = await invoke<{ draftId: string; messageId: string }>("gmail:saveDraft", {
+      accountId: EMAIL,
+      to: EMAIL,
+      subject: "Sent elsewhere",
+      body: "Keep this",
+    });
+    await graph(`/me/messages/${draft.messageId}/send`, { method: "POST" });
+    await invoke("gmail:deleteDraft", { accountId: EMAIL, draftId: draft.draftId });
+    expect(await graph<Item>(`/me/messages/${draft.messageId}`)).toMatchObject({
+      isDraft: false,
+      subject: "Sent elsewhere",
+    });
+  });
+
+  it("deleting an Outlook folder moves cached mail to Trash without losing headers or bodies", async () => {
+    const { core, invoke } = await boot();
+    await until(() => core.mailStore.countAllMessages(EMAIL) === 25, "initial mailbox");
+    const labels = await invoke<{ id: string; name: string }[]>("gmail:listLabels", {
+      accountId: EMAIL,
+    });
+    const folder = labels.find((l) => l.name === "Clients/Acme")!;
+    const ids = core.mailStore.getMessageIdsForLabel(EMAIL, folder.id);
+    expect(ids.length).toBeGreaterThan(0);
+    const before = await invoke<{ subject: string; bodyHtml: string }>("gmail:getMessage", {
+      accountId: EMAIL,
+      messageId: ids[0],
+    });
+    await invoke("gmail:deleteLabel", { accountId: EMAIL, labelId: folder.id });
+    expect(core.mailStore.getMessageLabelIds(EMAIL, ids[0])).toContain("TRASH");
+    expect(core.mailStore.getMessageDetail(EMAIL, ids[0])).toMatchObject({
+      subject: before.subject,
+      bodyHtml: before.bodyHtml,
+    });
+  });
+
+  it("category edits keep messages in their folder, while folder moves keep categories", async () => {
+    const { core, invoke } = await boot();
+    await until(() => core.mailStore.countAllMessages(EMAIL) === 25, "initial mailbox");
+    const labels = await invoke<{ id: string; name: string }[]>("gmail:listLabels", {
+      accountId: EMAIL,
+    });
+    const target = labels.find((l) => l.name === "Clients/Acme")!;
+    const inbox = await graph(`/me/mailFolders/${await folderId("inbox")}/messages?$top=100`);
+    const mail = inbox.value.find((m) => String(m.subject).startsWith("Action needed"))!;
+    const originalFolder = mail.parentFolderId;
+    await invoke("gmail:modifyMessage", {
+      accountId: EMAIL,
+      messageId: mail.id,
+      addLabelIds: ["category:Finance"],
+    });
+    expect(await graph<Item>(`/me/messages/${mail.id}`)).toMatchObject({
+      parentFolderId: originalFolder,
+      categories: expect.arrayContaining(["Finance", "Urgent"]),
+    });
+    await invoke("gmail:modifyMessage", {
+      accountId: EMAIL,
+      messageId: mail.id,
+      addLabelIds: [target.id],
+      removeLabelIds: ["INBOX"],
+    });
+    expect(await graph<Item>(`/me/messages/${mail.id}`)).toMatchObject({
+      parentFolderId: target.id.slice("folder:".length),
+      categories: expect.arrayContaining(["Finance", "Urgent"]),
+    });
+    await invoke("gmail:modifyThread", {
+      accountId: EMAIL,
+      threadId: mail.conversationId,
+      addLabelIds: ["INBOX"],
+      removeLabelIds: [target.id],
+    });
+    expect(await graph<Item>(`/me/messages/${mail.id}`)).toMatchObject({
+      parentFolderId: originalFolder,
+      categories: expect.arrayContaining(["Finance", "Urgent"]),
+    });
+  });
+
   it("adds the mailbox, syncs it, and reads and changes its mail", async () => {
     const { core, invoke } = await boot();
     const accounts = await invoke<{ id: string; provider?: string }[]>("gmail:listAccounts");

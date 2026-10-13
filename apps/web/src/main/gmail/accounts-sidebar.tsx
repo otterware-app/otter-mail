@@ -34,6 +34,7 @@ import {
   ChevronDownIcon,
   LayersIcon,
   TagIcon,
+  FolderIcon,
   SearchIcon,
   SquarePenIcon,
 } from "lucide-react";
@@ -207,6 +208,7 @@ function AddRow({ label, ...props }: { label: string } & ComponentProps<"button"
 }
 
 function labelIcon(label?: GmailLabel): ReactNode {
+  if (label?.id.startsWith("folder:")) return <FolderIcon className="size-4" />;
   const color = label?.color?.backgroundColor;
   if (color) {
     return <TagIcon className="size-4 fill-current" style={{ color }} />;
@@ -254,7 +256,7 @@ function LabelNode({
   // or only labelled with ⌥ held (Finder's copy modifier).
   const dragProps: RowDragProps | undefined = label
     ? {
-        draggable: true,
+        draggable: !label.id.startsWith("category:"),
         onDragStart: (e) => {
           e.dataTransfer.setData(
             LABEL_DRAG_MIME,
@@ -270,6 +272,7 @@ function LabelNode({
             return;
           }
           if (!e.dataTransfer.types.includes(LABEL_DRAG_MIME)) return;
+          if (label.id.startsWith("category:")) return;
           e.preventDefault();
           e.dataTransfer.dropEffect = "move";
           setDropActive(true);
@@ -284,7 +287,7 @@ function LabelNode({
             return;
           }
           const raw = e.dataTransfer.getData(LABEL_DRAG_MIME);
-          if (!raw) return;
+          if (!raw || label.id.startsWith("category:")) return;
           e.preventDefault();
           actions.onMove(JSON.parse(raw) as LabelDragPayload, label.name);
         },
@@ -339,7 +342,7 @@ function LabelNode({
             <ContextMenuItem icon="pencil" onSelect={() => actions.onRename(label)}>
               Rename…
             </ContextMenuItem>
-            {actions.onRecolor ? (
+            {actions.onRecolor && !label.id.startsWith("folder:") ? (
               <ContextMenuItem icon="paintpalette" onSelect={() => actions.onRecolor?.(label)}>
                 Change color…
               </ContextMenuItem>
@@ -353,7 +356,7 @@ function LabelNode({
             </ContextMenuItem>
             <ContextMenuSeparator />
             <ContextMenuItem icon="trash" color="red" onSelect={() => actions.onDelete(label)}>
-              Delete {actions.noun}
+              Delete {label.id.startsWith("folder:") ? "folder" : actions.noun}
             </ContextMenuItem>
           </ContextMenuContent>
         </ContextMenu>
@@ -432,7 +435,11 @@ export function MailboxSidebarPage({
   const labelsQuery = useLabels(ownAccountId);
   const capabilities = useCapabilities(ownAccountId);
   // Mail in one folder at a time (IMAP): its labels are folders.
-  const labelNoun = capabilities.multipleLabels ? "Label" : "Folder";
+  const labelNoun = capabilities.foldersAndCategories
+    ? "Category"
+    : capabilities.multipleLabels
+      ? "Label"
+      : "Folder";
   const addAccount = useAddAccount();
   const createLabel = useCreateLabel();
 
@@ -476,7 +483,20 @@ export function MailboxSidebarPage({
     allMail,
   ].sort((a, b) => SIDEBAR_SYSTEM_ORDER.indexOf(a.id) - SIDEBAR_SYSTEM_ORDER.indexOf(b.id));
   const userLabels = labels.filter((l) => l.type === "user");
-  const userLabelTree = buildLabelTree(userLabels);
+  const labelSections = capabilities.foldersAndCategories
+    ? [
+        {
+          title: "Folders",
+          labels: userLabels.filter((l) => l.id.startsWith("folder:")),
+          create: false,
+        },
+        {
+          title: "Categories",
+          labels: userLabels.filter((l) => !l.id.startsWith("folder:")),
+          create: true,
+        },
+      ]
+    : [{ title: `${labelNoun}s`, labels: userLabels, create: true }];
 
   const handleAddAccount = async () => {
     console.log("[AccountsSidebar:addAccount]");
@@ -496,7 +516,7 @@ export function MailboxSidebarPage({
     console.log("[AccountsSidebar:createLabel]", { name });
     try {
       await createLabel.mutateAsync({ accountId: selectedAccountId, name });
-      toast.success(`Label "${name}" created`);
+      toast.success(`${labelNoun} "${name}" created`);
       setCreateLabelOpen(false);
       setNewLabelName("");
     } catch {
@@ -505,7 +525,7 @@ export function MailboxSidebarPage({
   };
 
   const handleMoveLabel = (source: LabelDragPayload, targetParentName: string | null) => {
-    if (!selectedAccountId) return;
+    if (!selectedAccountId || source.id.startsWith("category:")) return;
     if (
       targetParentName &&
       (targetParentName === source.name || targetParentName.startsWith(`${source.name}/`))
@@ -568,9 +588,10 @@ export function MailboxSidebarPage({
       return;
     }
     const removeId =
-      (!keep || !capabilities.multipleLabels) &&
+      !label.id.startsWith("category:") &&
+      (!keep || !capabilities.multipleLabels || label.id.startsWith("folder:")) &&
       payload.fromLabelId &&
-      isMoveSourceLabel(payload.fromLabelId, label.id)
+      isMoveSourceLabel(payload.fromLabelId, label.id, capabilities.foldersAndCategories)
         ? payload.fromLabelId
         : null;
     console.log("[AccountsSidebar:dropThreads]", {
@@ -728,45 +749,64 @@ export function MailboxSidebarPage({
                 );
               })}
 
-              {selectedAccountId ? (
-                <Section
-                  title={`${labelNoun}s`}
-                  action={
-                    <SectionAddButton
-                      label={`Add ${labelNoun.toLowerCase()}`}
-                      onClick={() => setCreateLabelOpen(true)}
-                    />
-                  }
-                  dropZone={{
-                    active: rootDropActive,
-                    onDragOver: (e) => {
-                      if (!e.dataTransfer.types.includes(LABEL_DRAG_MIME)) return;
-                      e.preventDefault();
-                      e.dataTransfer.dropEffect = "move";
-                      setRootDropActive(true);
-                    },
-                    onDragLeave: () => setRootDropActive(false),
-                    onDrop: (e) => {
-                      setRootDropActive(false);
-                      const raw = e.dataTransfer.getData(LABEL_DRAG_MIME);
-                      if (!raw) return;
-                      e.preventDefault();
-                      handleMoveLabel(JSON.parse(raw) as LabelDragPayload, null);
-                    },
-                  }}
-                >
-                  {userLabelTree.map((node) => (
-                    <LabelNode
-                      key={node.key}
-                      node={node}
-                      depth={0}
-                      selectedLabelId={selectedLabelId}
-                      onSelectLabel={onSelectLabel}
-                      actions={labelActions}
-                    />
-                  ))}
-                </Section>
-              ) : null}
+              {selectedAccountId
+                ? labelSections.map((section) => (
+                    <Section
+                      key={section.title}
+                      title={section.title}
+                      action={
+                        section.create ? (
+                          <SectionAddButton
+                            label={`Add ${labelNoun.toLowerCase()}`}
+                            onClick={() => setCreateLabelOpen(true)}
+                          />
+                        ) : undefined
+                      }
+                      dropZone={
+                        section.title === "Categories"
+                          ? undefined
+                          : {
+                              active: rootDropActive,
+                              onDragOver: (e) => {
+                                if (!e.dataTransfer.types.includes(LABEL_DRAG_MIME)) return;
+                                e.preventDefault();
+                                e.dataTransfer.dropEffect = "move";
+                                setRootDropActive(true);
+                              },
+                              onDragLeave: () => setRootDropActive(false),
+                              onDrop: (e) => {
+                                setRootDropActive(false);
+                                const raw = e.dataTransfer.getData(LABEL_DRAG_MIME);
+                                if (!raw) return;
+                                e.preventDefault();
+                                handleMoveLabel(JSON.parse(raw) as LabelDragPayload, null);
+                              },
+                            }
+                      }
+                    >
+                      {(section.title === "Categories"
+                        ? section.labels
+                            .toSorted((a, b) => a.name.localeCompare(b.name))
+                            .map((label) => ({
+                              key: label.id,
+                              segment: label.name,
+                              label,
+                              children: [],
+                            }))
+                        : buildLabelTree(section.labels)
+                      ).map((node) => (
+                        <LabelNode
+                          key={node.key}
+                          node={node}
+                          depth={0}
+                          selectedLabelId={selectedLabelId}
+                          onSelectLabel={onSelectLabel}
+                          actions={labelActions}
+                        />
+                      ))}
+                    </Section>
+                  ))
+                : null}
 
               {accounts.length === 0 ? (
                 <AddMailboxMenu
@@ -804,7 +844,7 @@ export function MailboxSidebarPage({
           onOpenChange={(o) => {
             if (!o) setRenameTarget(null);
           }}
-          title={`Rename ${labelNoun}`}
+          title={`Rename ${renameTarget?.id.startsWith("folder:") ? "Folder" : labelNoun}`}
           confirmLabel="Rename"
           confirmVariant="accent"
           confirmDisabled={!renameValue.trim()}
@@ -854,15 +894,17 @@ export function MailboxSidebarPage({
           onOpenChange={(o) => {
             if (!o) setDeleteTarget(null);
           }}
-          title={`Delete ${labelNoun}`}
+          title={`Delete ${deleteTarget?.id.startsWith("folder:") ? "Folder" : labelNoun}`}
           confirmLabel="Delete"
           confirmVariant="accent"
           onConfirm={handleDeleteConfirm}
         >
           <Text variant="small">
-            {capabilities.multipleLabels
-              ? `Delete "${deleteTarget?.name}"? It is removed from every message; the messages themselves and any nested labels are kept.`
-              : `Delete "${deleteTarget?.name}"? Its mail moves to Archive.`}
+            {deleteTarget?.id.startsWith("folder:")
+              ? `Delete "${deleteTarget.name}"? The folder and the mail inside it move to Deleted Items.`
+              : capabilities.multipleLabels
+                ? `Delete "${deleteTarget?.name}"? It is removed from every message; the messages themselves and any nested labels are kept.`
+                : `Delete "${deleteTarget?.name}"? Its mail moves to Archive.`}
           </Text>
         </Dialog>
 

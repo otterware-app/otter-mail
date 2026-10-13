@@ -40,7 +40,10 @@ struct MailboxesSettings: View {
                         HStack(spacing: 12) {
                             MailboxMark(mailbox: mailbox, size: 30)
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(mailbox.displayName).foregroundStyle(palette.text)
+                                HStack(spacing: 6) {
+                                    ProviderMark(provider: mailbox.provider, size: 14)
+                                    Text(mailbox.displayName).foregroundStyle(palette.text)
+                                }
                                 Text(mailbox.signedOut ? "Sign in on this iPhone" : mailbox.email)
                                     .font(.subheadline)
                                     .foregroundStyle(mailbox.signedOut ? palette.warning : palette.muted)
@@ -66,7 +69,7 @@ struct MailboxesSettings: View {
                             }
                         }
                     } label: {
-                        Label(session.busy ?? "Add Gmail mailbox", systemImage: "plus")
+                        Label { Text(session.busy ?? "Add Gmail mailbox") } icon: { GmailMark() }
                     }
                     .disabled(session.busy != nil)
                     Button {
@@ -335,6 +338,37 @@ struct LanguagesSettings: View {
         var list = list
         list.move(fromOffsets: from, toOffset: to)
         return list
+    }
+}
+
+struct GmailMark: View {
+    var size: CGFloat = 18
+
+    var body: some View {
+        Image("GmailMark")
+            .renderingMode(.original)
+            .resizable()
+            .scaledToFit()
+            .frame(width: size, height: size)
+            .accessibilityHidden(true)
+    }
+}
+
+struct ProviderMark: View {
+    let provider: MailProviderKind
+    var size: CGFloat = 14
+
+    var body: some View {
+        Group {
+            switch provider {
+            case .gmail: GmailMark(size: size)
+            case .outlook: MicrosoftMark(size: size)
+            case .imap: Image(systemName: "server.rack").font(.system(size: size))
+            }
+        }
+        .frame(width: size, height: size)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(provider == .gmail ? "Gmail" : provider == .outlook ? "Outlook" : "IMAP")
     }
 }
 

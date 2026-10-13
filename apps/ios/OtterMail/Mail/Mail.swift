@@ -145,7 +145,7 @@ nonisolated enum Folder: Hashable {
         case .allMail: "All Mail"
         case .junk: "Junk"
         case .trash: "Trash"
-        case .label(_, let name): name.split(separator: "/").last.map(String.init) ?? name
+        case .label(let id, let name): id.hasPrefix(OutlookFolders.categoryPrefix) ? name : name.split(separator: "/").last.map(String.init) ?? name
         }
     }
 
@@ -159,7 +159,7 @@ nonisolated enum Folder: Hashable {
         case .allMail: "archivebox"
         case .junk: "xmark.bin"
         case .trash: "trash"
-        case .label: "tag"
+        case .label(let id, _): id.hasPrefix(OutlookFolders.folderPrefix) ? "folder" : "tag"
         }
     }
 }

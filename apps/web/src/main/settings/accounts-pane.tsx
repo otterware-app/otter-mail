@@ -19,6 +19,7 @@ import {
 } from "../gmail/hooks";
 import { RichTextArea, type RichTextRef } from "../gmail/rich-text";
 import { AddMailboxMenu, ImapPasswordForm } from "../gmail/add-mailbox";
+import { ProviderMark } from "../gmail/provider-mark";
 import {
   capabilitiesOf,
   mailServerName,
@@ -354,8 +355,9 @@ function AccountListRow({
       <span className={cn("pointer-events-none contents", !on && "[&>*]:opacity-50")}>
         <AccountAvatar account={account} size="medium" />
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm text-foreground">
-            {getAccountDisplayName(account)}
+          <span className="flex min-w-0 items-center gap-1.5 text-sm text-foreground">
+            <ProviderMark provider={account.provider} />
+            <span className="truncate">{getAccountDisplayName(account)}</span>
           </span>
           <span className="flex min-w-0 items-center gap-1.5 text-[13px] leading-[18px] text-muted-foreground">
             <span className="min-w-0 shrink truncate">{account.email}</span>

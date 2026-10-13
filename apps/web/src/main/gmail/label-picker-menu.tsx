@@ -107,9 +107,13 @@ export function moveToFolder(labelIds: string[], folderId: string, labels: Gmail
 export function useLabelChoices({ accountId, threadId, labelIds }: LabelChoicesParams) {
   const labelsQuery = useLabels(accountId);
   const modifyThread = useModifyThread();
-  const { multipleLabels } = useCapabilities(accountId);
+  const { multipleLabels, foldersAndCategories } = useCapabilities(accountId);
   const labels = labelsQuery.data ?? [];
-  const tree = buildLabelTree(labels.filter(isAssignableLabel));
+  const tree = buildLabelTree(
+    labels
+      .filter(isAssignableLabel)
+      .filter((label) => !foldersAndCategories || label.id.startsWith("category:")),
+  );
   const applied = new Set(labelIds);
 
   const toggle = (labelId: string, checked: boolean) => {
@@ -133,17 +137,24 @@ export function useLabelChoices({ accountId, threadId, labelIds }: LabelChoicesP
     });
   };
 
-  return { tree, applied, toggle, folders: !multipleLabels };
+  return {
+    tree,
+    applied,
+    toggle,
+    folders: !multipleLabels,
+    title: foldersAndCategories ? "Categorize" : multipleLabels ? "Label" : "Move to folder",
+    empty: foldersAndCategories ? "No categories" : "No labels",
+  };
 }
 
 /** The checklist's items: "No labels", or the tree (after Inbox, for folders). */
 export function renderLabelChoices(
-  { tree, applied, toggle, folders }: ReturnType<typeof useLabelChoices>,
+  { tree, applied, toggle, folders, empty }: ReturnType<typeof useLabelChoices>,
   kit: LabelMenuKit,
 ): React.ReactNode {
   if (!folders) {
     return tree.length === 0 ? (
-      <kit.Item disabled>No labels</kit.Item>
+      <kit.Item disabled>{empty}</kit.Item>
     ) : (
       renderLabelMenuNodes(tree, applied, toggle, kit)
     );
@@ -186,7 +197,7 @@ export function LabelPickerMenu({ children, ...params }: LabelPickerMenuProps) {
 export function LabelSubmenu(params: LabelChoicesParams) {
   const choices = useLabelChoices(params);
   return (
-    <DropdownMenuSub label={choices.folders ? "Move to folder" : "Label"}>
+    <DropdownMenuSub label={choices.title}>
       {renderLabelChoices(choices, DROPDOWN_KIT)}
     </DropdownMenuSub>
   );

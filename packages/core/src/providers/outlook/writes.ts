@@ -59,8 +59,6 @@ async function destination(
   if (target) {
     if (target === current) return null;
     if (wholeThread && ownMail && target !== "TRASH") return null;
-    // Back to the inbox: only what's archived (or junk, or trash), not mail in other folders.
-    if (target === "INBOX" && wholeThread && current?.startsWith(FOLDER_PREFIX)) return null;
     return folderOfLabel(accountId, target);
   }
   if (current && remove.includes(current)) {
@@ -253,9 +251,13 @@ async function messagesInCategory(accountId: string, name: string) {
 
 /** The cache's messages (and the app's pending writes) follow a category to its new name: its id. */
 function renameCachedLabel(accountId: string, from: string, to: string): void {
-  for (const id of store.getMessageIdsForLabel(accountId, from)) {
-    store.applyLabelChange(accountId, id, [to], [from]);
-  }
+  store.applyHistoryChanges(
+    accountId,
+    store.getMessageIdsForLabel(accountId, from).flatMap((id) => [
+      { kind: "labelsRemoved" as const, id, labelIds: [from] },
+      { kind: "labelsAdded" as const, id, labelIds: [to] },
+    ]),
+  );
   renamePendingLabel(accountId, from, to);
 }
 
@@ -330,18 +332,30 @@ export async function updateLabel(
   const currentParent = folder.name.includes("/")
     ? folder.name.slice(0, folder.name.lastIndexOf("/"))
     : "";
-  const path = `/me/mailFolders/${encodeURIComponent(folderId)}`;
+  let path = `/me/mailFolders/${encodeURIComponent(folderId)}`;
   if (parentPath !== currentParent) {
     const parent = parentPath
       ? mailbox.folders.find((f) => f.name === parentPath)?.id
       : "msgfolderroot";
     if (!parent) throw new Error(`There's no folder ${parentPath} to move it into.`);
-    await graph(accountId, `${path}/move`, { method: "POST", body: { destinationId: parent } });
+    const moved = await graph<{ id: string }>(accountId, `${path}/move`, {
+      method: "POST",
+      body: { destinationId: parent },
+    });
+    path = `/me/mailFolders/${encodeURIComponent(moved.id)}`;
   }
   if (leaf !== folder.name.slice(folder.name.lastIndexOf("/") + 1)) {
     await graph(accountId, path, { method: "PATCH", body: { displayName: leaf } });
   }
-  await readMailbox(accountId);
+  const after = await readMailbox(accountId);
+  for (const old of mailbox.folders.filter(
+    (f) => f.name === folder.name || f.name.startsWith(`${folder.name}/`),
+  )) {
+    const name = params.name + old.name.slice(folder.name.length);
+    const current = after.folders.find((f) => f.name === name);
+    if (current && current.id !== old.id)
+      renameCachedLabel(accountId, `${FOLDER_PREFIX}${old.id}`, `${FOLDER_PREFIX}${current.id}`);
+  }
 }
 
 /**
@@ -359,6 +373,8 @@ export async function deleteLabel(accountId: string, labelId: string): Promise<v
       });
     }
   } else if (labelId.startsWith(FOLDER_PREFIX)) {
+    const mailbox = await ensureMailbox(accountId);
+    const folder = mailbox.folders.find((f) => f.id === labelId.slice(FOLDER_PREFIX.length));
     await graph(
       accountId,
       `/me/mailFolders/${encodeURIComponent(labelId.slice(FOLDER_PREFIX.length))}`,
@@ -366,6 +382,12 @@ export async function deleteLabel(accountId: string, labelId: string): Promise<v
         method: "DELETE",
       },
     );
+    if (folder)
+      for (const child of mailbox.folders.filter(
+        (f) => f.name === folder.name || f.name.startsWith(`${folder.name}/`),
+      )) {
+        renameCachedLabel(accountId, `${FOLDER_PREFIX}${child.id}`, "TRASH");
+      }
   } else {
     throw new Error("Outlook's own folders can't be deleted.");
   }

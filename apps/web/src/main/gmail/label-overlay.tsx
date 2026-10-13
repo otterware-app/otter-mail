@@ -49,7 +49,8 @@ export function LabelOverlay({
   const [query, setQuery] = useState("");
   const labelsQuery = useLabels(open ? accountId : null);
   // One folder per message (IMAP): labelling is moving, to Inbox too.
-  const folders = !useCapabilities(accountId).multipleLabels;
+  const capabilities = useCapabilities(accountId);
+  const folders = !capabilities.multipleLabels;
   const applied = new Set(appliedLabelIds);
 
   useEffect(() => {
@@ -69,6 +70,11 @@ export function LabelOverlay({
   }
   for (const label of userLabels) {
     if (mode === "move" && label.id === currentLabelId) continue;
+    if (
+      capabilities.foldersAndCategories &&
+      (mode === "move" ? !label.id.startsWith("folder:") : !label.id.startsWith("category:"))
+    )
+      continue;
     choices.push({
       id: label.id,
       name: labelDisplayName(label),
@@ -76,19 +82,32 @@ export function LabelOverlay({
     });
   }
 
-  const title = mode === "move" ? "Move to" : folders ? "Move to folder" : "Label as";
+  const title =
+    mode === "move"
+      ? "Move to"
+      : capabilities.foldersAndCategories
+        ? "Categorize"
+        : folders
+          ? "Move to folder"
+          : "Label as";
+  const noun =
+    folders || (capabilities.foldersAndCategories && mode === "move")
+      ? "folder"
+      : capabilities.foldersAndCategories
+        ? "category"
+        : "label";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent size="large" className="overflow-hidden" showCloseButton={false}>
         <DialogHeader className="sr-only">
           <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>Pick a label</DialogDescription>
+          <DialogDescription>Pick a {noun}</DialogDescription>
         </DialogHeader>
         <Command className="[&_[cmdk-item]]:py-2">
           <CommandInput placeholder={`${title}…`} value={query} onValueChange={setQuery} />
           <CommandList>
-            <CommandEmpty>No labels found.</CommandEmpty>
+            <CommandEmpty>No {noun === "category" ? "categories" : `${noun}s`} found.</CommandEmpty>
             <CommandGroup heading={title}>
               {choices.map((choice) => (
                 <CommandItem

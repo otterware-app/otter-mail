@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import type { ImapSettings, MailServer } from "@otter-mail/contracts";
-import { ChevronRightIcon, MailIcon, ServerIcon } from "lucide-react";
+import { ChevronRightIcon, ServerIcon } from "lucide-react";
+import { GmailMark, MicrosoftMark } from "./provider-mark";
 import { Button } from "~/components/ui/button";
 import { Dialog } from "~/components/ui/dialog";
 import { Field } from "~/components/ui/field";
@@ -23,18 +24,6 @@ import { cn } from "./ui";
 export function readableError(err: unknown): string {
   const raw = err instanceof Error ? err.message : String(err);
   return raw.replace(/^Error invoking remote method '[^']*':\s*/, "").replace(/^Error:\s*/, "");
-}
-
-/** Microsoft's four squares, for Outlook. */
-export function MicrosoftMark({ className = "size-4" }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 21 21" className={className} aria-hidden>
-      <path fill="#f25022" d="M1 1h9v9H1z" />
-      <path fill="#7fba00" d="M11 1h9v9h-9z" />
-      <path fill="#00a4ef" d="M1 11h9v9H1z" />
-      <path fill="#ffb900" d="M11 11h9v9h-9z" />
-    </svg>
-  );
 }
 
 /** Adds an Outlook mailbox; answers it (null when cancelled), or toasts why it couldn't. */
@@ -73,7 +62,7 @@ export function AddMailboxMenu({
       <DropdownMenu>
         <DropdownMenuTrigger asChild>{children}</DropdownMenuTrigger>
         <DropdownMenuContent align={align}>
-          <DropdownMenuItem icon={<MailIcon />} onSelect={onGmail}>
+          <DropdownMenuItem icon={<GmailMark />} onSelect={onGmail}>
             Gmail
           </DropdownMenuItem>
           {providers?.outlook ? (

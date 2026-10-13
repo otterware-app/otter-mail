@@ -336,6 +336,7 @@ export type SaveDraftParams = {
   /** The draft version this edit is based on: the backend refuses to
       overwrite a newer one (changed elsewhere) and reports a conflict. */
   expectMessageId?: string;
+  expectRevision?: string;
   to: string;
   cc?: string;
   bcc?: string;
@@ -347,9 +348,9 @@ export type SaveDraftParams = {
 };
 
 export type SaveDraftResult =
-  | { draftId: string; messageId?: string; threadId?: string }
+  | { draftId: string; messageId?: string; threadId?: string; revision?: string }
   /** Edited elsewhere since `expectMessageId`: nothing was saved. */
-  | { conflict: true; draftId: string; messageId: string }
+  | { conflict: true; draftId: string; messageId: string; revision?: string }
   /** Sent or deleted elsewhere: nothing was saved. */
   | { gone: true; draftId: string };
 
@@ -587,7 +588,10 @@ export const gmailApi = {
   saveDraft: (params: SaveDraftParams): Promise<SaveDraftResult> => ipc("gmail:saveDraft", params),
 
   /** The message backing a draft right now; null = the draft is gone. */
-  getDraftVersion: (accountId: string, draftId: string): Promise<{ messageId: string | null }> =>
+  getDraftVersion: (
+    accountId: string,
+    draftId: string,
+  ): Promise<{ messageId: string | null; revision?: string | null }> =>
     ipc("gmail:getDraftVersion", { accountId, draftId }),
 
   /** A draft's content at a given version (also refreshes the cache). */

@@ -37,13 +37,23 @@ export function writeThreadDrag(dataTransfer: DataTransfer, payload: ThreadDragP
 
 /** Whether moving to `targetLabelId` takes `labelId` off. SENT/DRAFT are
     immutable in Gmail and All Mail isn't a label, so those only gain one. */
-export function isMoveSourceLabel(labelId: string | null, targetLabelId: string): boolean {
+export function isMoveSourceLabel(
+  labelId: string | null,
+  targetLabelId: string,
+  foldersAndCategories = false,
+): boolean {
   return (
     labelId != null &&
     labelId !== targetLabelId &&
     labelId !== "SENT" &&
     labelId !== "DRAFT" &&
-    labelId !== ALL_MAIL_LABEL_ID
+    labelId !== ALL_MAIL_LABEL_ID &&
+    (!foldersAndCategories ||
+      (!targetLabelId.startsWith("category:") &&
+        (labelId === "INBOX" ||
+          labelId === "SPAM" ||
+          labelId === "TRASH" ||
+          labelId.startsWith("folder:"))))
   );
 }
 

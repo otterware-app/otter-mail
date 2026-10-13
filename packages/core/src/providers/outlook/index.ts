@@ -77,6 +77,7 @@ export const outlookProvider: MailProvider = {
   saveDraft: send.saveDraft,
   deleteDraft: send.deleteDraft,
   getDraftVersion: send.getDraftVersion,
+  getDraftRevision: send.getDraftRevision,
   findDraftId: send.findDraftId,
 
   readProfile,

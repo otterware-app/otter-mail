@@ -700,6 +700,7 @@ type Req = {
   path: string[];
   body: unknown;
   prefer: string;
+  ifMatch?: string | null;
 };
 type Answer = { status: number; body?: unknown; bytes?: Uint8Array; contentType?: string };
 
@@ -849,7 +850,11 @@ function delta(box: Mailbox, req: Req, folder: Folder): Answer {
           ),
         ].filter((id) => box.messages[id]?.folderId !== folder.id);
   const items = [
-    ...present.map((m) => pick(messageResource(box, m), fieldList)),
+    // Incremental Graph deltas may omit unchanged headers. Exercise that
+    // path so opening and marking mail read can't erase its list metadata.
+    ...present.map((m) =>
+      pick(messageResource(box, m), since > 0 ? "id,parentFolderId,isRead" : fieldList),
+    ),
     ...removed.map((id) => ({ id, "@removed": { reason: "deleted" } })),
   ];
   const size = pageSize(req.prefer, null);
@@ -1111,6 +1116,8 @@ function messages(box: Mailbox, req: Req, rest: string[]): Answer {
   switch (action) {
     case undefined:
       if (req.method === "PATCH") {
+        if (req.ifMatch && req.ifMatch !== `W/"${m.version}"`)
+          return graphError(412, "ErrorIrresolvableConflict", "The draft changed.");
         applyFields(m, fields(req));
         touch(box, m);
       } else if (req.method === "DELETE") {
@@ -1428,6 +1435,7 @@ function batch(box: Mailbox, req: Req): Answer {
         path: segments(url),
         body: r.body,
         prefer: r.headers?.Prefer ?? "",
+        ifMatch: r.headers?.["If-Match"],
       });
       return {
         id: r.id,
@@ -1465,6 +1473,7 @@ function answer(url: URL, method: string, headers: Headers, raw: unknown): Answe
     path: segments(url),
     body,
     prefer: headers.get("Prefer") ?? "",
+    ifMatch: headers.get("If-Match"),
   });
 }
 

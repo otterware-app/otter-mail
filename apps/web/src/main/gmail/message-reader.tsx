@@ -2160,7 +2160,7 @@ export function MessageReader({
   const modifyThread = useModifyThread();
   // No inbox categories (IMAP): no category chips. One folder per message: a
   // folder chip can't just come off.
-  const { categories, multipleLabels } = useCapabilities(accountId);
+  const { categories, multipleLabels, foldersAndCategories } = useCapabilities(accountId);
   const trashThread = useTrashThread();
   const untrashThread = useUntrashThread();
   const untrashMessage = useUntrashMessage();
@@ -2710,7 +2710,15 @@ export function MessageReader({
                 threadId={conversationId}
                 labelIds={conversationLabelIds}
               >
-                <IconBtn label={multipleLabels ? "Label" : "Move to folder"}>
+                <IconBtn
+                  label={
+                    foldersAndCategories
+                      ? "Categorize"
+                      : multipleLabels
+                        ? "Label"
+                        : "Move to folder"
+                  }
+                >
                   <FolderIcon className="size-4" />
                 </IconBtn>
               </LabelPickerMenu>

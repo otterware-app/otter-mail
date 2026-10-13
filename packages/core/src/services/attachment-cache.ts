@@ -12,12 +12,21 @@
 import { sha256Hex, toBase64 } from "../bytes.js";
 import { platform } from "../platform.js";
 import { providerFor } from "../providers/index.js";
+import { getStoredDraftRevision } from "./mail-store.js";
 
 const DIR = "attachment-cache";
 const MAX_CACHE_BYTES = 512 * 1024 * 1024;
 
 async function pathFor(accountId: string, messageId: string, attachmentId: string) {
-  return `${DIR}/${await sha256Hex(`${accountId}:${messageId}:${attachmentId}`)}`;
+  let revision: string | null = null;
+  try {
+    revision = getStoredDraftRevision(accountId, messageId);
+  } catch {
+    /* Cache lookup remains best-effort. */
+  }
+  // Outlook reuses both the draft's message ID and MIME attachment indexes.
+  const key = `${accountId}:${messageId}:${attachmentId}${revision ? `:${revision}` : ""}`;
+  return `${DIR}/${await sha256Hex(key)}`;
 }
 
 export async function getCachedAttachment(
@@ -60,10 +69,20 @@ export async function getAttachmentBytes(
   messageId: string,
   attachmentId: string,
 ): Promise<Uint8Array> {
-  const cached = await getCachedAttachment(accountId, messageId, attachmentId);
-  if (cached) return cached;
+  const path = await pathFor(accountId, messageId, attachmentId);
+  try {
+    const cached = await platform().files.read(path);
+    if (cached && cached.length > 0) return cached;
+  } catch {
+    /* Cache lookup is best-effort. */
+  }
   const bytes = await providerFor(accountId).fetchAttachment(accountId, messageId, attachmentId);
-  await putCachedAttachment(accountId, messageId, attachmentId, bytes);
+  // Keep the revision captured at the start if a draft changes during the read.
+  try {
+    await platform().files.write(path, bytes);
+  } catch {
+    /* Cache writes are best-effort. */
+  }
   return bytes;
 }
 
