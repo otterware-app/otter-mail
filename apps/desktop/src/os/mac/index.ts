@@ -83,7 +83,6 @@ export const macOS: HostOS = {
 
   setLaunchAtLogin: (enabled) => app.setLoginItemSettings({ openAtLogin: enabled }),
   setBadge: (count) => app.dock?.setBadge(count > 0 ? String(count) : ""),
-  setAppIcon: (image) => app.dock?.setIcon(image),
 
   mailApps: { list: listMailApps, setDefault: setDefaultMailApp },
   terminals: macTerminals,

@@ -1,35 +1,34 @@
 name: Release
 
-# Stable releases only, like T3 Code's stable train:
-# - Run this workflow from main (Actions → Release → Run workflow, or
-#   `gh workflow run release.yml -f bump=patch`). It builds main's HEAD and
-#   releases the latest vX.Y.Z tag bumped by `bump`, or `version` if given.
-# - Or push a vX.Y.Z tag to release exactly that commit.
-# Installed apps pick the release up through electron-updater. See docs/release.md.
+# Every push to main publishes a nightly; manual stable releases promote the latest
+# published nightly commit. A stable vX.Y.Z tag releases that exact commit.
 
 on:
   push:
+    branches:
+      - main
     tags:
       - "v*.*.*"
+      - "!v*-*"
   workflow_dispatch:
     inputs:
-      bump:
-        description: Version bump from the latest release
+      channel:
+        description: Release channel
         required: true
-        default: patch
+        default: nightly
         type: choice
         options:
-          - patch
-          - minor
-          - major
+          - nightly
+          - stable
       version:
-        description: Exact version instead (e.g. 1.0.0); overrides bump
+        description: Stable version override (e.g. 1.0.0); defaults to the version previewed by the latest nightly
         required: false
         type: string
 
-# One release at a time; never cancel a run that may be publishing.
+# Serialize each train; never cancel a run that may be publishing.
 concurrency:
-  group: release
+  group: release-${{ ((github.event_name == 'push' && startsWith(github.ref, 'refs/heads/')) || inputs.channel == 'nightly') && 'nightly' || 'stable' }}
+  queue: max
   cancel-in-progress: false
 
 permissions:
@@ -40,12 +39,53 @@ env:
   ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
 
 jobs:
+  resolve_commit:
+    name: Resolve release commit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      ref: ${{ steps.resolve.outputs.ref }}
+      nightly_version: ${{ steps.resolve.outputs.nightly_version }}
+      channel: ${{ steps.resolve.outputs.channel }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          sparse-checkout: .github/scripts
+
+      - id: resolve
+        name: Resolve release commit
+        uses: actions/github-script@v8
+        env:
+          DISPATCH_CHANNEL: ${{ inputs.channel }}
+        with:
+          script: |
+            const {
+              assertCommitOnDefaultBranch,
+              assertReleaseSource,
+              resolveReleaseChannel,
+              resolveLatestNightlyCommit,
+            } = require('./.github/scripts/release-source.cjs');
+            const releaseChannel = resolveReleaseChannel(context, process.env.DISPATCH_CHANNEL);
+            core.setOutput('channel', releaseChannel);
+            await assertReleaseSource({ github, context, releaseChannel });
+            if (context.eventName === 'workflow_dispatch' && releaseChannel === 'stable') {
+              const { tag, sha, version } = await resolveLatestNightlyCommit({ github, context, core });
+              await assertCommitOnDefaultBranch({ github, context, sha });
+              core.notice(`Stable release builds ${sha}, the commit shipped by ${tag}.`);
+              core.setOutput('ref', sha);
+              core.setOutput('nightly_version', version);
+            } else {
+              core.setOutput('ref', context.sha);
+            }
+
   preflight:
     name: Preflight
+    needs: [resolve_commit]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
-      ref: ${{ github.sha }}
+      ref: ${{ needs.resolve_commit.outputs.ref }}
       version: ${{ steps.meta.outputs.version }}
       tag: ${{ steps.meta.outputs.tag }}
       name: ${{ steps.meta.outputs.name }}
@@ -53,15 +93,10 @@ jobs:
       make_latest: ${{ steps.meta.outputs.make_latest }}
       previous_tag: ${{ steps.meta.outputs.previous_tag }}
     steps:
-      - name: Only from the default branch
-        if: github.event_name == 'workflow_dispatch' && github.ref != format('refs/heads/{0}', github.event.repository.default_branch)
-        run: |
-          echo "::error::Releases are dispatched from ${{ github.event.repository.default_branch }}, not ${{ github.ref }}."
-          exit 1
-
       - name: Checkout
         uses: actions/checkout@v6
         with:
+          ref: ${{ needs.resolve_commit.outputs.ref }}
           fetch-depth: 0
 
       - name: Setup Node
@@ -73,15 +108,48 @@ jobs:
       - id: meta
         name: Resolve release version
         env:
-          BUMP: ${{ inputs.bump }}
+          CHANNEL: ${{ needs.resolve_commit.outputs.channel }}
+          NIGHTLY_VERSION: ${{ needs.resolve_commit.outputs.nightly_version }}
+          NIGHTLY_SHA: ${{ needs.resolve_commit.outputs.ref }}
+          NIGHTLY_RUN_NUMBER: ${{ github.run_number }}
           VERSION: ${{ inputs.version }}
-          TAG: ${{ github.event_name == 'push' && github.ref_name || '' }}
+          TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
         run: |
           args=(--github-output)
-          if [[ -n "$TAG" ]]; then args+=(--tag "$TAG");
-          elif [[ -n "$VERSION" ]]; then args+=(--version "$VERSION");
-          else args+=(--bump "${BUMP:-patch}"); fi
+          if [[ "$CHANNEL" == "nightly" ]]; then
+            args+=(--channel nightly --date "$(date -u +%Y%m%d)" --run-number "$NIGHTLY_RUN_NUMBER" --sha "$NIGHTLY_SHA")
+          elif [[ -n "$TAG" ]]; then
+            args+=(--tag "$TAG")
+          else
+            args+=(--version "${VERSION:-$NIGHTLY_VERSION}")
+          fi
           node scripts/resolve-release-version.ts "${args[@]}"
+
+  quality:
+    name: Release quality checks
+    needs: [preflight]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.preflight.outputs.ref }}
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: package.json
+          cache: true
+          run-install: true
+
+      - name: Verify release
+        run: |
+          vp run fmt:check
+          vp run lint
+          vp run typecheck
+          vp run test
+          node --test scripts/release.test.ts .github/scripts/release-source.test.cjs
 
   build_mac:
     name: Build macOS (Apple Silicon)
@@ -208,7 +276,7 @@ jobs:
 
   release:
     name: Publish GitHub release
-    needs: [preflight, build_mac, build_linux]
+    needs: [preflight, quality, build_mac, build_linux]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -228,10 +296,10 @@ jobs:
       # The version's changelog note (if main has one) goes above GitHub's
       # generated notes, so the release and the site's changelog say the same.
       - name: Changelog note
+        if: needs.preflight.outputs.prerelease == 'false'
         run: node scripts/changelog-release-notes.ts "${{ needs.preflight.outputs.version }}" > "$RUNNER_TEMP/notes.md"
 
-      # Mac and Linux side by side: their update feeds are latest-mac.yml,
-      # latest-linux.yml and latest-linux-arm64.yml.
+      # Each release carries only its own latest-* or nightly-* update feeds.
       - name: Download artifacts
         uses: actions/download-artifact@v8
         with:
@@ -245,7 +313,7 @@ jobs:
           tag_name: ${{ needs.preflight.outputs.tag }}
           target_commitish: ${{ needs.preflight.outputs.ref }}
           name: ${{ needs.preflight.outputs.name }}
-          body_path: ${{ runner.temp }}/notes.md
+          body_path: ${{ needs.preflight.outputs.prerelease == 'false' && format('{0}/notes.md', runner.temp) || '' }}
           generate_release_notes: true
           previous_tag: ${{ needs.preflight.outputs.previous_tag }}
           prerelease: ${{ needs.preflight.outputs.prerelease }}

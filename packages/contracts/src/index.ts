@@ -29,8 +29,11 @@ export type UpdateStatus =
   | "up-to-date"
   | "error";
 
+export type UpdateChannel = "stable" | "nightly";
+
 export interface UpdateState {
   status: UpdateStatus;
+  channel: UpdateChannel;
   currentVersion: string;
   availableVersion: string | null;
   downloadPercent: number | null;
@@ -100,6 +103,7 @@ export interface DesktopBridge {
   updates: {
     getState(): Promise<UpdateState>;
     check(): Promise<UpdateState>;
+    setChannel(channel: UpdateChannel): Promise<UpdateState>;
     download(): Promise<UpdateState>;
     install(): Promise<void>;
     onState(listener: (state: UpdateState) => void): () => void;

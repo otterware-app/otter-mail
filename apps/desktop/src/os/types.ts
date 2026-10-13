@@ -9,7 +9,6 @@ import type {
   BrowserWindow,
   BrowserWindowConstructorOptions,
   MenuItemConstructorOptions,
-  NativeImage,
 } from "electron";
 
 import type { Translator } from "@otter-mail/core";
@@ -64,8 +63,6 @@ export interface HostOS {
   setLaunchAtLogin(enabled: boolean): void;
   /** The unread count on the app's icon, or none. */
   setBadge(count: number): void;
-  /** The app's icon where the OS shows it while running (the Dock, the windows' taskbar icon). */
-  setAppIcon(image: NativeImage): void;
 
   /** Other apps that can be the default mail app, and handing the default to one. */
   mailApps: {

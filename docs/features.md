@@ -234,31 +234,32 @@ On iPhone, conversations zoom from their list rows (respecting Reduce Motion), t
 
 ## Settings & customization
 
-| Feature                                                                                                          | Mac      | Web          | iPhone                                                                     |
-| ---------------------------------------------------------------------------------------------------------------- | -------- | ------------ | -------------------------------------------------------------------------- |
-| 7 themes, a light and a dark pick; System / Light / Dark                                                         | ✓        | ✓            | ✓                                                                          |
-| 7 app icons, picked independently in Appearance and remembered on each device                                    | ✓ (Dock) | ✓ (tab icon) | ✓ (Home Screen)                                                            |
-| Your own themes (Otter Code's editor): duplicate, edit, import/export                                            | ✓        | ✓            | ✓ (worn and picked; made on the Mac or the web)                            |
-| Panel animations                                                                                                 | ✓        | ✓            | —                                                                          |
-| Contrast, glass opacity, font size, reading width                                                                | ✓        | ✓            | —                                                                          |
-| Full-width messages: content edge to edge, without the side inset (off by default)                               | —        | —            | ✓                                                                          |
-| Message list styles: Classic, With dividers                                                                      | ✓        | ✓            | ✓                                                                          |
-| Collapsible day separators, on by default in every mail layout                                                   | ✓        | ✓            | ✓                                                                          |
-| Overlay scrollbars in the mail panes and Settings, hidden when idle                                              | ✓        | ✓            | native                                                                     |
-| Dim read message backgrounds, on by default in every mail layout                                                 | ✓        | ✓            | ✓                                                                          |
-| Keyboard navigation highlights rows; Enter opens (optional open with arrows)                                     | ✓        | ✓            | —                                                                          |
-| Configurable delay before keyboard previews are marked read (2 seconds by default); clicks mark read immediately | ✓        | ✓            | —                                                                          |
-| Mail layouts: Split view, Full inbox, Floating                                                                   | ✓        | ✓            | —                                                                          |
-| Floating reader: move, snap, resize, minimize, expand                                                            | ✓        | ✓            | —                                                                          |
-| Frosted window frame (title bar and rail, by glass opacity)                                                      | ✓        | —            | —                                                                          |
-| Keyboard shortcuts, rebindable (incl. move to label)                                                             | ✓        | ✓            | —                                                                          |
-| Command palette (⌘K)                                                                                             | ✓        | ✓            | —                                                                          |
-| Recently viewed, back and forward (Mac: title bar; web: browser's)                                               | ✓        | ✓            | —                                                                          |
-| Reset customized preferences to their defaults (General, Appearance, agent preferences, mailbox name/color)      | ✓        | ✓            | —                                                                          |
-| Settings search (/ or ⌘F in Settings)                                                                            | ✓        | ✓            | —                                                                          |
-| Changelog (opens the site's, from ⌘K and Settings' ? menu)                                                       | ✓        | ✓            | —                                                                          |
-| Views: filters across mailboxes, a space in the rail (icon or emoji)                                             | ✓        | ✓            | —                                                                          |
-| Preferences synced through the Otter account                                                                     | ✓        | ✓            | ✓ (theme, advance, mailboxes, notifications, languages, agent, signatures) |
+| Feature                                                                                                          | Mac | Web | iPhone                                                                     |
+| ---------------------------------------------------------------------------------------------------------------- | --- | --- | -------------------------------------------------------------------------- |
+| 7 themes, a light and a dark pick; System / Light / Dark                                                         | ✓   | ✓   | ✓                                                                          |
+| App icon follows the build (stable, nightly or dev; iPhone: stable or dev)                                       | ✓   | ✓   | ✓                                                                          |
+| Stable / Nightly update channel, selected in General and remembered on this computer                             | ✓   | —   | —                                                                          |
+| Your own themes (Otter Code's editor): duplicate, edit, import/export                                            | ✓   | ✓   | ✓ (worn and picked; made on the Mac or the web)                            |
+| Panel animations                                                                                                 | ✓   | ✓   | —                                                                          |
+| Contrast, glass opacity, font size, reading width                                                                | ✓   | ✓   | —                                                                          |
+| Full-width messages: content edge to edge, without the side inset (off by default)                               | —   | —   | ✓                                                                          |
+| Message list styles: Classic, With dividers                                                                      | ✓   | ✓   | ✓                                                                          |
+| Collapsible day separators, on by default in every mail layout                                                   | ✓   | ✓   | ✓                                                                          |
+| Overlay scrollbars in the mail panes and Settings, hidden when idle                                              | ✓   | ✓   | native                                                                     |
+| Dim read message backgrounds, on by default in every mail layout                                                 | ✓   | ✓   | ✓                                                                          |
+| Keyboard navigation highlights rows; Enter opens (optional open with arrows)                                     | ✓   | ✓   | —                                                                          |
+| Configurable delay before keyboard previews are marked read (2 seconds by default); clicks mark read immediately | ✓   | ✓   | —                                                                          |
+| Mail layouts: Split view, Full inbox, Floating                                                                   | ✓   | ✓   | —                                                                          |
+| Floating reader: move, snap, resize, minimize, expand                                                            | ✓   | ✓   | —                                                                          |
+| Frosted window frame (title bar and rail, by glass opacity)                                                      | ✓   | —   | —                                                                          |
+| Keyboard shortcuts, rebindable (incl. move to label)                                                             | ✓   | ✓   | —                                                                          |
+| Command palette (⌘K)                                                                                             | ✓   | ✓   | —                                                                          |
+| Recently viewed, back and forward (Mac: title bar; web: browser's)                                               | ✓   | ✓   | —                                                                          |
+| Reset customized preferences to their defaults (General, Appearance, agent preferences, mailbox name/color)      | ✓   | ✓   | —                                                                          |
+| Settings search (/ or ⌘F in Settings)                                                                            | ✓   | ✓   | —                                                                          |
+| Changelog (opens the site's, from ⌘K and Settings' ? menu)                                                       | ✓   | ✓   | —                                                                          |
+| Views: filters across mailboxes, a space in the rail (icon or emoji)                                             | ✓   | ✓   | —                                                                          |
+| Preferences synced through the Otter account                                                                     | ✓   | ✓   | ✓ (theme, advance, mailboxes, notifications, languages, agent, signatures) |
 
 ## Support
 

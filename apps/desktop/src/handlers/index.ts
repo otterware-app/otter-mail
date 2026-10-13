@@ -14,11 +14,9 @@ import { takePendingOpenMessage } from "../services/open-message-target.js";
 import { focusMainWindow } from "../windows/main-window.js";
 import { setSettingsTarget, takeSettingsTarget } from "../windows/settings-window.js";
 import { registerSupportHandlers } from "./support.js";
-import { registerAppIconHandlers } from "./app-icon.js";
 import { registerBrowserHandlers } from "./browser.js";
 
 export function registerHandlers(): void {
-  registerAppIconHandlers();
   registerBrowserHandlers();
   // Settings live in the main window. Any window can deep-link into a pane;
   // the main window pulls the target on mount and whenever settings:open is

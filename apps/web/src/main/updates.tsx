@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { UpdateState } from "@otter-mail/contracts";
+import type { UpdateState, UpdateChannel } from "@otter-mail/contracts";
 import { changelogUrl } from "@otter-mail/shared/changelog";
 import { openLink } from "./browser/store";
 
@@ -7,7 +7,7 @@ import { ArrowDownCircleIcon, SparklesIcon, XIcon } from "lucide-react";
 
 import { Btn } from "./gmail/ui";
 import { toast } from "./gmail/toast";
-import { SettingsRow, SettingsSection } from "./settings/settings-ui";
+import { RowSelect, SettingsRow, SettingsSection } from "./settings/settings-ui";
 import { searchableSetting } from "./settings/settings-search";
 
 /** Live auto-update state from the main process. */
@@ -253,9 +253,22 @@ function statusLine(state: UpdateState): string {
 /** Settings → General: version, status, and the check / restart button. */
 export function UpdatesSection() {
   const state = useUpdateState();
+  const [changingChannel, setChangingChannel] = useState(false);
   if (!state) return null;
 
   const updates = window.desktopBridge.updates;
+  async function changeChannel(channel: string) {
+    setChangingChannel(true);
+    try {
+      await updates.setChannel(channel as UpdateChannel);
+    } catch (error) {
+      toast.error("Couldn't change update channel", {
+        description: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setChangingChannel(false);
+    }
+  }
   const manualUrl = state.manualDownloadUrl;
   const control = manualUrl ? (
     <Btn
@@ -276,7 +289,7 @@ export function UpdatesSection() {
   ) : state.status === "disabled" ? null : (
     <Btn
       size="sm"
-      disabled={state.status === "checking" || state.status === "downloading"}
+      disabled={changingChannel || state.status === "checking" || state.status === "downloading"}
       onClick={() => void updates.check()}
     >
       Check for Updates
@@ -290,6 +303,31 @@ export function UpdatesSection() {
         description={statusLine(state)}
         control={control}
       />
+      {state.status !== "disabled" ? (
+        <SettingsRow
+          title="Update channel"
+          description={
+            state.channel === "nightly"
+              ? "Early builds with the latest changes."
+              : "Tested releases for everyday use."
+          }
+          control={
+            <RowSelect
+              ariaLabel="Update channel"
+              value={state.channel}
+              options={[
+                { value: "stable", label: "Stable" },
+                { value: "nightly", label: "Nightly" },
+              ]}
+              disabled={
+                changingChannel ||
+                ["checking", "available", "downloading", "downloaded"].includes(state.status)
+              }
+              onValueChange={(channel) => void changeChannel(channel)}
+            />
+          }
+        />
+      ) : null}
     </SettingsSection>
   );
 }

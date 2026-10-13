@@ -1,27 +1,31 @@
 #!/usr/bin/env node
-// Picks the version of the next stable release, of the Mac app (and web) or,
-// with --app ios, of the iPhone app, which is versioned on its own.
-//
-//   node scripts/resolve-release-version.ts [--app mac|ios]
-//                                           [--version 1.2.3 | --tag v1.2.3 | --bump patch|minor|major]
-//                                           [--github-output]
-//
-// An explicit --version or a pushed --tag wins. Otherwise the app's latest tag
-// (vX.Y.Z for the Mac, ios-vX.Y.Z for the iPhone) is bumped; the very first
-// release ships the version in the app's source (apps/desktop/package.json, or
-// MARKETING_VERSION in the Xcode project). Prints (or appends to
-// $GITHUB_OUTPUT) version, tag, name, prerelease, make_latest and previous_tag.
+// Picks stable versions for Mac/Linux or iPhone (--app ios), or derives a
+// Mac/Linux nightly (--channel nightly --date YYYYMMDD --run-number N --sha SHA).
+// Stable accepts --version, --tag, or --bump patch|minor|major. --github-output
+// appends the release metadata to GITHUB_OUTPUT. iPhone is versioned separately.
 
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import { parseArgs } from "node:util";
+import { isNightlyVersion } from "../packages/shared/src/release-channel.ts";
 
 const repoRoot = NodePath.resolve(import.meta.dirname, "..");
 const STABLE = /^(?:ios-)?v?(\d+)\.(\d+)\.(\d+)$/;
-const ANY = /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/;
 
 type Bump = "patch" | "minor" | "major";
+
+export function nightlyReleaseMetadata(base: string, date: string, run: string, sha: string) {
+  if (!/^\d{8}$/.test(date) || !/^[1-9]\d*$/.test(run) || !/^[0-9a-f]{7,40}$/i.test(sha)) {
+    throw new Error("Nightlies need --date YYYYMMDD, --run-number (positive integer), and --sha.");
+  }
+  const version = `${bumpVersion(base, "patch")}-nightly.${date}.${run}`;
+  return {
+    version,
+    tag: `v${version}`,
+    name: `Otter Mail Nightly ${version} (${sha.slice(0, 12)})`,
+  };
+}
 
 export function bumpVersion(version: string, bump: Bump): string {
   const match = STABLE.exec(version);
@@ -74,6 +78,10 @@ function main(): void {
   const { values } = parseArgs({
     options: {
       app: { type: "string", default: "mac" },
+      channel: { type: "string", default: "stable" },
+      date: { type: "string" },
+      "run-number": { type: "string" },
+      sha: { type: "string" },
       version: { type: "string" },
       tag: { type: "string" },
       bump: { type: "string", default: "patch" },
@@ -82,13 +90,30 @@ function main(): void {
   });
   const app = APPS[values.app as App];
   if (!app) throw new Error(`Unknown app: ${values.app}`);
+  if (values.channel !== "stable" && values.channel !== "nightly") {
+    throw new Error(`Unknown release channel: ${values.channel}`);
+  }
+  if (values.channel === "nightly" && (values.app !== "mac" || values.version || values.tag)) {
+    throw new Error("Nightlies build the Mac/Linux app with an automatically derived version.");
+  }
   const tags = stableTags(app.prefix);
   const explicit = (values.version?.trim() || values.tag?.trim() || "").replace(
     new RegExp(`^${app.prefix}`),
     "",
   );
   let version: string;
-  if (explicit) {
+  const nightly =
+    values.channel === "nightly"
+      ? nightlyReleaseMetadata(
+          tags[0] ?? app.sourceVersion(),
+          values.date ?? "",
+          values["run-number"] ?? "",
+          values.sha ?? "",
+        )
+      : null;
+  if (nightly) {
+    version = nightly.version;
+  } else if (explicit) {
     version = explicit;
   } else if (tags[0]) {
     const bump = values.bump as Bump;
@@ -97,19 +122,30 @@ function main(): void {
   } else {
     version = app.sourceVersion();
   }
-  if (!ANY.test(version)) throw new Error(`Invalid release version: ${version}`);
+  if (!/^\d+\.\d+\.\d+$/.test(version) && !nightly)
+    throw new Error(`Invalid stable release version: ${version}`);
   const tag = `${app.prefix}${version}`;
   // A pushed tag already exists; a dispatched release must not reuse one.
   if (!values.tag && tags.includes(tag)) throw new Error(`${tag} was already released.`);
 
-  const stable = STABLE.test(version);
+  const stable = !isNightlyVersion(version);
+  const nightlyTags = NodeChildProcess.execFileSync(
+    "git",
+    ["tag", "--list", "v*-nightly.*", "--sort=-v:refname"],
+    { cwd: repoRoot, encoding: "utf8" },
+  )
+    .trim()
+    .split("\n");
   const outputs = {
     version,
     tag,
-    name: `${app.name} ${version}`,
+    name: nightly?.name ?? `${app.name} ${version}`,
     prerelease: String(!stable),
     make_latest: String(stable),
-    previous_tag: tags.find((t) => t !== tag) ?? "",
+    previous_tag:
+      (nightly ? nightlyTags.find((t) => t !== tag && isNightlyVersion(t.slice(1))) : undefined) ??
+      tags.find((t) => t !== tag) ??
+      "",
   };
   const lines = Object.entries(outputs).map(([key, value]) => `${key}=${value}`);
   if (values["github-output"] && process.env.GITHUB_OUTPUT) {

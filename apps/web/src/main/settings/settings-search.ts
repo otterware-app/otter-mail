@@ -151,7 +151,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     id: "updates",
     title: "Updates",
     pane: "general",
-    searchTerms: ["version check restart to update release about"],
+    searchTerms: ["version check restart to update release about channel stable nightly"],
   },
   {
     id: "send-feedback",
@@ -179,12 +179,6 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["remove close"],
   },
   // Appearance
-  {
-    id: "app-icon",
-    title: "App icon",
-    pane: "appearance",
-    searchTerms: ["dock favicon otter colors icon"],
-  },
   {
     id: "color-scheme",
     title: "Color scheme",

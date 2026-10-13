@@ -4,11 +4,11 @@ How each part of Otter Mail gets from `main` to people, what to check, and what 
 breaks. The details behind each step are in `docs/release.md`, `infra/relay/README.md` and
 `apps/ios/README.md`.
 
-| Part           | Ships                       | You do                                 |
-| -------------- | --------------------------- | -------------------------------------- |
-| Web app, relay | on merge to `main`          | nothing                                |
-| Mac, Linux app | when you run Release        | one click                              |
-| iPhone app     | when you run Release iPhone | one click, then TestFlight / App Store |
+| Part           | Ships                            | You do                                 |
+| -------------- | -------------------------------- | -------------------------------------- |
+| Web app, relay | on merge to `main`               | nothing                                |
+| Mac, Linux app | nightly on merge / manual stable | promote a nightly                      |
+| iPhone app     | when you run Release iPhone      | one click, then TestFlight / App Store |
 
 ## Web app and relay
 
@@ -27,11 +27,15 @@ the Google and GitHub settings that go with these URLs. D1 migrations run before
 
 ## Mac and Linux app
 
-1. Actions → **Release** → Run workflow → `patch`, `minor` or `major` (or
-   `gh workflow run release.yml -f bump=minor`).
-2. It builds arm64 (Apple Silicon), signs with the Developer ID, notarizes, builds the Linux
-   .debs (x64, arm64), publishes one GitHub Release and bumps the version on `main`.
-3. Installed apps update themselves ("Restart to update" in the sidebar).
+1. Every push to main, including each merged PR, publishes a nightly automatically. For an
+   immediate nightly: Actions → **Release** → `channel=nightly` (`gh workflow run release.yml -f channel=nightly`).
+2. For stable: run **Release** with `channel=stable`
+   (`gh workflow run release.yml -f channel=stable`). It promotes the latest published nightly
+   commit and its previewed stable version; an optional `version` overrides that version.
+3. Both build the Apple Silicon DMG + ZIP and Linux .debs (x64, arm64). Nightlies are GitHub
+   prereleases; only stable changes GitHub's latest release and bumps package versions on main.
+4. Settings → General selects Stable or Nightly on this computer. Installed apps update
+   themselves ("Restart to update" in the sidebar), and their icon follows the installed build.
 
 A changelog note is not part of a release. When you want one, it can land on `main` before or
 after (`changelog/<version>.md`, the `write-changelog` skill); the site shows it once that version
@@ -40,8 +44,8 @@ it, or the Changelog notes workflow once it lands after the release).
 
 - **Check:** the run is green and its log says "macOS signing and notarization enabled." (not
   "Building UNSIGNED").
-- **Bad release:** release a fixed `patch`. To stop it spreading first, edit the GitHub Release
-  and untick "Set as the latest release" (apps update from the latest one).
+- **Bad release:** publish a fixed nightly, then promote it to stable. To stop a stable release
+  spreading first, edit the GitHub Release and untick "Set as the latest release".
 - **Signing fails:** the secrets are `CSC_LINK`, `CSC_KEY_PASSWORD`, `APPLE_API_KEY`,
   `APPLE_API_KEY_ID`, `APPLE_API_ISSUER` (see `docs/release.md`). The Developer ID certificate
   runs until 2031.

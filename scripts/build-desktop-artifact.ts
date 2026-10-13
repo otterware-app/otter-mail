@@ -20,6 +20,7 @@ import * as NodePath from "node:path";
 import { parseArgs } from "node:util";
 
 import { buildTranslator, findTranslatorBinary, repoRoot } from "./build-translator.ts";
+import { isNightlyVersion } from "../packages/shared/src/release-channel.ts";
 
 const APP_ID = "dev.otterware.mail";
 const PRODUCT_NAME = "Otter Mail";
@@ -147,13 +148,12 @@ export function parseOptions(argv: readonly string[]): Options | null {
 }
 
 export function resolvePublishConfig(version: string, env: NodeJS.ProcessEnv) {
-  // Only stable X.Y.Z builds get an update feed; prereleases (1.2.3-rc.1) are
-  // downloaded by hand.
-  if (version.includes("-")) return undefined;
+  const nightly = isNightlyVersion(version);
+  if (version.includes("-") && !nightly) return undefined;
   // Testing the updater against a local feed (a folder of release artifacts
   // served over http) instead of GitHub Releases.
   const url = env.OTTER_MAIL_UPDATE_URL?.trim();
-  if (url) return { provider: "generic", url };
+  if (url) return { provider: "generic", url, channel: nightly ? "nightly" : "latest" };
   const repository =
     env.OTTER_MAIL_UPDATE_REPOSITORY?.trim() ||
     env.GITHUB_REPOSITORY?.trim() ||
@@ -166,7 +166,8 @@ export function resolvePublishConfig(version: string, env: NodeJS.ProcessEnv) {
     provider: "github",
     owner,
     repo,
-    releaseType: "release",
+    releaseType: nightly ? "prerelease" : "release",
+    channel: nightly ? "nightly" : "latest",
   };
 }
 
@@ -204,6 +205,7 @@ export function createBuildConfig(options: {
   env: NodeJS.ProcessEnv;
 }): Record<string, unknown> {
   const publish = resolvePublishConfig(options.version, options.env);
+  const icon = isNightlyVersion(options.version) ? "icon-nightly" : "icon";
   const config: Record<string, unknown> = {
     appId: APP_ID,
     productName: productName(options.platform),
@@ -215,7 +217,8 @@ export function createBuildConfig(options: {
     nodeGypRebuild: false,
     files: ["package.json", "dist-electron/**/*", "renderer/**/*", "!**/*.map"],
     directories: { buildResources: "resources", output: "dist" },
-    extraResources: [{ from: "resources/app-icons", to: "app-icons" }],
+    extraResources: [{ from: `resources/${icon}.png`, to: `${icon}.png` }],
+    generateUpdatesFilesForAllChannels: false,
     // macOS: Info.plist's URL types. Linux: the .desktop file's MimeType, which
     // lets the app be the default mail app (x-scheme-handler/mailto).
     protocols: [
@@ -226,7 +229,7 @@ export function createBuildConfig(options: {
       extraResources: [{ from: "bin/translator", to: "bin/translator" }],
       target: options.target === "dmg" ? ["dmg", "zip"] : ["zip"],
       category: "public.app-category.productivity",
-      icon: "icon.icns",
+      icon: `${icon}.icns`,
       darkModeSupport: true,
       hardenedRuntime: true,
       extendInfo: {
@@ -254,7 +257,7 @@ export function createBuildConfig(options: {
     linux: {
       target: ["deb"],
       executableName: LINUX_NAME,
-      icon: "icon.png",
+      icon: `${icon}.png`,
       // The .desktop file's Categories (electron-builder writes it as is).
       category: "Network;Email;Office",
       synopsis: "Gmail, calm and fast.",
@@ -383,7 +386,11 @@ function main(): void {
 
   if (!options.skipBuild) {
     // Same as the packages' `build` scripts, without needing pnpm on PATH.
-    run(vpBin, ["build"], { cwd: webDir, label: "(apps/web) vp build" });
+    run(vpBin, ["build"], {
+      cwd: webDir,
+      env: { ...process.env, OTTER_MAIL_VERSION: options.version },
+      label: "(apps/web) vp build",
+    });
     run(vpBin, ["pack"], {
       cwd: desktopDir,
       env: { ...process.env, OTTER_MAIL_VERSION: options.version },

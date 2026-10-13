@@ -16,10 +16,9 @@ their code.
   Tap Reply for the sender, or hold it for Reply, Reply all and Forward.
 - **Every theme.** The themes are the desktop's (`Resources/Themes.json`), light and dark, blended
   the same way (`Theme/Theme.swift`).
-- **App icons.** Appearance has an independent icon picker for the seven built-in palettes.
-  UIKit remembers the choice on this iPhone. `pnpm icons:export` draws the alternate icons and
-  their previews (each theme's accent on its sidebar) with the Mac and web ones; the main icon
-  has light, dark and tinted appearances.
+- **App icons.** Releases (TestFlight and App Store) use the default icon, with light, dark and
+  tinted appearances. Debug builds use the blue blueprint icon. `pnpm icons:export` draws both
+  from the same envelope mark as the Mac and web icons. The icon follows the build.
 
 ## How it works
 
