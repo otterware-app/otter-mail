@@ -124,16 +124,11 @@ struct SidebarView: View {
                     row(folder, scope: scope)
                 }
                 let labels = scope.flatMap(store.mailbox)?.labels ?? []
-                if !labels.isEmpty {
-                    Text("Labels")
-                        .font(.footnote)
-                        .foregroundStyle(palette.sidebarMuted)
-                        .padding(.horizontal, 12)
-                        .padding(.top, 20)
-                        .padding(.bottom, 4)
-                    ForEach(labels) { label in
-                        row(.label(id: label.id, name: label.name), scope: scope, color: label.color, indent: label.depth)
-                    }
+                if scope.flatMap(store.mailbox)?.provider == .outlook {
+                    labelSection("Folders", labels: labels.filter { $0.id.hasPrefix(OutlookFolders.folderPrefix) }, scope: scope)
+                    labelSection("Categories", labels: labels.filter { $0.id.hasPrefix(OutlookFolders.categoryPrefix) }, scope: scope, flat: true)
+                } else {
+                    labelSection(sorts ? "Labels" : "Folders", labels: labels, scope: scope)
                 }
             }
             .padding(.horizontal, 12)
@@ -151,6 +146,21 @@ struct SidebarView: View {
                 Color.clear.frame(height: 60)
             }
             .ignoresSafeArea()
+        }
+    }
+
+    @ViewBuilder
+    private func labelSection(_ title: String, labels: [MailLabel], scope: String?, flat: Bool = false) -> some View {
+        if !labels.isEmpty {
+            Text(title)
+                .font(.footnote)
+                .foregroundStyle(palette.sidebarMuted)
+                .padding(.horizontal, 12)
+                .padding(.top, 20)
+                .padding(.bottom, 4)
+            ForEach(labels) { label in
+                row(.label(id: label.id, name: label.name), scope: scope, color: label.color, indent: flat ? 0 : label.depth)
+            }
         }
     }
 

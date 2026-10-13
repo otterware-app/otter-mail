@@ -34,6 +34,7 @@ import {
   ChevronDownIcon,
   LayersIcon,
   TagIcon,
+  FolderIcon,
   SearchIcon,
   SquarePenIcon,
 } from "lucide-react";
@@ -207,6 +208,7 @@ function AddRow({ label, ...props }: { label: string } & ComponentProps<"button"
 }
 
 function labelIcon(label?: GmailLabel): ReactNode {
+  if (label?.id.startsWith("folder:")) return <FolderIcon className="size-4" />;
   const color = label?.color?.backgroundColor;
   if (color) {
     return <TagIcon className="size-4 fill-current" style={{ color }} />;
@@ -254,7 +256,7 @@ function LabelNode({
   // or only labelled with ⌥ held (Finder's copy modifier).
   const dragProps: RowDragProps | undefined = label
     ? {
-        draggable: true,
+        draggable: !label.id.startsWith("category:"),
         onDragStart: (e) => {
           e.dataTransfer.setData(
             LABEL_DRAG_MIME,
@@ -270,6 +272,7 @@ function LabelNode({
             return;
           }
           if (!e.dataTransfer.types.includes(LABEL_DRAG_MIME)) return;
+          if (label.id.startsWith("category:")) return;
           e.preventDefault();
           e.dataTransfer.dropEffect = "move";
           setDropActive(true);
@@ -284,7 +287,7 @@ function LabelNode({
             return;
           }
           const raw = e.dataTransfer.getData(LABEL_DRAG_MIME);
-          if (!raw) return;
+          if (!raw || label.id.startsWith("category:")) return;
           e.preventDefault();
           actions.onMove(JSON.parse(raw) as LabelDragPayload, label.name);
         },
@@ -480,7 +483,20 @@ export function MailboxSidebarPage({
     allMail,
   ].sort((a, b) => SIDEBAR_SYSTEM_ORDER.indexOf(a.id) - SIDEBAR_SYSTEM_ORDER.indexOf(b.id));
   const userLabels = labels.filter((l) => l.type === "user");
-  const userLabelTree = buildLabelTree(userLabels);
+  const labelSections = capabilities.foldersAndCategories
+    ? [
+        {
+          title: "Folders",
+          labels: userLabels.filter((l) => l.id.startsWith("folder:")),
+          create: false,
+        },
+        {
+          title: "Categories",
+          labels: userLabels.filter((l) => !l.id.startsWith("folder:")),
+          create: true,
+        },
+      ]
+    : [{ title: `${labelNoun}s`, labels: userLabels, create: true }];
 
   const handleAddAccount = async () => {
     console.log("[AccountsSidebar:addAccount]");
@@ -500,7 +516,7 @@ export function MailboxSidebarPage({
     console.log("[AccountsSidebar:createLabel]", { name });
     try {
       await createLabel.mutateAsync({ accountId: selectedAccountId, name });
-      toast.success(`Label "${name}" created`);
+      toast.success(`${labelNoun} "${name}" created`);
       setCreateLabelOpen(false);
       setNewLabelName("");
     } catch {
@@ -509,7 +525,7 @@ export function MailboxSidebarPage({
   };
 
   const handleMoveLabel = (source: LabelDragPayload, targetParentName: string | null) => {
-    if (!selectedAccountId) return;
+    if (!selectedAccountId || source.id.startsWith("category:")) return;
     if (
       targetParentName &&
       (targetParentName === source.name || targetParentName.startsWith(`${source.name}/`))
@@ -733,47 +749,64 @@ export function MailboxSidebarPage({
                 );
               })}
 
-              {selectedAccountId ? (
-                <Section
-                  title={
-                    capabilities.foldersAndCategories ? "Folders & categories" : `${labelNoun}s`
-                  }
-                  action={
-                    <SectionAddButton
-                      label={`Add ${labelNoun.toLowerCase()}`}
-                      onClick={() => setCreateLabelOpen(true)}
-                    />
-                  }
-                  dropZone={{
-                    active: rootDropActive,
-                    onDragOver: (e) => {
-                      if (!e.dataTransfer.types.includes(LABEL_DRAG_MIME)) return;
-                      e.preventDefault();
-                      e.dataTransfer.dropEffect = "move";
-                      setRootDropActive(true);
-                    },
-                    onDragLeave: () => setRootDropActive(false),
-                    onDrop: (e) => {
-                      setRootDropActive(false);
-                      const raw = e.dataTransfer.getData(LABEL_DRAG_MIME);
-                      if (!raw) return;
-                      e.preventDefault();
-                      handleMoveLabel(JSON.parse(raw) as LabelDragPayload, null);
-                    },
-                  }}
-                >
-                  {userLabelTree.map((node) => (
-                    <LabelNode
-                      key={node.key}
-                      node={node}
-                      depth={0}
-                      selectedLabelId={selectedLabelId}
-                      onSelectLabel={onSelectLabel}
-                      actions={labelActions}
-                    />
-                  ))}
-                </Section>
-              ) : null}
+              {selectedAccountId
+                ? labelSections.map((section) => (
+                    <Section
+                      key={section.title}
+                      title={section.title}
+                      action={
+                        section.create ? (
+                          <SectionAddButton
+                            label={`Add ${labelNoun.toLowerCase()}`}
+                            onClick={() => setCreateLabelOpen(true)}
+                          />
+                        ) : undefined
+                      }
+                      dropZone={
+                        section.title === "Categories"
+                          ? undefined
+                          : {
+                              active: rootDropActive,
+                              onDragOver: (e) => {
+                                if (!e.dataTransfer.types.includes(LABEL_DRAG_MIME)) return;
+                                e.preventDefault();
+                                e.dataTransfer.dropEffect = "move";
+                                setRootDropActive(true);
+                              },
+                              onDragLeave: () => setRootDropActive(false),
+                              onDrop: (e) => {
+                                setRootDropActive(false);
+                                const raw = e.dataTransfer.getData(LABEL_DRAG_MIME);
+                                if (!raw) return;
+                                e.preventDefault();
+                                handleMoveLabel(JSON.parse(raw) as LabelDragPayload, null);
+                              },
+                            }
+                      }
+                    >
+                      {(section.title === "Categories"
+                        ? section.labels
+                            .toSorted((a, b) => a.name.localeCompare(b.name))
+                            .map((label) => ({
+                              key: label.id,
+                              segment: label.name,
+                              label,
+                              children: [],
+                            }))
+                        : buildLabelTree(section.labels)
+                      ).map((node) => (
+                        <LabelNode
+                          key={node.key}
+                          node={node}
+                          depth={0}
+                          selectedLabelId={selectedLabelId}
+                          onSelectLabel={onSelectLabel}
+                          actions={labelActions}
+                        />
+                      ))}
+                    </Section>
+                  ))
+                : null}
 
               {accounts.length === 0 ? (
                 <AddMailboxMenu
