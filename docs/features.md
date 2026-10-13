@@ -96,6 +96,10 @@ from GitHub Releases. Everything in the Mac column works the same, except:
 | After archive: next / previous           | ✓                                                                  | ✓                               | ✓                                                        |
 | Snooze                                   | ✓ (on this device, while open)                                     | ✓ (on this browser, while open) | —                                                        |
 
+Outlook messages live in one folder and can have several colored categories. On Mac and web,
+Move to lists folders; Categorize lists categories. Applying a category keeps the message in
+its folder. Deleting an Outlook folder moves it and its mail to Deleted Items.
+
 ## Todoist
 
 Implementation boundaries and removal steps: [Todoist feature guide](integrations/todoist.md).

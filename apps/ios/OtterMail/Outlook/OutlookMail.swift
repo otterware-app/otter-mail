@@ -210,8 +210,6 @@ nonisolated enum OutlookMail {
         if let target {
             if target == current { return nil }
             if wholeThread, own, target != "TRASH" { return nil }
-            // Back to the inbox: only what's archived (or junk, or trash), not mail in other folders.
-            if target == "INBOX", wholeThread, current?.hasPrefix(OutlookFolders.folderPrefix) == true { return nil }
             return folders.folder(ofLabel: target)
         }
         guard let current, remove.contains(current) else { return nil }

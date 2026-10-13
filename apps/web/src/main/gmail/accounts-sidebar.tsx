@@ -339,7 +339,7 @@ function LabelNode({
             <ContextMenuItem icon="pencil" onSelect={() => actions.onRename(label)}>
               Rename…
             </ContextMenuItem>
-            {actions.onRecolor ? (
+            {actions.onRecolor && !label.id.startsWith("folder:") ? (
               <ContextMenuItem icon="paintpalette" onSelect={() => actions.onRecolor?.(label)}>
                 Change color…
               </ContextMenuItem>
@@ -353,7 +353,7 @@ function LabelNode({
             </ContextMenuItem>
             <ContextMenuSeparator />
             <ContextMenuItem icon="trash" color="red" onSelect={() => actions.onDelete(label)}>
-              Delete {actions.noun}
+              Delete {label.id.startsWith("folder:") ? "folder" : actions.noun}
             </ContextMenuItem>
           </ContextMenuContent>
         </ContextMenu>
@@ -432,7 +432,11 @@ export function MailboxSidebarPage({
   const labelsQuery = useLabels(ownAccountId);
   const capabilities = useCapabilities(ownAccountId);
   // Mail in one folder at a time (IMAP): its labels are folders.
-  const labelNoun = capabilities.multipleLabels ? "Label" : "Folder";
+  const labelNoun = capabilities.foldersAndCategories
+    ? "Category"
+    : capabilities.multipleLabels
+      ? "Label"
+      : "Folder";
   const addAccount = useAddAccount();
   const createLabel = useCreateLabel();
 
@@ -568,9 +572,10 @@ export function MailboxSidebarPage({
       return;
     }
     const removeId =
-      (!keep || !capabilities.multipleLabels) &&
+      !label.id.startsWith("category:") &&
+      (!keep || !capabilities.multipleLabels || label.id.startsWith("folder:")) &&
       payload.fromLabelId &&
-      isMoveSourceLabel(payload.fromLabelId, label.id)
+      isMoveSourceLabel(payload.fromLabelId, label.id, capabilities.foldersAndCategories)
         ? payload.fromLabelId
         : null;
     console.log("[AccountsSidebar:dropThreads]", {
@@ -730,7 +735,9 @@ export function MailboxSidebarPage({
 
               {selectedAccountId ? (
                 <Section
-                  title={`${labelNoun}s`}
+                  title={
+                    capabilities.foldersAndCategories ? "Folders & categories" : `${labelNoun}s`
+                  }
                   action={
                     <SectionAddButton
                       label={`Add ${labelNoun.toLowerCase()}`}
@@ -804,7 +811,7 @@ export function MailboxSidebarPage({
           onOpenChange={(o) => {
             if (!o) setRenameTarget(null);
           }}
-          title={`Rename ${labelNoun}`}
+          title={`Rename ${renameTarget?.id.startsWith("folder:") ? "Folder" : labelNoun}`}
           confirmLabel="Rename"
           confirmVariant="accent"
           confirmDisabled={!renameValue.trim()}
@@ -854,15 +861,17 @@ export function MailboxSidebarPage({
           onOpenChange={(o) => {
             if (!o) setDeleteTarget(null);
           }}
-          title={`Delete ${labelNoun}`}
+          title={`Delete ${deleteTarget?.id.startsWith("folder:") ? "Folder" : labelNoun}`}
           confirmLabel="Delete"
           confirmVariant="accent"
           onConfirm={handleDeleteConfirm}
         >
           <Text variant="small">
-            {capabilities.multipleLabels
-              ? `Delete "${deleteTarget?.name}"? It is removed from every message; the messages themselves and any nested labels are kept.`
-              : `Delete "${deleteTarget?.name}"? Its mail moves to Archive.`}
+            {deleteTarget?.id.startsWith("folder:")
+              ? `Delete "${deleteTarget.name}"? The folder and the mail inside it move to Deleted Items.`
+              : capabilities.multipleLabels
+                ? `Delete "${deleteTarget?.name}"? It is removed from every message; the messages themselves and any nested labels are kept.`
+                : `Delete "${deleteTarget?.name}"? Its mail moves to Archive.`}
           </Text>
         </Dialog>
 

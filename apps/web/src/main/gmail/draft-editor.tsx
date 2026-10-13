@@ -168,6 +168,7 @@ export function DraftEditor({
     enabled: draftIdQuery.isFetched && attachments != null,
     initialDraftId: draftIdQuery.data?.draftId ?? null,
     initialMessageId: detail.id,
+    initialRevision: detail.draftRevision,
     signal: JSON.stringify({ to, cc, bcc, subject, text, att: attachmentSignature(attachments) }),
     getPayload: () => {
       if (attachments == null) return null;

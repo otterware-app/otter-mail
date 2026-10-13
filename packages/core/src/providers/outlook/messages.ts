@@ -6,6 +6,7 @@
  */
 
 import { parseMessage } from "../../protocols/index.js";
+import { getMessageLabelIds } from "../../services/mail-store.js";
 import type { GmailMessageDetail, GmailMessageSummary } from "../../types.js";
 import { formatAddresses, snippetOf } from "../imap/messages.js";
 import { labelsFor } from "./folders.js";
@@ -37,6 +38,8 @@ type Recipient = { emailAddress?: { name?: string; address?: string } };
 export type ApiMessage = {
   id: string;
   conversationId?: string;
+  changeKey?: string;
+  "@odata.etag"?: string;
   subject?: string | null;
   bodyPreview?: string;
   from?: Recipient | null;
@@ -128,13 +131,28 @@ async function source(accountId: string, id: string) {
 }
 
 export async function getMessage(accountId: string, id: string): Promise<GmailMessageDetail> {
-  const [message, parsed] = await Promise.all([
-    graph<ApiMessage>(
-      accountId,
-      `${messagePath(id)}?$select=${SUMMARY_FIELDS},ccRecipients,bccRecipients`,
-    ),
-    source(accountId, id),
+  const path = `${messagePath(id)}?$select=${SUMMARY_FIELDS},ccRecipients,bccRecipients,changeKey`;
+  const knownDraft = getMessageLabelIds(accountId, id)?.includes("DRAFT");
+  let [message, parsed] = await Promise.all([
+    graph<ApiMessage>(accountId, path),
+    knownDraft ? Promise.resolve(null) : source(accountId, id),
   ]);
+  if (message.isDraft && message.changeKey) {
+    // Pair the body/files with their revision. Another client may edit a
+    // draft between the metadata and MIME reads; never claim the newer key
+    // for an older body when the composer checks for conflicts.
+    for (let attempt = 0; ; attempt++) {
+      parsed = await source(accountId, id);
+      const latest = await graph<ApiMessage>(accountId, path);
+      if (latest.changeKey === message.changeKey) {
+        message = latest;
+        break;
+      }
+      if (attempt === 2) throw new Error("This draft changed while opening. Open it again.");
+      message = latest;
+    }
+  }
+  if (!parsed) parsed = await source(accountId, id);
   const summary = toSummary(accountId, message);
   // Attachment ids are indexes into postal-mime's list, as for IMAP.
   const attachments = parsed.attachments.map((a, i) => ({
@@ -146,6 +164,7 @@ export async function getMessage(accountId: string, id: string): Promise<GmailMe
   }));
   return {
     ...summary,
+    draftRevision: message.isDraft ? message.changeKey : undefined,
     snippet: summary.snippet || snippetOf(parsed),
     cc: addresses(message.ccRecipients) || undefined,
     bcc: addresses(message.bccRecipients) || undefined,

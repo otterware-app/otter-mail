@@ -50,7 +50,7 @@ export type DraftContent = {
  */
 export async function mirrorDraft(
   accountId: string,
-  res: { draftId: string; messageId?: string; threadId?: string },
+  res: { draftId: string; messageId?: string; threadId?: string; revision?: string },
   content: DraftContent,
 ): Promise<void> {
   if (!res.messageId) return;
@@ -72,9 +72,11 @@ export async function mirrorDraft(
     };
     if (summary.hasAttachments) {
       mailStore.upsertMessages(accountId, [summary]);
+      mailStore.invalidateMessageDetail(accountId, res.messageId);
     } else {
       mailStore.upsertMessageDetail(accountId, {
         ...summary,
+        draftRevision: res.revision,
         cc: content.cc,
         bcc: content.bcc,
         bodyHtml: content.bodyHtml ?? null,

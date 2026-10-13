@@ -117,6 +117,20 @@ function getDb(): SqlDatabase {
   if (!messageCols.has("bodyRetryAt")) {
     handle.exec("ALTER TABLE messages ADD COLUMN bodyRetryAt INTEGER NOT NULL DEFAULT 0;");
   }
+  if (!messageCols.has("bcc")) {
+    handle.exec("ALTER TABLE messages ADD COLUMN bcc TEXT;");
+    // Re-read legacy drafts before editing: their cached bodies omitted Bcc.
+    handle.exec(`UPDATE messages SET detailFetched = 0 WHERE EXISTS
+      (SELECT 1 FROM message_labels l WHERE l.accountId = messages.accountId AND l.messageId = messages.id AND l.labelId = 'DRAFT')`);
+  }
+  if (!messageCols.has("draftRevision")) {
+    handle.exec("ALTER TABLE messages ADD COLUMN draftRevision TEXT;");
+    // Older Outlook draft bodies have no revision; reload them once rather
+    // than editing a cached body with an unknown remote version.
+    handle.exec(`UPDATE messages SET detailFetched = 0
+      WHERE EXISTS (SELECT 1 FROM message_labels l WHERE l.accountId = messages.accountId AND l.messageId = messages.id AND l.labelId = 'DRAFT')
+        AND EXISTS (SELECT 1 FROM kv WHERE key = 'outlookPeeked:' || messages.accountId)`);
+  }
   handle.exec(
     "CREATE INDEX IF NOT EXISTS idx_messages_undownloaded ON messages (accountId, detailFetched, date DESC);",
   );
@@ -184,10 +198,12 @@ interface MessageRow {
   hasAttachments: number;
   labelIds: string;
   cc: string | null;
+  bcc: string | null;
   bodyHtml: string | null;
   bodyText: string | null;
   attachments: string | null;
   detailFetched: number;
+  draftRevision: string | null;
   messageIdHeader: string | null;
   referencesHeader: string | null;
 }
@@ -249,6 +265,8 @@ function rowToDetail(row: MessageRow): GmailMessageDetail {
   return {
     ...rowToSummary(row),
     cc: row.cc ?? undefined,
+    bcc: row.bcc ?? undefined,
+    draftRevision: row.draftRevision ?? undefined,
     bodyHtml: row.bodyHtml,
     bodyText: row.bodyText,
     attachments,
@@ -338,7 +356,7 @@ export function upsertMessageDetails(accountId: string, details: GmailMessageDet
   if (details.length === 0) return;
   const setBody = getDb().prepare(`
     UPDATE messages
-       SET cc = ?, bodyHtml = ?, bodyText = ?, attachments = ?, hasAttachments = ?, detailFetched = 1
+       SET cc = ?, bcc = ?, bodyHtml = ?, bodyText = ?, attachments = ?, hasAttachments = ?, draftRevision = ?, detailFetched = 1
      WHERE accountId = ? AND id = ?
   `);
   inTransaction(() => {
@@ -347,10 +365,12 @@ export function upsertMessageDetails(accountId: string, details: GmailMessageDet
     for (const detail of details) {
       setBody.run(
         detail.cc ?? null,
+        detail.bcc ?? null,
         detail.bodyHtml,
         detail.bodyText,
         JSON.stringify(detail.attachments),
         detail.hasAttachments ? 1 : 0,
+        detail.draftRevision ?? null,
         accountId,
         detail.id,
       );
@@ -699,6 +719,23 @@ export function getMessageDetail(accountId: string, messageId: string): GmailMes
     .get(accountId, messageId) as unknown as MessageRow | undefined;
   if (!row || row.detailFetched !== 1) return null;
   return rowToDetail(row);
+}
+
+/** The revision paired with a cached draft body and its attachment indexes. */
+export function getStoredDraftRevision(accountId: string, id: string): string | null {
+  const row = getDb()
+    .prepare(
+      "SELECT draftRevision FROM messages WHERE accountId = ? AND id = ? AND detailFetched = 1",
+    )
+    .get(accountId, id) as unknown as { draftRevision: string | null } | undefined;
+  return row?.draftRevision ?? null;
+}
+
+/** A saved draft's attachment IDs need a fresh detail before it is reopened. */
+export function invalidateMessageDetail(accountId: string, id: string): void {
+  getDb()
+    .prepare("UPDATE messages SET detailFetched = 0 WHERE accountId = ? AND id = ?")
+    .run(accountId, id);
 }
 
 /** A bounded batch of rows whose headers were erased by an incomplete provider update. */

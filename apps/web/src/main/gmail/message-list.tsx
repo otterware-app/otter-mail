@@ -672,7 +672,7 @@ function MessageRow({
             />
           </ContextMenuSub>
           <ContextMenuSeparator />
-          <ContextMenuSub label={labelChoices.folders ? "Move to folder" : "Label"}>
+          <ContextMenuSub label={labelChoices.title}>
             {renderLabelChoices(labelChoices, {
               Item: ContextMenuItem,
               CheckboxItem: ContextMenuCheckboxItem,
@@ -1393,7 +1393,9 @@ export function MessageList({
       return;
     }
     // Move: apply the picked label and leave the current one.
-    const removable = moveContextLabelId && isMoveSourceLabel(moveContextLabelId, pickedId);
+    const removable =
+      moveContextLabelId &&
+      isMoveSourceLabel(moveContextLabelId, pickedId, selectedCapabilities.foldersAndCategories);
     console.log("[MessageList:moveTo]", { rowThreadId, pickedId, from: moveContextLabelId });
     if (removable) advanceFrom(row.id);
     void listModifyThread.mutateAsync({
@@ -1692,9 +1694,15 @@ export function MessageList({
           ?.labels.filter((l) => l.type === "user");
         const target = userLabels?.find((l) => l.name === labelName);
         if (!userLabels || !target) return [];
-        const userIds = new Set(userLabels.map((l) => l.id));
+        const outlook = target.id.startsWith("folder:") || target.id.startsWith("category:");
+        const userIds = new Set(
+          userLabels
+            .filter((l) => !outlook || isMoveSourceLabel(l.id, target.id, true))
+            .map((l) => l.id),
+        );
         const remove = rowLabels(m).filter((id) => userIds.has(id) && id !== target.id);
-        const leavesView = viewLabelId != null && isMoveSourceLabel(viewLabelId, target.id);
+        const leavesView =
+          viewLabelId != null && isMoveSourceLabel(viewLabelId, target.id, outlook);
         if (leavesView && !remove.includes(viewLabelId)) remove.push(viewLabelId);
         return [{ m, owner, targetId: target.id, remove, leavesView }];
       });

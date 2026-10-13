@@ -42,6 +42,8 @@ export interface MailCapabilities {
   categories: boolean;
   /** A message can carry several labels at once (Gmail); IMAP mail sits in one folder. */
   multipleLabels: boolean;
+  /** Exclusive folders alongside colored category tags (Outlook). */
+  foldersAndCategories?: boolean;
   /** Label colors, kept by the server. */
   labelColors: boolean;
   /** Signatures kept by the server (Gmail's settings) rather than on this device. */
@@ -66,6 +68,7 @@ export const GMAIL_CAPABILITIES: MailCapabilities = {
  * move mail; signatures stay on the device (Graph doesn't expose Outlook's).
  */
 export const OUTLOOK_CAPABILITIES: MailCapabilities = {
+  foldersAndCategories: true,
   categories: false,
   multipleLabels: true,
   labelColors: true,

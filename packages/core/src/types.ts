@@ -66,6 +66,8 @@ export interface GmailMessageSummary {
 }
 
 export interface GmailMessageDetail extends GmailMessageSummary {
+  /** Provider revision of this cached draft body (Outlook keeps its message ID). */
+  draftRevision?: string;
   bodyHtml: string | null;
   bodyText: string | null;
   cc?: string;

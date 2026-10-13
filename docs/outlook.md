@@ -84,6 +84,9 @@ MailProvider               packages/core/src/providers/provider.ts
 - Bodies, inline images, attachments and headers come from the message's MIME source
   (`/messages/{id}/$value`, parsed with postal-mime as IMAP's are). Attachment ids are indexes
   into that list.
+- Draft edits use Graph's `changeKey` separately from the immutable message ID, with revision checks
+  and the returned ETag for conditional writes, so another client's edit is detected. Cached bodies keep their revision and Bcc;
+  attachment bytes are cached by draft revision so same-named replacements do not reuse old data.
 - Sending: everything starts as a draft. A reply is made with `createReply` on the message it
   answers (its `In-Reply-To`, else the thread's latest), so Outlook keeps it in the
   conversation; then it gets the composer's recipients, subject and HTML body, its attachments
@@ -120,7 +123,8 @@ Its own Swift implementation of the same design (`apps/ios/OtterMail/Outlook/`, 
 - Sign-in is the installed-app flow with PKCE in a browser sheet, as a public client, returning to
   `msauth.<bundle id>://auth` (an iOS redirect on the same app registration). Rotated refresh
   tokens stay in the iPhone's Keychain; the code exchange's ID token links the mailbox.
-- Threads are conversations, read whole whenever one of their messages changes. The first sync
+- Threads are conversations, read whole (following every page) whenever one of their messages changes.
+  Sparse delta events resolve conversation IDs and dates before advancing their cursor. The first sync
   shows the inbox's newest page, then follows the inbox, Sent and Drafts with deltas; other
   folders are followed once their list is opened. A delta follows a folder's mail from a month
   back (or its first page, if older); older pages are read once.

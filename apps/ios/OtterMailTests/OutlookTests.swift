@@ -106,6 +106,7 @@ struct OutlookTests {
         #expect(move(received, ["folder:PA"], [], true) == "PA")
         let filed = try message(#"{"id":"m3","parentFolderId":"PA"}"#)
         #expect(move(filed, [], ["folder:PA"], true) == "A")
+        #expect(move(filed, ["INBOX"], ["folder:PA"], true) == "I")
         // Restored from Deleted Items: yours to Sent Items, the rest to the inbox.
         let trashedOwn = try message(#"{"id":"m4","parentFolderId":"T","from":{"emailAddress":{"address":"me@contoso.com"}}}"#)
         let trashed = try message(#"{"id":"m5","parentFolderId":"TO","from":{"emailAddress":{"address":"ann@example.com"}}}"#)
@@ -232,6 +233,46 @@ struct OutlookTests {
         #expect(delta.changed.map(\.thread) == ["c1"])
         #expect(delta.removed == ["b"])
         #expect(delta.link == "https://graph.microsoft.com/v1.0/next")
+    }
+
+    @Test func sparseDeltaResolvesConversationAndDateAndHandlesGoneMessages() async throws {
+        let api = graph { request in
+            if request.url!.path().hasSuffix("/$batch") {
+                return (200, #"{"responses":[{"id":"0","status":200,"body":{"id":"a","conversationId":"c1","receivedDateTime":"2026-10-01T10:00:00Z"}},{"id":"1","status":404,"body":{}}]}"#, [:])
+            }
+            return (200, #"{"value":[{"id":"a","isRead":true},{"id":"gone","isRead":true}],"@odata.deltaLink":"https://graph.microsoft.com/v1.0/next"}"#, [:])
+        }
+        let delta = try await api.delta("/me/mailFolders/I/messages/delta")
+        #expect(delta.changed.map(\.thread) == ["c1"])
+        #expect(delta.changed.first?.date == Date(timeIntervalSince1970: 1790848800))
+        #expect(delta.removed == ["gone"])
+        #expect(delta.link.hasSuffix("/next"))
+    }
+
+    @Test func sparseDeltaDoesNotSucceedWhenResolvingItsMessagesFails() async {
+        let api = graph { request in
+            if request.url!.path().hasSuffix("/$batch") {
+                return (200, #"{"responses":[{"id":"0","status":403,"body":{"error":{"code":"ErrorAccessDenied","message":"Denied"}}}]}"#, [:])
+            }
+            return (200, #"{"value":[{"id":"a","isRead":true}],"@odata.deltaLink":"https://graph.microsoft.com/v1.0/next"}"#, [:])
+        }
+        do {
+            _ = try await api.delta("/me/mailFolders/I/messages/delta")
+            Issue.record("A failed metadata lookup must not advance the delta cursor.")
+        } catch {
+            #expect((error as? GraphAPI.Failure)?.status == 403)
+        }
+    }
+
+    @Test func longConversationsFollowEveryPage() async throws {
+        let api = graph { request in
+            if request.url!.path().hasSuffix("/$batch") {
+                return (200, #"{"responses":[{"id":"0","status":200,"body":{"value":[{"id":"m1","conversationId":"c1"}],"@odata.nextLink":"https://graph.microsoft.com/v1.0/more"}}]}"#, [:])
+            }
+            return (200, #"{"value":[{"id":"m2","conversationId":"c1"}]}"#, [:])
+        }
+        let found = try await api.conversations(["c1"])
+        #expect(found["c1"]?.map(\.id) == ["m1", "m2"])
     }
 
     @Test func anExpiredDeltaStartsOver() async {
