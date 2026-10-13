@@ -22,21 +22,14 @@ test("nightlies preview the next stable patch without changing the stable source
   }
 });
 
-test("stable and nightly feeds are separate, while other prereleases have no update feed", () => {
-  assert.deepEqual(resolvePublishConfig("0.13.9", {}), {
-    provider: "github",
-    owner: "otterware-app",
-    repo: "otter-mail",
-    releaseType: "release",
+test("the bridge uses the Mail profile feed and keeps local updater fixtures", () => {
+  const bridgeFeed = {
+    provider: "generic",
+    url: "https://github.com/otterware-app/otterware/releases/download/channel-mail/",
     channel: "latest",
-  });
-  assert.deepEqual(resolvePublishConfig(nightly, {}), {
-    provider: "github",
-    owner: "otterware-app",
-    repo: "otter-mail",
-    releaseType: "prerelease",
-    channel: "nightly",
-  });
+  };
+  assert.deepEqual(resolvePublishConfig("0.13.9", {}), bridgeFeed);
+  assert.deepEqual(resolvePublishConfig(nightly, {}), bridgeFeed);
   assert.deepEqual(
     resolvePublishConfig(nightly, { OTTER_MAIL_UPDATE_URL: "http://localhost:8791" }),
     {
@@ -46,9 +39,7 @@ test("stable and nightly feeds are separate, while other prereleases have no upd
     },
   );
   assert.equal(resolvePublishConfig("0.13.10-rc.1", {}), undefined);
-  assert.throws(() =>
-    resolvePublishConfig(nightly, { OTTER_MAIL_UPDATE_REPOSITORY: "bad/repo/path" }),
-  );
+
   assert.equal(versionMatchesChannel(nightly, "stable"), false);
   assert.equal(versionMatchesChannel("0.13.9", "nightly"), false);
   assert.equal(versionMatchesChannel("0.13.10-rc.1", "stable"), false);
