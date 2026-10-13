@@ -701,6 +701,16 @@ export function getMessageDetail(accountId: string, messageId: string): GmailMes
   return rowToDetail(row);
 }
 
+/** A bounded batch of rows whose headers were erased by an incomplete provider update. */
+export function getMessageIdsMissingMetadata(accountId: string): string[] {
+  const rows = getDb()
+    .prepare(
+      "SELECT id FROM messages WHERE accountId = ? AND date = 0 AND subject = '' AND fromEmail = '' AND threadId = id LIMIT 100",
+    )
+    .all(accountId) as unknown as { id: string }[];
+  return rows.map((row) => row.id);
+}
+
 export function getStoredReplyHeaders(
   accountId: string,
   messageId: string,

@@ -50,6 +50,8 @@ let writes: { method: string; path: string; body?: unknown }[];
 /** Every `$search` Graph was asked, with where. */
 let searches: { path: string; search: string }[];
 let notified: string[];
+let sparseDeltas: boolean;
+let failedReads: boolean;
 
 function deliver(id: string, folder: string, patch: Partial<Message> = {}): Message {
   const m: Message = {
@@ -138,7 +140,11 @@ function handle(method: string, url: URL, body: unknown): Response {
     const since = Number(url.searchParams.get("since") ?? -1);
     const present = [...messages.values()]
       .filter((m) => m.folder === folder && m.version > since)
-      .map(resource);
+      .map((m) =>
+        since >= 0 && sparseDeltas
+          ? { id: m.id, parentFolderId: m.folder, isRead: m.isRead }
+          : resource(m),
+      );
     const removed =
       since < 0
         ? []
@@ -175,6 +181,8 @@ function handle(method: string, url: URL, body: unknown): Response {
   if (one) {
     const m = messages.get(decodeURIComponent(one[1]!));
     if (!m) return notFound();
+    if (method === "GET" && failedReads)
+      return json({ error: { code: "ErrorInternalServerError", message: "Test failure." } }, 500);
     if (one[2]) {
       move(m.id, (body as { destinationId: string }).destinationId);
       return json(resource(m));
@@ -324,6 +332,8 @@ beforeEach(() => {
   writes = [];
   searches = [];
   notified = [];
+  sparseDeltas = false;
+  failedReads = false;
   vi.stubGlobal("fetch", fakeFetch);
 });
 
@@ -361,6 +371,7 @@ describe("Outlook sync", () => {
     const { status, labelsOf, sync } = await boot();
     await until(() => status().fullSyncDone && !status().syncing, "the first sync");
 
+    sparseDeltas = true;
     deliver("new", "inbox");
     move("a", "archive");
     remove("c");
@@ -372,6 +383,118 @@ describe("Outlook sync", () => {
     expect(labelsOf("a")).toEqual(["UNREAD"]);
     expect(labelsOf("c")).toBeUndefined();
     expect(labelsOf("b")).toEqual(["INBOX", "UNREAD"]);
+  });
+
+  it("keeps headers, conversation and list position when marking read produces a sparse delta", async () => {
+    const latest = deliver("latest", "inbox", {
+      date: Date.parse("2026-10-13T08:00:00Z"),
+      flagged: true,
+      categories: ["Finance"],
+    });
+    deliver("older", "inbox", { date: latest.date - 60_000 });
+    const { status, provider, mailStore, sync } = await boot();
+    await until(() => status().fullSyncDone && !status().syncing, "the first sync");
+    const before = mailStore
+      .getThreadsPage(account.id, "INBOX", 0, 10)
+      .messages.find((m) => m.id === "latest")!;
+    mailStore.upsertMessageDetail(account.id, {
+      ...before,
+      bodyText: "Cached message body",
+      bodyHtml: "<p>Cached message body</p>",
+      attachments: [],
+    });
+    sparseDeltas = true;
+    await provider.modifyThread(account.id, latest.conversationId, { removeLabelIds: ["UNREAD"] });
+    await sync();
+    expect(mailStore.getMessageDetail(account.id, "latest")).toMatchObject({
+      subject: before.subject,
+      date: before.date,
+      threadId: before.threadId,
+      fromEmail: before.fromEmail,
+      unread: false,
+      starred: true,
+      labelIds: expect.arrayContaining(["INBOX", "STARRED", "category:Finance"]),
+      bodyText: "Cached message body",
+    });
+    expect(mailStore.getAllMessageLabels(account.id).get("latest")).not.toContain("UNREAD");
+    expect(mailStore.getThreadsPage(account.id, "INBOX", 0, 10).messages.map((m) => m.id)).toEqual([
+      "latest",
+      "older",
+    ]);
+    expect(notified).toEqual([]);
+  });
+
+  it("repairs already-erased headers without a new delta, preserving bodies and ignoring subjectless drafts", async () => {
+    deliver("broken", "inbox", { isRead: true, flagged: true, categories: ["Finance"] });
+    deliver("gone", "inbox");
+    deliver("draft", "drafts", { subject: "", date: 0 });
+    const { status, mailStore, sync } = await boot();
+    await until(() => status().fullSyncDone && !status().syncing, "the first sync");
+    const before = mailStore
+      .getThreadsPage(account.id, "INBOX", 0, 10)
+      .messages.find((m) => m.id === "broken")!;
+    for (const id of ["broken", "gone"]) {
+      mailStore.upsertMessageDetail(account.id, {
+        ...before,
+        id,
+        threadId: id,
+        subject: "",
+        fromEmail: "",
+        fromName: "",
+        to: "",
+        snippet: "",
+        date: 0,
+        unread: false,
+        starred: false,
+        labelIds: ["INBOX"],
+        bodyText: "Preserved body",
+        bodyHtml: null,
+        attachments: [],
+      });
+    }
+    messages.delete("gone");
+    expect(mailStore.getMessageIdsMissingMetadata(account.id).sort()).toEqual(["broken", "gone"]);
+    await sync();
+    expect(mailStore.getMessageDetail(account.id, "broken")).toMatchObject({
+      subject: before.subject,
+      date: before.date,
+      threadId: before.threadId,
+      fromEmail: before.fromEmail,
+      starred: true,
+      bodyText: "Preserved body",
+      labelIds: expect.arrayContaining(["INBOX", "STARRED", "category:Finance"]),
+    });
+    expect(mailStore.getMessageDetail(account.id, "gone")).toBeNull();
+    expect(mailStore.getMessageIdsMissingMetadata(account.id)).toEqual([]);
+    expect(mailStore.getThreadsPage(account.id, "DRAFT", 0, 10).messages).toHaveLength(1);
+    expect(notified).toEqual([]);
+  });
+
+  it("keeps the cache and delta cursor intact when resolving a sparse update fails", async () => {
+    deliver("a", "inbox");
+    const { status, provider, mailStore, sync } = await boot();
+    await until(() => status().fullSyncDone && !status().syncing, "the first sync");
+    const before = mailStore.getThreadsPage(account.id, "INBOX", 0, 10).messages;
+    const cursor = mailStore.getKv(`outlookDelta:${account.id}`);
+    sparseDeltas = true;
+    await provider.modifyMessage(account.id, "a", { removeLabelIds: ["UNREAD"] });
+    failedReads = true;
+    await expect(
+      provider.sync(account.id, {
+        update: () => {},
+        assertActive: () => {},
+        bumpRevision: () => {},
+        newMail: async () => {},
+      }),
+    ).rejects.toThrow("Test failure");
+    expect(mailStore.getKv(`outlookDelta:${account.id}`)).toBe(cursor);
+    expect(mailStore.getThreadsPage(account.id, "INBOX", 0, 10).messages).toEqual(before);
+    failedReads = false;
+    await sync();
+    expect(mailStore.getThreadsPage(account.id, "INBOX", 0, 10).messages[0]).toMatchObject({
+      subject: "Subject a",
+      unread: false,
+    });
   });
 
   it("turns label changes into Graph's writes", async () => {

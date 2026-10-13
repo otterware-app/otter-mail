@@ -73,6 +73,10 @@ MailProvider               packages/core/src/providers/provider.ts
 - The folder tree (names and Outlook's counts) and the categories are re-read when mail changed
   (at most every 30 seconds) and every 2 minutes. A folder deleted for good drops its cached mail;
   one whose label changed (moved into Deleted Items) is listed again.
+- Read/flag updates in a delta can omit unchanged headers. Sync resolves changed message IDs to
+  full summaries through `$batch` before updating the cache, keeping subjects, dates, conversations
+  and unrelated labels intact. Rows erased by older versions are repaired in bounded batches on
+  later syncs, preserving cached bodies; mail that has since been deleted is removed from the cache.
 - An expired delta (410) lists that folder again.
 
 ## Reading, sending, search

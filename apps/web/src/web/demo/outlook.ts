@@ -849,7 +849,11 @@ function delta(box: Mailbox, req: Req, folder: Folder): Answer {
           ),
         ].filter((id) => box.messages[id]?.folderId !== folder.id);
   const items = [
-    ...present.map((m) => pick(messageResource(box, m), fieldList)),
+    // Incremental Graph deltas may omit unchanged headers. Exercise that
+    // path so opening and marking mail read can't erase its list metadata.
+    ...present.map((m) =>
+      pick(messageResource(box, m), since > 0 ? "id,parentFolderId,isRead" : fieldList),
+    ),
     ...removed.map((id) => ({ id, "@removed": { reason: "deleted" } })),
   ];
   const size = pageSize(req.prefer, null);
