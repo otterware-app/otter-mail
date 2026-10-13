@@ -321,7 +321,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.6.9;
+				MARKETING_VERSION = 0.6.10;
 				GOOGLE_IOS_CLIENT_ID = 997327858649-0dfa4knnv1ur7021dn1ojuovoj1i3ed8.apps.googleusercontent.com;
 				GOOGLE_IOS_LEGACY_CLIENT_ID = 187875144740-tegr2te43tofcdogbr72tesmfcg3vbk3.apps.googleusercontent.com;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.otterware.mail.dev;
@@ -362,7 +362,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.6.9;
+				MARKETING_VERSION = 0.6.10;
 				GOOGLE_IOS_CLIENT_ID = 997327858649-vcvktkdnrs6p8c31ucsp1oeia7l8taho.apps.googleusercontent.com;
 				GOOGLE_IOS_LEGACY_CLIENT_ID = 187875144740-vu3ordog4vcqnn0nvh2o4jocvtbkbbdi.apps.googleusercontent.com;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.otterware.mail;
@@ -388,7 +388,7 @@
 				DEVELOPMENT_TEAM = 838JVGY7W4;
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 0.6.9;
+				MARKETING_VERSION = 0.6.10;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.otterware.mail.tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -409,7 +409,7 @@
 				DEVELOPMENT_TEAM = 838JVGY7W4;
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 0.6.9;
+				MARKETING_VERSION = 0.6.10;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.otterware.mail.tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -430,7 +430,7 @@
                 CODE_SIGN_STYLE = Automatic;
                 DEVELOPMENT_TEAM = 838JVGY7W4;
                 CURRENT_PROJECT_VERSION = 1;
-                MARKETING_VERSION = 0.6.9;
+                MARKETING_VERSION = 0.6.10;
                 GENERATE_INFOPLIST_FILE = YES;
                 INFOPLIST_FILE = OtterMailNotificationService/Info.plist;
                 GOOGLE_IOS_CLIENT_ID = 997327858649-0dfa4knnv1ur7021dn1ojuovoj1i3ed8.apps.googleusercontent.com;
@@ -454,7 +454,7 @@
                 CODE_SIGN_STYLE = Manual; CODE_SIGN_IDENTITY = "Apple Distribution"; PROVISIONING_PROFILE_SPECIFIER = "Otter Mail Notifications App Store";
                 DEVELOPMENT_TEAM = 838JVGY7W4;
                 CURRENT_PROJECT_VERSION = 1;
-                MARKETING_VERSION = 0.6.9;
+                MARKETING_VERSION = 0.6.10;
                 GENERATE_INFOPLIST_FILE = YES;
                 INFOPLIST_FILE = OtterMailNotificationService/Info.plist;
                 GOOGLE_IOS_CLIENT_ID = 997327858649-vcvktkdnrs6p8c31ucsp1oeia7l8taho.apps.googleusercontent.com;
