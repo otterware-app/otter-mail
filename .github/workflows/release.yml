@@ -181,8 +181,6 @@ jobs:
           VERSION: ${{ needs.preflight.outputs.version }}
           OTTER_MAIL_GOOGLE_CLIENT_ID: ${{ vars.OTTER_MAIL_GOOGLE_CLIENT_ID }}
           OTTER_MAIL_GOOGLE_CLIENT_SECRET: ${{ secrets.OTTER_MAIL_GOOGLE_CLIENT_SECRET }}
-          OTTER_MAIL_GOOGLE_LEGACY_CLIENT_ID: ${{ vars.OTTER_MAIL_GOOGLE_LEGACY_CLIENT_ID }}
-          OTTER_MAIL_GOOGLE_LEGACY_CLIENT_SECRET: ${{ secrets.OTTER_MAIL_GOOGLE_LEGACY_CLIENT_SECRET }}
           # Outlook's sign-in (a public client: no secret); without it the app offers no Outlook.
           OTTER_MAIL_MICROSOFT_CLIENT_ID: ${{ vars.OTTER_MAIL_MICROSOFT_CLIENT_ID }}
           CSC_LINK: ${{ secrets.CSC_LINK }}
@@ -250,8 +248,6 @@ jobs:
           VERSION: ${{ needs.preflight.outputs.version }}
           OTTER_MAIL_GOOGLE_CLIENT_ID: ${{ vars.OTTER_MAIL_GOOGLE_CLIENT_ID }}
           OTTER_MAIL_GOOGLE_CLIENT_SECRET: ${{ secrets.OTTER_MAIL_GOOGLE_CLIENT_SECRET }}
-          OTTER_MAIL_GOOGLE_LEGACY_CLIENT_ID: ${{ vars.OTTER_MAIL_GOOGLE_LEGACY_CLIENT_ID }}
-          OTTER_MAIL_GOOGLE_LEGACY_CLIENT_SECRET: ${{ secrets.OTTER_MAIL_GOOGLE_LEGACY_CLIENT_SECRET }}
           # Outlook's sign-in (a public client: no secret); without it the app offers no Outlook.
           OTTER_MAIL_MICROSOFT_CLIENT_ID: ${{ vars.OTTER_MAIL_MICROSOFT_CLIENT_ID }}
         run: |

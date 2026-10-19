@@ -9,7 +9,7 @@ https://github.com/otterware-app/otter-mail. The root Otterware website is a sep
 Both domains use the existing `otter-mail-site` and `otter-mail-relay` workers in the same
 Cloudflare account. Their Wrangler configurations are the source of truth for the custom
 domains. Cloudflare creates their DNS records and TLS certificates. D1, Durable Objects,
-`BETTER_AUTH_SECRET` and `GOOGLE_WEB_CLIENT_SECRET` are retained: changing the auth secret
+`BETTER_AUTH_SECRET` and `GOOGLE_GMAIL_CLIENT_SECRET` are retained: changing the auth secret
 would invalidate sessions and sealed Gmail refresh tokens.
 
 The site returns a permanent **308** redirect from every `mail.otterware.dev` URL to the

@@ -46,7 +46,7 @@ async function run(frames: [string, Record<string, unknown>][], sessionId?: stri
       requestId: "run",
       input: "Check",
       sessionId,
-      previousResponseId: sessionId ? undefined : "legacy",
+      previousResponseId: sessionId ? undefined : "previous",
     },
     settings,
     (event) => events.push(event),
@@ -87,7 +87,7 @@ describe("Hermes replies", () => {
     ).toEqual(["I'll check.", "Done.\n![image](data:image/png;base64,aGVsbG8=)"]);
   });
 
-  it("preserves completed commentary items in legacy Responses chats", async () => {
+  it("preserves completed commentary items in Responses chats", async () => {
     expect(
       await run([
         [

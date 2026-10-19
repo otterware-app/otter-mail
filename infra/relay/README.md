@@ -156,20 +156,13 @@ credentials (`wrangler login`, or `CLOUDFLARE_API_TOKEN`).
   token with that URL as audience; 10 minutes retention (a missed notification only delays a
   sync: the app still polls every few minutes).
 
-Secrets: `BETTER_AUTH_SECRET` (also keys Gmail token sealing), `GOOGLE_GMAIL_CLIENT_SECRET`
-(the current Web client, `GOOGLE_GMAIL_CLIENT_ID`), and the original
-`GOOGLE_WEB_CLIENT_SECRET` (the previous Web client, `GOOGLE_WEB_CLIENT_ID`).
-Locally, put them in `.dev.vars` (gitignored). Preserve both original secrets.
+Secrets: `BETTER_AUTH_SECRET` (also keys Gmail token sealing) and `GOOGLE_GMAIL_CLIENT_SECRET`
+(the Web client, `GOOGLE_GMAIL_CLIENT_ID`). Locally, put them in `.dev.vars` (gitignored).
 
-The original `otter-mail` project remains active for existing Google grants and installed
-apps. Google refresh tokens belong to their issuing OAuth client. Sealed web grants record
-that client; grants without a client field use the original Web client. Native apps retain
-their original credentials when refreshing existing grants. New sign-ins use `otterware`.
-`/v1/me` retains the original `pushTopic` for older apps and adds `pushTopics`, indexed by
-the Google project number. Updated apps select the topic for their grant; Gmail requires the
-watch topic to belong to the OAuth client's project. Both projects' authenticated push
-subscriptions deliver to the same relay, which accepts exactly their two service accounts.
-Do not delete the old clients, topic, subscription, or signing account while old grants exist.
+Every Google client is in the `otterware` project. Google refresh tokens belong to their issuing
+OAuth client, and Gmail requires the watch topic to belong to that client's project, so
+`/v1/me`'s `pushTopic` is `otterware`'s. A sealed web grant records its client; one sealed for
+any other client asks to sign in again.
 
 ## Microsoft setup (Outlook)
 
@@ -277,9 +270,8 @@ Set `NOTIFICATION_CREDENTIAL_SECRET` to a dedicated random secret using the `cf`
 tracked file. For local `DEV_DEMO` only, the auth secret can supply the encryption key. Existing
 Google web client/secret and `/v1/gmail/callback` issue the separate metadata-only grant; optional
 `NOTIFICATION_GOOGLE_CLIENT_ID` / `NOTIFICATION_GOOGLE_CLIENT_SECRET` select a dedicated web client
-with that callback. `NOTIFICATION_GOOGLE_PUSH_TOPIC` can override the matching project's topic;
-otherwise current/legacy topics are selected by client project number. Do not delete the legacy
-Google client/topic while it is used. Server-side metadata remains a Google restricted scope;
+with that callback. `NOTIFICATION_GOOGLE_PUSH_TOPIC` overrides `PUSH_TOPIC` for its watches. A
+connection made with another client asks to be connected again. Server-side metadata remains a Google restricted scope;
 complete applicable OAuth verification/security assessment requirements for public distribution.
 
 Create a separate Microsoft app registration (accounts in any directory + personal accounts),

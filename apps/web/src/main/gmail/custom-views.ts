@@ -68,76 +68,6 @@ export function resolveRules(view: MailView, accounts: GmailAccount[]): ViewRule
   return raw.filter((r) => accountIds.has(r.accountId));
 }
 
-// ── Legacy localStorage store (pre-backend) ─────────────────────────────────
-
-const LEGACY_VIEWS_KEY = "gmail:combined-views";
-
-type StoredView = MailView & {
-  /** Pre-rules shape: flat OR'd (account, label) picks. */
-  selections?: { accountId: string; labelId: string }[] | null;
-};
-
-function migrateLegacyView(v: StoredView): MailView {
-  if (v.rules !== undefined && v.rules !== null && Array.isArray(v.rules)) {
-    return { id: v.id, name: v.name, kind: v.kind, rules: v.rules };
-  }
-  if (v.rules === null || v.selections === null || v.selections === undefined) {
-    return { id: v.id, name: v.name, kind: v.kind, rules: null };
-  }
-  const byAccount = new Map<string, string[]>();
-  for (const s of v.selections) {
-    byAccount.set(s.accountId, [...(byAccount.get(s.accountId) ?? []), s.labelId]);
-  }
-  return {
-    id: v.id,
-    name: v.name,
-    kind: v.kind,
-    rules: [...byAccount.entries()].map(([accountId, allOf]) => ({ accountId, allOf, noneOf: [] })),
-  };
-}
-
-function readLegacyViews(): MailView[] | null {
-  try {
-    const raw = localStorage.getItem(LEGACY_VIEWS_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return null;
-    return parsed
-      .filter((v): v is StoredView => {
-        const view = v as StoredView;
-        return (
-          !!view &&
-          typeof view.id === "string" &&
-          typeof view.name === "string" &&
-          (view.kind === "inbox" ||
-            view.kind === "starred" ||
-            view.kind === "sent" ||
-            view.kind === "drafts" ||
-            view.kind === "important" ||
-            view.kind === "junk" ||
-            view.kind === "trash" ||
-            view.kind === "custom")
-        );
-      })
-      .map(migrateLegacyView);
-  } catch {
-    return null;
-  }
-}
-
-async function fetchViews(): Promise<MailView[]> {
-  const legacy = readLegacyViews();
-  if (legacy) {
-    try {
-      await gmailApi.importViews(legacy);
-      localStorage.removeItem(LEGACY_VIEWS_KEY);
-    } catch {
-      // keep the legacy key so the next launch retries the import
-    }
-  }
-  return gmailApi.listViews();
-}
-
 // ── View hooks ───────────────────────────────────────────────────────────────
 
 const VIEWS_QUERY_KEY = ["gmail:views"] as const;
@@ -156,7 +86,7 @@ export function useMailViews() {
 
   const query = useQuery<MailView[]>({
     queryKey: VIEWS_QUERY_KEY,
-    queryFn: fetchViews,
+    queryFn: () => gmailApi.listViews(),
     staleTime: 30_000,
     placeholderData: DEFAULT_VIEWS,
   });

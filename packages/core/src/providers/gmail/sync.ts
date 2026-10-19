@@ -5,8 +5,8 @@
  * and draft ids current: it's short, so new mail shows up on every push and
  * tick. What takes long runs as a backfill in its own lane beside it (the
  * engine's): listing the whole mailbox the first time, comparing it with
- * Gmail's listings after the history feed expired, and a one-time spam/trash
- * fill for mailboxes synced before those were.
+ * Gmail's listings after the history feed expired, and Spam and Trash after
+ * a first listing through the API.
  *
  * The feed starts where a backfill does (its seed), so syncs keep bringing
  * new mail while it runs. Once it's done, the next run replays the feed from
@@ -87,12 +87,9 @@ export async function backfillGmail(accountId: string, ctx: SyncContext): Promis
   if (store.getKv(spamTrashKey(accountId)) !== "1") await backfillSpamTrash(accountId, ctx);
 }
 
-/**
- * Starts the history feed now (or where an unfinished backfill began, for a
- * mailbox whose first sync predates this lane) and returns its history id.
- */
+/** Starts the history feed now and returns its history id. */
 async function startFeed(accountId: string, ctx: SyncContext): Promise<string> {
-  const seed = store.getKv(seedKey(accountId)) || (await getProfile(accountId)).historyId;
+  const seed = (await getProfile(accountId)).historyId;
   if (!seed) throw new Error("Gmail didn't say where the mailbox's history starts.");
   ctx.assertActive();
   store.setKv(seedKey(accountId), seed);

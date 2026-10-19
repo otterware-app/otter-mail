@@ -48,28 +48,22 @@
       "simple": { "limit": 6, "period": 60 },
     },
   ],
-  // Secrets: BETTER_AUTH_SECRET, GOOGLE_GMAIL_CLIENT_SECRET, GOOGLE_WEB_CLIENT_SECRET,
+  // Secrets: BETTER_AUTH_SECRET, GOOGLE_GMAIL_CLIENT_SECRET,
   // MICROSOFT_CLIENT_SECRET (Outlook for the web app; README.md).
   "vars": {
     "IDENTITY_MODE": "accounts",
     "ACCOUNTS_ORIGIN": "https://accounts.otterware.app",
     "BETTER_AUTH_URL": "https://relay.mail.otterware.app",
-    // New clients belong to otterware. Keep the original web client/secret
-    // and native audiences for existing grants and installed apps.
     "GOOGLE_CLIENT_ID": "997327858649-n30jr99d21200libki4bgeojpr1kfq59.apps.googleusercontent.com",
     "GOOGLE_IOS_CLIENT_ID": "997327858649-0dfa4knnv1ur7021dn1ojuovoj1i3ed8.apps.googleusercontent.com,997327858649-vcvktkdnrs6p8c31ucsp1oeia7l8taho.apps.googleusercontent.com",
     "GOOGLE_GMAIL_CLIENT_ID": "997327858649-hvcu3vfk5m83q9jid8g17pv6etmc491v.apps.googleusercontent.com",
-    "GOOGLE_LEGACY_CLIENT_IDS": "187875144740-aspevse90oidb4ra3t2fcdfmbagm6jep.apps.googleusercontent.com,187875144740-tegr2te43tofcdogbr72tesmfcg3vbk3.apps.googleusercontent.com,187875144740-vu3ordog4vcqnn0nvh2o4jocvtbkbbdi.apps.googleusercontent.com",
-    "GOOGLE_WEB_CLIENT_ID": "187875144740-drhr59ablkv4ovonrjisd7fj5dv28d6o.apps.googleusercontent.com",
     // The web app: trusted for CORS and sign-in redirects; shares the session cookie.
     "APP_ORIGIN": "https://mail.otterware.app",
     "DRIVE_ORIGIN": "https://drive.otterware.app",
     "COOKIE_DOMAIN": "mail.otterware.app",
     "PUSH_TOPIC": "projects/otterware/topics/gmail-push",
-    "PUSH_TOPIC_LEGACY": "projects/otter-mail/topics/gmail-push",
     "PUSH_AUDIENCE": "https://relay.mail.otterware.app/push/gmail",
     "PUSH_SERVICE_ACCOUNT": "gmail-push-relay@otterware.iam.gserviceaccount.com",
-    "PUSH_SERVICE_ACCOUNT_LEGACY": "gmail-push-relay@otter-mail.iam.gserviceaccount.com",
     "APNS_SANDBOX_TOPIC": "dev.otterware.mail.dev",
     "APNS_PRODUCTION_TOPIC": "dev.otterware.mail",
     // Outlook (README.md, "Microsoft setup"): the web app's Microsoft client,

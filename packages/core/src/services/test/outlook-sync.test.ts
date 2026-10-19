@@ -424,52 +424,6 @@ describe("Outlook sync", () => {
     expect(notified).toEqual([]);
   });
 
-  it("repairs already-erased headers without a new delta, preserving bodies and ignoring subjectless drafts", async () => {
-    deliver("broken", "inbox", { isRead: true, flagged: true, categories: ["Finance"] });
-    deliver("gone", "inbox");
-    deliver("draft", "drafts", { subject: "", date: 0 });
-    const { status, mailStore, sync } = await boot();
-    await until(() => status().fullSyncDone && !status().syncing, "the first sync");
-    const before = mailStore
-      .getThreadsPage(account.id, "INBOX", 0, 10)
-      .messages.find((m) => m.id === "broken")!;
-    for (const id of ["broken", "gone"]) {
-      mailStore.upsertMessageDetail(account.id, {
-        ...before,
-        id,
-        threadId: id,
-        subject: "",
-        fromEmail: "",
-        fromName: "",
-        to: "",
-        snippet: "",
-        date: 0,
-        unread: false,
-        starred: false,
-        labelIds: ["INBOX"],
-        bodyText: "Preserved body",
-        bodyHtml: null,
-        attachments: [],
-      });
-    }
-    messages.delete("gone");
-    expect(mailStore.getMessageIdsMissingMetadata(account.id).sort()).toEqual(["broken", "gone"]);
-    await sync();
-    expect(mailStore.getMessageDetail(account.id, "broken")).toMatchObject({
-      subject: before.subject,
-      date: before.date,
-      threadId: before.threadId,
-      fromEmail: before.fromEmail,
-      starred: true,
-      bodyText: "Preserved body",
-      labelIds: expect.arrayContaining(["INBOX", "STARRED", "category:Finance"]),
-    });
-    expect(mailStore.getMessageDetail(account.id, "gone")).toBeNull();
-    expect(mailStore.getMessageIdsMissingMetadata(account.id)).toEqual([]);
-    expect(mailStore.getThreadsPage(account.id, "DRAFT", 0, 10).messages).toHaveLength(1);
-    expect(notified).toEqual([]);
-  });
-
   it("keeps the cache and delta cursor intact when resolving a sparse update fails", async () => {
     deliver("a", "inbox");
     const { status, provider, mailStore, sync } = await boot();

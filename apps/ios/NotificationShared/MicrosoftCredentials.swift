@@ -35,7 +35,7 @@ nonisolated enum MicrosoftCredentials {
             return tokens
         }
     }
-    static func forget(_ email: String) { Keychain.set(refreshKey(email), nil); Keychain.set(accessKey(email), nil); Keychain.removeLegacy(refreshKey(email)) }
+    static func forget(_ email: String) { Keychain.set(refreshKey(email), nil); Keychain.set(accessKey(email), nil) }
     static func request(_ params: [String: String]) async throws -> Response {
         var request = URLRequest(url: URL(string: "\(authority)/token")!)
         request.httpMethod = "POST"

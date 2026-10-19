@@ -8,9 +8,7 @@ import { readJson, writeJson } from "../../json-file.js";
 import { platform } from "../../platform.js";
 import {
   PROVIDER_KINDS,
-  RUNTIME_MODES,
   type ClaudeSettings,
-  type RuntimeMode,
   type CodexSettings,
   type HermesSettings,
   type OpenClawSettings,
@@ -26,13 +24,6 @@ const DEFAULT_HERMES: HermesSettings = {
   reasoningEffort: "",
   serviceTier: "",
 };
-
-/** Before model choice existed, `model` held the agent id (now `agentModel`). */
-function migrateHermes(stored: Partial<HermesSettings>): Partial<HermesSettings> {
-  if (stored.model && !stored.model.includes("::") && !stored.agentModel)
-    return { ...stored, agentModel: stored.model, model: "" };
-  return stored;
-}
 
 const DEFAULT_OPENCLAW: OpenClawSettings = {
   enabled: true,
@@ -61,13 +52,6 @@ const DEFAULT_CLAUDE: ClaudeSettings = {
   runtimeMode: "full-access",
 };
 
-/** Runtime modes from before T3's set ("read-only") fall back to supervised. */
-function migrateRuntimeMode<T extends { runtimeMode: RuntimeMode }>(settings: T): T {
-  return RUNTIME_MODES.includes(settings.runtimeMode)
-    ? settings
-    : { ...settings, runtimeMode: "approval-required" };
-}
-
 // Stored under names from when agents were "assistants"; renaming them would lose them.
 const HERMES_KEY_SECRET = "assistant-hermes-key";
 const OPENCLAW_TOKEN_SECRET = "openclaw-gateway-token";
@@ -82,30 +66,23 @@ let cache: ProviderSettings | null = null;
 export async function getProviderSettings(): Promise<ProviderSettings> {
   if (cache) return cache;
   const stored = await readJson<ProviderSettings>("assistant-providers.json");
-  // Before providers existed, Hermes' connection lived in assistant-chat.json.
-  const legacyHermes = stored ? null : await readJson<HermesSettings>("assistant-chat.json");
   const selected = PROVIDER_KINDS.includes(stored?.selected as ProviderKind)
     ? (stored?.selected as ProviderKind)
-    : legacyHermes?.baseUrl
-      ? "hermes"
-      : "openrouter";
+    : "openrouter";
   cache = {
     selected,
-    hermes: {
-      ...DEFAULT_HERMES,
-      ...migrateHermes({ ...legacyHermes, ...stored?.hermes }),
-    },
+    hermes: { ...DEFAULT_HERMES, ...stored?.hermes },
     openclaw: { ...DEFAULT_OPENCLAW, ...stored?.openclaw },
-    codex: migrateRuntimeMode({ ...DEFAULT_CODEX, ...stored?.codex }),
-    claude: migrateRuntimeMode({ ...DEFAULT_CLAUDE, ...stored?.claude }),
-    openrouter: migrateRuntimeMode({
+    codex: { ...DEFAULT_CODEX, ...stored?.codex },
+    claude: { ...DEFAULT_CLAUDE, ...stored?.claude },
+    openrouter: {
       enabled: true,
       model: "",
       reasoningEffort: "",
       serviceTier: "",
       runtimeMode: "approval-required",
       ...stored?.openrouter,
-    }),
+    },
   };
   return cache;
 }

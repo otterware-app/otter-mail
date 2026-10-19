@@ -89,13 +89,7 @@ export async function gmailCheck(
     const watch = await json(root + "/watch", token, {
       method: "POST",
       body: JSON.stringify({
-        topicName:
-          env.NOTIFICATION_GOOGLE_PUSH_TOPIC ||
-          ((env.NOTIFICATION_GOOGLE_CLIENT_ID || env.GOOGLE_WEB_CLIENT_ID).startsWith(
-            "187875144740-",
-          )
-            ? (env.PUSH_TOPIC_LEGACY ?? env.PUSH_TOPIC)
-            : env.PUSH_TOPIC),
+        topicName: env.NOTIFICATION_GOOGLE_PUSH_TOPIC || env.PUSH_TOPIC,
       }),
     });
     cursor.watchedUntil = Number(watch.expiration);

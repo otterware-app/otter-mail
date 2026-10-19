@@ -1,6 +1,6 @@
 # Copy to .dev.vars (ignored). These are names/placeholders, never live credentials.
 BETTER_AUTH_SECRET=
-GOOGLE_WEB_CLIENT_SECRET=
+GOOGLE_GMAIL_CLIENT_SECRET=
 
 # Optional Outlook for the web app (README.md, "Microsoft setup"). Without them, it has no Outlook.
 MICROSOFT_CLIENT_ID=
@@ -18,7 +18,7 @@ APNS_PRODUCTION_TOPIC=dev.otterware.mail
 # Verified background notifications. Use a dedicated random secret in production.
 # DEV_DEMO can use BETTER_AUTH_SECRET locally; never use that fallback in production.
 NOTIFICATION_CREDENTIAL_SECRET=
-# Optional dedicated Google web client. Otherwise use GOOGLE_WEB_CLIENT_ID/SECRET
+# Optional dedicated Google web client. Otherwise use GOOGLE_GMAIL_CLIENT_ID/SECRET
 # with a separate gmail.metadata grant, checked on exchange/refresh.
 NOTIFICATION_GOOGLE_CLIENT_ID=
 NOTIFICATION_GOOGLE_CLIENT_SECRET=

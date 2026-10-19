@@ -546,12 +546,7 @@ type InlineImageSource = {
   byCid: Map<string, MessageAttachment>;
 };
 
-/**
- * Pairs each `<img src="cid:…">` in the body with the attachment it embeds. By
- * Content-ID when known; details cached before Content-IDs were recorded fall
- * back to the image's alt text (Gmail sets it to the filename), then to the
- * only image attachment when there's exactly one of each.
- */
+/** Pairs each `<img src="cid:…">` in the body with the attachment it embeds, by Content-ID. */
 function matchInlineImages(
   html: string | null,
   attachments: MessageAttachment[],
@@ -559,18 +554,11 @@ function matchInlineImages(
   const byCid = new Map<string, MessageAttachment>();
   if (!html || attachments.length === 0) return byCid;
   const images = attachments.filter((a) => a.mimeType.startsWith("image/"));
-  const refs: { cid: string; alt: string }[] = [];
   for (const tag of html.match(/<img\b[^>]*>/gi) ?? []) {
     const src = /\bsrc\s*=\s*["']?cid:([^"'\s>]+)/i.exec(tag)?.[1];
     if (!src) continue;
-    const alt = /\balt\s*=\s*["']([^"']*)["']/i.exec(tag)?.[1] ?? "";
-    refs.push({ cid: decodeURIComponent(src).toLowerCase(), alt });
-  }
-  for (const { cid, alt } of refs) {
-    const match =
-      images.find((a) => a.contentId?.toLowerCase() === cid) ??
-      (alt ? images.find((a) => !a.contentId && a.filename === alt) : undefined) ??
-      (refs.length === 1 && images.length === 1 && !images[0].contentId ? images[0] : undefined);
+    const cid = decodeURIComponent(src).toLowerCase();
+    const match = images.find((a) => a.contentId?.toLowerCase() === cid);
     if (match) byCid.set(cid, match);
   }
   return byCid;

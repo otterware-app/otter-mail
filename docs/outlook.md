@@ -75,8 +75,7 @@ MailProvider               packages/core/src/providers/provider.ts
   one whose label changed (moved into Deleted Items) is listed again.
 - Read/flag updates in a delta can omit unchanged headers. Sync resolves changed message IDs to
   full summaries through `$batch` before updating the cache, keeping subjects, dates, conversations
-  and unrelated labels intact. Rows erased by older versions are repaired in bounded batches on
-  later syncs, preserving cached bodies; mail that has since been deleted is removed from the cache.
+  and unrelated labels intact.
 - An expired delta (410) lists that folder again.
 
 ## Reading, sending, search

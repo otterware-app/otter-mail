@@ -4,8 +4,8 @@
  *  - Native Sessions API (preferred): /api/sessions/{id}/chat/stream. Each
  *    conversation maps to a persistent server-side session; history lives on
  *    the server and survives app + gateway restarts.
- *  - Responses API (legacy chats): /v1/responses with previous_response_id,
- *    kept so conversations started before the migration keep their thread.
+ *  - Responses API: /v1/responses with previous_response_id, for servers
+ *    without the Sessions API (and when a session can't be created).
  */
 
 import { utf8Decode } from "../../bytes.js";
@@ -558,7 +558,7 @@ async function streamSessionTurn(ctx: TurnContext & { sessionId: string }): Prom
   else if (terminal === null) emit({ requestId, type: "error", message: "unreachable" });
 }
 
-/** Legacy Responses-API turn (previous_response_id chaining) for pre-migration chats. */
+/** A Responses-API turn (previous_response_id chaining), for servers without sessions. */
 async function streamResponsesTurn(
   ctx: TurnContext & { previousResponseId?: string },
 ): Promise<void> {
@@ -778,8 +778,8 @@ export const hermesProvider: ChatProvider = {
     try {
       resetIdle();
       let sessionId = turn.sessionId;
-      // A new chat gets a persistent server session; a pre-migration chat keeps
-      // its response chain. If the session can't be created, fall back to chaining.
+      // A new chat gets a persistent server session; a chat already chaining
+      // responses keeps its chain. If the session can't be created, chain.
       if (!sessionId && !turn.previousResponseId && settings.hermes.sessions) {
         try {
           sessionId = await createSession(ready, turn.title);

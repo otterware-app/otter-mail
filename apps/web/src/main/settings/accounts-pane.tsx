@@ -415,7 +415,7 @@ function AccountEditor({ account }: { account: GmailAccount }) {
           title="Status"
           description={<StatusText status={status} />}
           control={
-            account.signedOut && signsInWithPassword(account) ? (
+            needsSignIn(account, sync.data) && signsInWithPassword(account) ? (
               <ImapPasswordForm account={account} />
             ) : needsSignIn(account, sync.data) ? (
               <SignInButton
@@ -424,12 +424,22 @@ function AccountEditor({ account }: { account: GmailAccount }) {
                 label="Sign in"
               />
             ) : (
-              <Btn size="sm" disabled={syncing || sync.data?.syncing} onClick={syncNow}>
-                <RotateCwIcon
-                  className={cn("size-3.5", (syncing || sync.data?.syncing) && "animate-spin")}
-                />
-                Sync now
-              </Btn>
+              <div className="flex items-center gap-2">
+                {/* Failing for another reason: signing in again is still worth a try. */}
+                {sync.data?.error && !signsInWithPassword(account) ? (
+                  <SignInButton
+                    email={account.email}
+                    provider={signInProvider(account)}
+                    label="Sign in again"
+                  />
+                ) : null}
+                <Btn size="sm" disabled={syncing || sync.data?.syncing} onClick={syncNow}>
+                  <RotateCwIcon
+                    className={cn("size-3.5", (syncing || sync.data?.syncing) && "animate-spin")}
+                  />
+                  Sync now
+                </Btn>
+              </div>
             )
           }
         />

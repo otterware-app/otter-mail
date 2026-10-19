@@ -126,6 +126,15 @@ struct MailboxSettings: View {
 
     private func form(_ mailbox: Mailbox) -> some View {
         SettingsForm {
+            // Signed out, the sign-in below says so; signed in, a failing sync may still need it.
+            if !mailbox.signedOut, let failure = store.health[email]?.failure {
+                Section {
+                    LabeledContent("Sync", value: "\(failure) — will retry")
+                    SignInAgainButton(mailbox: mailbox, title: mailbox.imap != nil ? "Enter password" : "Sign in again")
+                } footer: {
+                    Text("If it keeps failing, signing in again may fix it.")
+                }
+            }
             if !mailbox.signedOut, session.notificationProviders.contains(mailbox.provider.rawValue) {
                 Section {
                     let connection = session.notificationConnections[email.lowercased()]

@@ -26,7 +26,6 @@ import {
   WHEN_VARIABLES,
   commandLabel,
   labelMoveCommand,
-  labelMoveName,
   type KeybindingCommand,
   type KeybindingRule,
 } from "../keybindings/commands";
@@ -502,9 +501,7 @@ export function LabelShortcutDialog({
 }) {
   const { rules } = useKeybindingsState();
   const command = labelName ? labelMoveCommand(labelName) : null;
-  // Older `label.toggle:` rules count too; saving rewrites them as moves.
-  const existing =
-    rules.find((r) => labelName !== null && labelMoveName(r.command) === labelName) ?? null;
+  const existing = rules.find((r) => command !== null && r.command === command) ?? null;
   const [key, setKey] = useState("");
   const [recording, setRecording] = useState(false);
   useEffect(() => {

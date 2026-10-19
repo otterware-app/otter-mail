@@ -293,7 +293,7 @@ export type SendTurnInput = {
   title?: string;
   skill?: { name: string; path?: string };
   attachments?: ChatAttachment[];
-  /** Hermes legacy chats: chain via the Responses API. */
+  /** Hermes chats without a session: chain via the Responses API. */
   previousResponseId?: string;
 };
 

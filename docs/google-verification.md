@@ -10,18 +10,10 @@ signature and deletion, invitation RSVP, and supervised OpenRouter calendar tool
 and scope explanations are saved in the project's Data access form. Google's form requires
 footage for every assigned OAuth client: native Mail consent flows and the actual Calendar
 application's additional scopes/client still need demonstrations before submitting.
-The original project's [older demo](https://youtu.be/BDEHA3mwF9Y) shows the previous IDs;
 Google's 30 September reply requested clearer Calendar/Contacts demonstrations and exact scope
 matching. Private reviewer credentials and login instructions are supplied separately, never
 committed to the repository or included in the public video.
 Branding ownership is verified via the project owner's Search Console properties.
-
-The original `otter-mail` project remains active for existing grants and installed apps.
-Refresh tokens cannot move to another OAuth client. Accounts keeps its existing database,
-session/signing secrets and issuer (`https://accounts.otterware.app/v1/auth`), so the project
-move preserves Otter accounts and sessions. Mail's new clients retain old grant credentials
-and select the Gmail push topic belonging to each grant's project. Do not remove the original
-clients or Pub/Sub delivery infrastructure while those grants are in use.
 
 ## Submitting
 

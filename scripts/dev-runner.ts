@@ -142,7 +142,7 @@ function prepareRelay(wrangler: string): void {
   const relayDir = NodePath.join(repoRoot, "infra/relay");
   if (!NodeFS.existsSync(NodePath.join(relayDir, ".dev.vars"))) {
     throw new Error(
-      "infra/relay/.dev.vars is missing: it needs BETTER_AUTH_SECRET and GOOGLE_WEB_CLIENT_SECRET (see docs/development.md).",
+      "infra/relay/.dev.vars is missing: it needs BETTER_AUTH_SECRET and GOOGLE_GMAIL_CLIENT_SECRET (see docs/development.md).",
     );
   }
   const migrate = NodeChildProcess.spawnSync(
@@ -184,14 +184,14 @@ function googleClient(app: "desktop" | "web", env: Record<string, string | undef
     return { id, secret };
   }
   const relayDir = NodePath.join(repoRoot, "infra/relay");
-  const id = /"GOOGLE_WEB_CLIENT_ID":\s*"([^"]+)"/.exec(
+  const id = /"GOOGLE_GMAIL_CLIENT_ID":\s*"([^"]+)"/.exec(
     NodeFS.readFileSync(NodePath.join(relayDir, "wrangler.jsonc"), "utf8"),
   )?.[1];
   const vars = NodePath.join(relayDir, ".dev.vars");
   const secret = NodeFS.existsSync(vars)
-    ? parseEnv(NodeFS.readFileSync(vars, "utf8")).GOOGLE_WEB_CLIENT_SECRET
+    ? parseEnv(NodeFS.readFileSync(vars, "utf8")).GOOGLE_GMAIL_CLIENT_SECRET
     : undefined;
-  if (!id || !secret) throw new Error("infra/relay/.dev.vars needs GOOGLE_WEB_CLIENT_SECRET.");
+  if (!id || !secret) throw new Error("infra/relay/.dev.vars needs GOOGLE_GMAIL_CLIENT_SECRET.");
   return { id, secret, redirectUri: `http://localhost:${BASE_RELAY_PORT}/v1/gmail/callback` };
 }
 

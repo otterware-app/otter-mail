@@ -168,9 +168,8 @@ Subscriptions, grants and device sessions can still expire or be revoked; reconn
 says authorization is required. Opening the app always syncs directly from the provider.
 
 `NotificationShared/` contains the direct readers, coordinated OAuth refresh, shared Keychain and
-App Group configuration. Existing Google/Microsoft refresh tokens and IMAP passwords migrate by
-copy/verify/delete from the original private Keychain group. Shared provider secrets and access
-tokens use `AfterFirstUnlockThisDeviceOnly`: enrichment can work on a locked phone **after the
+App Group configuration. Provider secrets and access tokens live in the App Group's Keychain
+group and use `AfterFirstUnlockThisDeviceOnly`: enrichment can work on a locked phone **after the
 first unlock since reboot**, and falls back before that. Otter session credentials stay private to
 the app. Cross-process locks serialize refresh; removal/replacement checks prevent an in-flight
 refresh from restoring deleted credentials. Debug/release storage, topics and tokens are separate.
@@ -186,15 +185,15 @@ Register App IDs for `dev.otterware.mail.dev` / `dev.otterware.mail` and their `
 extensions. Enable Push Notifications on the **app**, and App Groups/Keychain Sharing on both
 app and extension. Provision both targets for their matching group:
 `group.dev.otterware.mail.dev.notifications` (Debug),
-`group.dev.otterware.mail.notifications` (Release). The app-private Keychain group stays first
-for migration. The `APNS_ENVIRONMENT` build setting and signed `aps-environment` must match:
+`group.dev.otterware.mail.notifications` (Release). The app-private Keychain group stays first:
+it's the default group, where the Otter session is kept. The `APNS_ENVIRONMENT` build setting and signed `aps-environment` must match:
 Debug `development` → sandbox; Release/TestFlight `production` → production. If signing with a
 custom development profile, keep the plist environment consistent with that profile.
 
 The shared App Group also grants Keychain access under its unprefixed group name. Keep only the
 app-private prefixed group in `keychain-access-groups`; adding the App Group there fails signed
 archives against the profiles' prefixed Keychain allowlist. Google token queries select the App
-Group explicitly, while existing Otter sessions remain in the app-private default group.
+Group explicitly, while Otter sessions stay in the app-private default group.
 
 Regenerate the main App Store profile with the new capabilities, and add the extension's
 “Otter Mail Notifications App Store” profile. The release workflow also needs

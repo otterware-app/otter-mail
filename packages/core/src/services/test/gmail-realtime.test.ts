@@ -95,8 +95,6 @@ const socket = () => FakeSocket.all.at(-1)!;
 type Call = { method: string; host: string; path: string; account: string | null; body?: unknown };
 
 let calls: Call[];
-let googleClientId: string | undefined;
-let pushTopics: Record<string, string> | undefined;
 let relayAccounts: RelayAccount[];
 /** A Gmail history call waits on this while it's set (a sync still running). */
 let historyGate: Promise<void> | null;
@@ -123,7 +121,6 @@ async function fakeFetch(input: string | URL | Request, init?: RequestInit): Pro
       return json({
         user: { id: "u1", email: "me@otter.test", name: null, picture: null },
         pushTopic: TOPIC,
-        pushTopics,
       });
     }
     if (route === "GET /v1/accounts") return json({ accounts: relayAccounts });
@@ -244,7 +241,6 @@ async function boot() {
       isSignedIn: (accountId) => accountId === gmail.id,
       getAccessToken: async (accountId) => `gmail:${accountId}`,
       getIdToken: unused,
-      getClientId: async () => googleClientId,
       removeTokens: async () => {},
     },
     connect: unused,
@@ -298,8 +294,6 @@ async function goLive(): Promise<void> {
 
 beforeEach(() => {
   calls = [];
-  googleClientId = undefined;
-  pushTopics = undefined;
   broadcasts = [];
   imapWatch = null;
   imapSyncs = [];
@@ -350,18 +344,6 @@ describe("Gmail realtime", () => {
     socket().event({ type: "accounts" });
     await until(() => gmailCalls("/watch").length === 2, "the renewal");
     expect(gmailCalls("/watch").map((c) => c.account)).toEqual([gmail.id, gmail.id]);
-  });
-
-  it.each([
-    ["new-project-client.apps.googleusercontent.com", "projects/new/topics/gmail-push"],
-    ["old-project-client.apps.googleusercontent.com", TOPIC],
-    [undefined, TOPIC],
-  ])("watches the topic belonging to Google client %s", async (clientId, expectedTopic) => {
-    googleClientId = clientId;
-    pushTopics = { new: "projects/new/topics/gmail-push", old: TOPIC };
-    await boot();
-    await goLive();
-    expect(gmailCalls("/watch")[0]!.body).toMatchObject({ topicName: expectedTopic });
   });
 
   it("syncs the account a mail event names, at once, as a push", async () => {

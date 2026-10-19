@@ -46,8 +46,6 @@ export interface GoogleAuth {
   getAccessToken(accountId: string, opts?: { forceRefresh?: boolean }): Promise<string>;
   /** A fresh Google ID token for the account, proving the sign-in to the relay. */
   getIdToken(accountId: string): Promise<string>;
-  /** Which OAuth client issued this mailbox's tokens, for its matching Gmail push topic. */
-  getClientId?(accountId: string): Promise<string | undefined>;
   /**
    * The desktop's Otter sign-in with another Google account: Google in the
    * browser, identity only. (The web app signs in by redirect instead.)

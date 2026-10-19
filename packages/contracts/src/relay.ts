@@ -56,8 +56,6 @@ export interface MeResponse {
   user: RelayUser;
   /** The Pub/Sub topic to pass to Gmail's `users.watch`. */
   pushTopic: string;
-  /** Topics keyed by the Google project number in a mailbox's OAuth client ID. */
-  pushTopics?: Record<string, string>;
   /** The relay can sign the web app in to Outlook (it has a Microsoft OAuth client). */
   outlook?: boolean;
 }
