@@ -61,7 +61,7 @@ import { refreshProfiles } from "../services/google-profile.js";
 import { refreshSignatures, saveSignature } from "../services/signatures.js";
 import * as viewsStore from "../services/views-store.js";
 import { ALL_MAIL_LABEL_ID } from "../types.js";
-import type { ComposeAttachment, MailView, ViewRule } from "../types.js";
+import type { ComposeAttachment, ViewRule } from "../types.js";
 
 const LOCAL_PAGE_SIZE = 50;
 
@@ -620,43 +620,6 @@ export function registerGmailHandlers(): void {
       return { ok: true };
     } catch (err) {
       console.log("[gmail:resetView] error", { error: String(err) });
-      throw err;
-    }
-  });
-
-  // gmail:importViews — one-time migration of the renderer's legacy
-  // localStorage view store; no-op once views.json exists.
-  handle("gmail:importViews", async (params: unknown) => {
-    const p = params as Record<string, unknown>;
-    try {
-      const raw = Array.isArray(p?.views) ? p.views : [];
-      const views = raw
-        .map((v) => v as Record<string, unknown>)
-        .filter(
-          (v) =>
-            typeof v?.id === "string" &&
-            typeof v?.name === "string" &&
-            (v.kind === "inbox" ||
-              v.kind === "starred" ||
-              v.kind === "sent" ||
-              v.kind === "drafts" ||
-              v.kind === "important" ||
-              v.kind === "junk" ||
-              v.kind === "trash" ||
-              v.kind === "custom"),
-        )
-        .map((v): MailView => ({
-          id: v.id as string,
-          name: v.name as string,
-          kind: v.kind as MailView["kind"],
-          rules: v.rules === null ? null : parseRules(v.rules),
-        }));
-      await viewsStore.importViews(views);
-      broadcast("gmail:views-changed");
-      preferenceChanged("views");
-      return await viewsStore.listViews();
-    } catch (err) {
-      console.log("[gmail:importViews] error", { error: String(err) });
       throw err;
     }
   });

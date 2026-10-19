@@ -134,7 +134,6 @@ export async function syncOutlook(accountId: string, ctx: SyncContext): Promise<
   ctx.update({ phase: mailboxOf(accountId) ? "incremental" : "labels" });
   const mailbox = await refreshFolders(accountId, false, ctx);
   if (store.getKv(peekedKey(accountId)) !== "1") await peekInbox(accountId, mailbox, ctx);
-  await repairMetadata(accountId, ctx);
 
   ctx.update({ phase: "incremental", synced: 0 });
   const delta = readDelta(accountId);
@@ -153,25 +152,6 @@ export async function syncOutlook(accountId: string, ctx: SyncContext): Promise<
     await refreshFolders(accountId, true, ctx);
   }
   await ctx.newMail(added.filter((m) => m.labelIds.includes("INBOX")));
-}
-
-/** Restore headers erased by older versions, keeping cached bodies and pending label writes. */
-async function repairMetadata(accountId: string, ctx: SyncContext): Promise<void> {
-  const ids = store.getMessageIdsMissingMetadata(accountId);
-  if (ids.length === 0) return;
-  const summaries = await getSummaries(accountId, ids);
-  ctx.assertActive();
-  const found = new Set(summaries.map((m) => m.id));
-  const touched = new Set(ids.flatMap((id) => store.getMessageLabelIds(accountId, id) ?? []));
-  store.upsertMessages(accountId, summaries);
-  // A 404 means the message has since left the mailbox; other failures throw before writing.
-  store.applyHistoryChanges(
-    accountId,
-    ids.filter((id) => !found.has(id)).map((id) => ({ kind: "deleted", id })),
-  );
-  for (const m of summaries) for (const label of m.labelIds) touched.add(label);
-  store.recountLabels(accountId, [...touched]);
-  ctx.bumpRevision();
 }
 
 /** The newest page of the inbox, so a new mailbox shows mail before its backfill gets there. */

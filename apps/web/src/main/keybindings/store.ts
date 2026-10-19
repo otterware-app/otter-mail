@@ -66,17 +66,9 @@ export function mergeWithDefaults(custom: KeybindingRule[]): KeybindingRule[] {
   return [...DEFAULT_KEYBINDINGS.filter((r) => !overridden.has(r.command)), ...custom];
 }
 
-/** Rules saved while agents were "assistants" (`assistant.toggle`, `assistantOpen`). */
-function fromAssistantRule<T extends { command: string; when?: string }>(rule: T): T {
-  const command = rule.command.replace(/^assistant\./, "agent.");
-  const when = rule.when?.replace(/\bassistantOpen\b/g, "agentOpen");
-  return when === undefined ? { ...rule, command } : { ...rule, command, when };
-}
-
 function stateFor(file: FileResult | null): State {
   const custom: KeybindingRule[] = [];
-  for (const raw of file?.rules ?? []) {
-    const entry = fromAssistantRule(raw);
+  for (const entry of file?.rules ?? []) {
     // A command this version doesn't have (renamed, or from a newer one) is skipped.
     if (!isKeybindingCommand(entry.command)) continue;
     const rule: KeybindingRule = { key: entry.key, command: entry.command };

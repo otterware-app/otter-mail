@@ -107,7 +107,7 @@ See [verified background notifications](#verified-background-notifications) for 
 
 - **Apple:** team 838JVGY7W4 (chris.kafrouni@gmail.com, Account Holder). App Store Connect app 6817249947. The API key in `~/.otter-mail/signing` has the Developer role: it uploads builds but
   can't create App IDs, profiles or review submissions (do those in the browser).
-- **Google Cloud:** project `otter-mail`. Until Gmail access is verified, only accounts listed as
+- **Google Cloud:** project `otterware`. Until Gmail access is verified, only accounts listed as
   test users (Google Auth Platform → Audience, 100 max) can sign in. See
   `docs/google-verification.md`.
 - **Cloudflare:** the `otter-mail-relay` and site workers.

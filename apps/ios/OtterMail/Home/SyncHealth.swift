@@ -16,16 +16,18 @@ func signedOutTitle(_ mailbox: Mailbox) -> String {
 struct SignInAgainButton: View {
     @Environment(Session.self) private var session
     let mailbox: Mailbox
+    /** A settings row's own label; the banner and drawer have the short one. */
+    var title: String?
 
     @State private var askPassword = false
     @State private var password = ""
     @State private var error: String?
 
     var body: some View {
-        Button(mailbox.imap != nil ? "Enter password" : "Sign in") {
+        Button(title ?? (mailbox.imap != nil ? "Enter password" : "Sign in")) {
             if mailbox.imap != nil { askPassword = true } else { run { try await session.signIn(mailbox: mailbox.email) } }
         }
-        .font(.subheadline.weight(.semibold))
+        .font(title == nil ? .subheadline.weight(.semibold) : nil)
         .disabled(session.busy != nil)
         .alert("Password for \(mailbox.email)", isPresented: $askPassword) {
             SecureField("Password", text: $password)

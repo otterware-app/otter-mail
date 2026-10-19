@@ -78,14 +78,9 @@ export interface Env {
   /** The iPhone app's Google OAuth clients ("iOS", no secret), comma-separated: one per bundle ID. */
   GOOGLE_IOS_CLIENT_ID?: string;
   /** The web app's Google OAuth client ("Web application"): Otter and Gmail sign-in. */
-  GOOGLE_WEB_CLIENT_ID: string;
+  GOOGLE_GMAIL_CLIENT_ID: string;
   /** Its secret (a Worker secret). */
-  GOOGLE_WEB_CLIENT_SECRET: string;
-  /** Current Gmail web client; GOOGLE_WEB_CLIENT_* refreshes existing sealed grants. */
-  GOOGLE_GMAIL_CLIENT_ID?: string;
-  GOOGLE_GMAIL_CLIENT_SECRET?: string;
-  /** OAuth audiences accepted from older installed apps. */
-  GOOGLE_LEGACY_CLIENT_IDS?: string;
+  GOOGLE_GMAIL_CLIENT_SECRET: string;
   /** Where the web app runs (https://mail.otterware.app): trusted for CORS and redirects. */
   APP_ORIGIN: string;
   /** The first-party Drive app, for the shared account lifecycle. */
@@ -94,13 +89,10 @@ export interface Env {
   COOKIE_DOMAIN?: string;
   /** Pub/Sub topic Gmail publishes to (`projects/…/topics/…`). */
   PUSH_TOPIC: string;
-  /** Kept as /v1/me's default for installed clients using the previous Google project. */
-  PUSH_TOPIC_LEGACY?: string;
   /** Audience of the OIDC token on Pub/Sub push requests (the push route's URL). */
   PUSH_AUDIENCE: string;
   /** Service account Pub/Sub signs push requests as. */
   PUSH_SERVICE_ACCOUNT: string;
-  PUSH_SERVICE_ACCOUNT_LEGACY?: string;
   APNS_TEAM_ID?: string;
   APNS_KEY_ID?: string;
   /** PKCS#8 .p8 contents, a Worker secret. */
@@ -482,17 +474,7 @@ authed.get("/me", (c) => {
   const env = c.env;
   return c.json({
     user: c.var.session.user,
-    pushTopic: env.PUSH_TOPIC_LEGACY ?? env.PUSH_TOPIC,
-    ...(env.GOOGLE_GMAIL_CLIENT_ID
-      ? {
-          pushTopics: {
-            [env.GOOGLE_GMAIL_CLIENT_ID.split("-")[0]!]: env.PUSH_TOPIC,
-            ...(env.PUSH_TOPIC_LEGACY
-              ? { [env.GOOGLE_WEB_CLIENT_ID.split("-")[0]!]: env.PUSH_TOPIC_LEGACY }
-              : {}),
-          },
-        }
-      : {}),
+    pushTopic: env.PUSH_TOPIC,
     outlook: outlook.configured(env),
   } satisfies MeResponse);
 });
@@ -913,7 +895,7 @@ app.post(
       const env = c.env as Env;
       try {
         const claims = await verifyGoogleJwt(token, env.PUSH_AUDIENCE, googleKeys(env));
-        return [env.PUSH_SERVICE_ACCOUNT, env.PUSH_SERVICE_ACCOUNT_LEGACY].includes(claims.email);
+        return claims.email === env.PUSH_SERVICE_ACCOUNT;
       } catch (err) {
         if (err instanceof InvalidTokenError) return false;
         throw err;

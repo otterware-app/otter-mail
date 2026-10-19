@@ -25,36 +25,28 @@ nonisolated enum GoogleCredentials {
     }
     enum Failure: Error { case revoked, unavailable }
     static var clientID: String { Bundle.main.object(forInfoDictionaryKey: "GoogleClientID") as? String ?? "" }
-    static var legacyClientID: String {
-        Bundle.main.object(forInfoDictionaryKey: "GoogleLegacyClientID") as? String ?? clientID
-    }
     static func refreshKey(_ email: String) -> String { "google-refresh-token:\(email.lowercased())" }
     private static func accessKey(_ email: String) -> String { "google-access-token:\(email.lowercased())" }
 
     static func credential(_ email: String, read: (String) -> String? = Keychain.get) -> Credential? {
-        guard let saved = read(refreshKey(email)) else { return nil }
-        if let data = saved.data(using: .utf8), let value = try? JSONDecoder().decode(Credential.self, from: data) { return value }
-        // Existing phones stored a bare refresh token from the original Google project.
-        return Credential(refreshToken: saved, clientID: legacyClientID)
+        guard let data = read(refreshKey(email))?.data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode(Credential.self, from: data)
     }
 
     static func save(_ email: String, credential: Credential, write: (String, String?) -> Bool = { Keychain.set($0, $1) }) -> Bool {
         guard let data = try? JSONEncoder().encode(credential), let value = String(data: data, encoding: .utf8) else { return false }
         guard write(refreshKey(email), value) else { return false }
-        // A new grant must not reuse an access token issued to the previous client.
+        // A new grant must not reuse the access token of the one it replaces.
         _ = write(accessKey(email), nil)
         return true
-    }
-
-    static func pushTopic(_ email: String, fallback: String, read: (String) -> String? = Keychain.get) -> String {
-        guard clientID != legacyClientID, credential(email, read: read)?.clientID == clientID else { return fallback }
-        return Bundle.main.object(forInfoDictionaryKey: "GooglePushTopic") as? String ?? fallback
     }
 
     static func refresh(_ email: String, force: Bool = false) async throws -> Tokens {
         try await PushState.locked("oauth:" + email) {
             let refreshKey = refreshKey(email)
-            guard let saved = Keychain.get(refreshKey), let credential = credential(email) else { throw Failure.revoked }
+            guard let saved = Keychain.get(refreshKey) else { throw Failure.revoked }
+            // A sign-in it can't read (from a deleted Google client) is no sign-in: sign in again.
+            guard let credential = credential(email) else { Keychain.set(refreshKey, nil); throw Failure.revoked }
             if !force, let value = Keychain.get(accessKey(email)), let data = value.data(using: .utf8),
                let cached = try? JSONDecoder().decode(Tokens.self, from: data), cached.expiresAt > .now { return cached }
             let response: Response
@@ -83,7 +75,6 @@ nonisolated enum GoogleCredentials {
     static func forget(_ email: String) {
         Keychain.set(refreshKey(email), nil)
         Keychain.set(accessKey(email), nil)
-        Keychain.removeLegacyGoogle(email)
     }
 
     static func request(_ params: [String: String]) async throws -> Response {
@@ -93,8 +84,10 @@ nonisolated enum GoogleCredentials {
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         request.httpBody = form(params.merging(["client_id": clientID]) { a, _ in a })
         let (data, http) = try await URLSession.shared.data(for: request)
+        // A grant Google ended, or one from a client it no longer has (a 401): only signing in again helps.
+        if (http as? HTTPURLResponse)?.statusCode == 401 { throw Failure.revoked }
         let response = try JSONDecoder().decode(Response.self, from: data)
-        if response.error == "invalid_grant" { throw Failure.revoked }
+        if ["invalid_grant", "invalid_client", "deleted_client", "unauthorized_client"].contains(response.error ?? "") { throw Failure.revoked }
         guard (http as? HTTPURLResponse)?.statusCode == 200, response.access_token != nil, response.error == nil else { throw Failure.unavailable }
         return response
     }

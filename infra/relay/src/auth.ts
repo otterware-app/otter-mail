@@ -28,10 +28,8 @@ export const googleKeys = (env: Env) => remoteKeys(env.GOOGLE_JWKS_URL || GOOGLE
 export const googleClientIds = (env: Env) =>
   [
     env.GOOGLE_GMAIL_CLIENT_ID,
-    env.GOOGLE_WEB_CLIENT_ID,
     env.GOOGLE_CLIENT_ID,
     ...(env.GOOGLE_IOS_CLIENT_ID ?? "").split(","),
-    ...(env.GOOGLE_LEGACY_CLIENT_IDS ?? "").split(","),
   ].filter((id): id is string => Boolean(id));
 
 const hub = (env: Env, userId: string) => env.USER_HUB.get(env.USER_HUB.idFromName(userId));
@@ -49,7 +47,7 @@ export function createAuth(env: Env, db: Db) {
       google: {
         // The web client does the redirect sign-in; ID tokens may come from either app.
         clientId: googleClientIds(env),
-        clientSecret: env.GOOGLE_GMAIL_CLIENT_SECRET ?? env.GOOGLE_WEB_CLIENT_SECRET ?? "",
+        clientSecret: env.GOOGLE_GMAIL_CLIENT_SECRET,
         verifyIdToken: async (token) => {
           try {
             await verifyGoogleJwt(token, googleClientIds(env), googleKeys(env));

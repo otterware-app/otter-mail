@@ -12,7 +12,6 @@ import path from "node:path";
 import {
   ATTACHMENTS_DIR,
   type ChatAttachment,
-  type Platform,
   type ToolFiles,
   chatFile,
   chatFilePath,
@@ -20,7 +19,6 @@ import {
 } from "@otter-mail/core";
 
 import { appInfo } from "../../backend-protocol.js";
-import { requestMain } from "../../main-link.js";
 
 /**
  * Codex threads started from Otter Mail run here (their cwd), so they're listable as ours.
@@ -86,18 +84,4 @@ export function withAttachmentPaths(text: string, attachments: ChatAttachment[])
     .map((a) => `[Attached ${a.kind} "${a.name}" is saved at: ${attachmentPath(a)}]`)
     .join("\n");
   return text ? `${text}\n\n${context}` : context;
-}
-
-/** The Hermes key used to live in its own safeStorage file; it's a platform secret now. */
-export async function migrateHermesKey(secrets: Platform["secrets"]): Promise<void> {
-  const file = path.join(appInfo().stateDir, "assistant-chat.enc");
-  const hex = await fs.readFile(file, "utf-8").catch(() => null);
-  if (hex === null) return;
-  try {
-    const sealed = Buffer.from(hex.trim(), "hex").toString("base64");
-    await secrets.set("assistant-hermes-key", await requestMain("unseal", { sealed }));
-  } catch {
-    // Unreadable: Hermes asks to connect again.
-  }
-  await fs.rm(file, { force: true });
 }

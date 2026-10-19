@@ -37,10 +37,6 @@ const shared = {
     __APP_VERSION__: JSON.stringify(process.env.OTTER_MAIL_VERSION?.trim() || pkg.version),
     __GOOGLE_CLIENT_ID__: JSON.stringify(buildEnv("OTTER_MAIL_GOOGLE_CLIENT_ID")),
     __GOOGLE_CLIENT_SECRET__: JSON.stringify(buildEnv("OTTER_MAIL_GOOGLE_CLIENT_SECRET")),
-    __GOOGLE_LEGACY_CLIENT_ID__: JSON.stringify(buildEnv("OTTER_MAIL_GOOGLE_LEGACY_CLIENT_ID")),
-    __GOOGLE_LEGACY_CLIENT_SECRET__: JSON.stringify(
-      buildEnv("OTTER_MAIL_GOOGLE_LEGACY_CLIENT_SECRET"),
-    ),
     __MICROSOFT_CLIENT_ID__: JSON.stringify(buildEnv("OTTER_MAIL_MICROSOFT_CLIENT_ID")),
   },
   deps: {

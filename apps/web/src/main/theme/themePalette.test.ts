@@ -601,8 +601,8 @@ describe("theme files", () => {
   it("canonicalizes explicit writes without migrating untouched themes", () => {
     const stored = new Map<string, string>();
     const untouchedTheme = {
-      id: "legacy",
-      label: "Legacy",
+      id: "saved",
+      label: "Saved",
       appearance: "dark",
       colors: { accent: "#5b6cff", futureRole: "hsl(10 20% 30%)" },
       futureMetadata: { version: 2 },
@@ -709,14 +709,14 @@ describe("theme files", () => {
   });
 
   it("writes from the cached raw snapshot without risking a destructive reread", () => {
-    const legacyTheme = {
-      id: "legacy",
-      label: "Legacy",
+    const savedTheme = {
+      id: "saved",
+      label: "Saved",
       appearance: "dark",
       colors: { accent: "#5b6cff" },
       futureMetadata: true,
     };
-    let storedThemes = JSON.stringify([legacyTheme]);
+    let storedThemes = JSON.stringify([savedTheme]);
     let readCount = 0;
     const setItem = vi.fn((_key: string, value: string) => {
       storedThemes = value;
@@ -746,7 +746,7 @@ describe("theme files", () => {
 
     expect(readCount).toBe(1);
     expect(setItem).toHaveBeenCalledOnce();
-    expect(JSON.parse(storedThemes)[0]).toEqual(legacyTheme);
+    expect(JSON.parse(storedThemes)[0]).toEqual(savedTheme);
 
     vi.unstubAllGlobals();
     invalidateCustomThemes();

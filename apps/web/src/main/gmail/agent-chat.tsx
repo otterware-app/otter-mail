@@ -48,7 +48,6 @@ import {
   type AgentSettingsPatch,
   type ProviderKind,
   type ProviderSnapshot,
-  type ToolStep,
   type Skill,
 } from "./api";
 import { ProviderModelPicker, RuntimeModePicker, TraitsPicker } from "./model-picker";
@@ -162,14 +161,12 @@ function ContextKindIcon({ kind, className }: { kind: ContextKind; className?: s
 type ChatTurn = {
   id: string;
   role: "user" | "assistant";
-  /** The user's message (agent turns stored before `items`: their reply). */
+  /** The user's message. */
   text: string;
   /** Agent turns: what the agent said and the steps it took, in order. */
   items?: TurnItem[];
   /** Confirmed results of this turn, shown underneath its reply. */
   changes?: ChatChange[];
-  /** Agent turns stored before `items`: their tool rows. */
-  tools?: { name: string; output?: string }[];
   /** Attached mail context, shown as a chip above the user's message. */
   context?: ContextMeta;
   /** Invoked skill, rendered as a badge on the user's message. */
@@ -185,42 +182,6 @@ type ChatTurn = {
   startedAt?: number;
   finishedAt?: number;
 };
-
-/**
- * A tool row as turns stored before steps labelled it (Claude `search_mail: {…}`,
- * Codex `otter-mail: search_mail` or the command, Hermes the tool's name), as a
- * step; null for Claude's own ToolSearch.
- */
-function legacyStep(label: string): ToolStep | null {
-  const words = (name: string) => {
-    const text = name.replace(/[_-]+/g, " ").trim();
-    return text.charAt(0).toUpperCase() + text.slice(1);
-  };
-  const [, head, rest] = label.match(/^([\w.-]+): ([\s\S]*)$/) ?? [];
-  if (head === "ToolSearch") return null;
-  if (head && /^otter[-_]mail$/.test(head))
-    return { kind: "tool", title: words(rest), source: "Otter Mail" };
-  if (head === "Bash")
-    return { kind: "command", title: `Ran ${rest.split("\n")[0]}`, detail: rest };
-  if (head === "Read")
-    return { kind: "read", title: `Read ${rest.split("/").pop()}`, detail: rest };
-  // Claude's rows for Otter Mail's tools went without their prefix: `search_mail: {…}`.
-  if (head && /^[a-z]+(_[a-z]+)+$/.test(head))
-    return { kind: "tool", title: words(head), source: "Otter Mail", detail: rest };
-  if (head) return { kind: "tool", title: words(head), detail: rest };
-  if (/\s/.test(label)) return { kind: "command", title: `Ran ${label}`, detail: label };
-  return { kind: "tool", title: words(label) };
-}
-
-/** An agent turn's items; turns stored before `items` had tool rows, then the reply. */
-function itemsOf(turn: ChatTurn): TurnItem[] {
-  if (turn.items) return turn.items;
-  const steps = (turn.tools ?? []).flatMap((t): TurnItem[] => {
-    const step = legacyStep(t.name);
-    return step ? [{ kind: "step", step, output: t.output }] : [];
-  });
-  return [...steps, ...(turn.text ? [{ kind: "text" as const, text: turn.text }] : [])];
-}
 
 /** Command-style badge for an invoked skill (composer + user message). */
 function SkillBadge({
@@ -261,17 +222,13 @@ function ContextRecap({
   onOpen,
 }: {
   context: ContextMeta;
-  onOpen: (item: { title: string; target?: ChatChange["target"] }) => void;
+  onOpen: (item: { title: string; target: ChatChange["target"] }) => void;
 }) {
   const label =
     context.count > 1
       ? `${context.count} conversations`
       : (context.subjects[0] ?? "1 conversation");
-  const items =
-    context.items ??
-    (context.kind !== "quote" && context.kind !== "project"
-      ? context.subjects.map((title) => ({ title }))
-      : []);
+  const items = context.items ?? [];
   const chipClass =
     "flex max-w-64 items-center gap-1.5 rounded-sm border border-border px-2 py-0.5 text-2xs font-medium text-muted-foreground";
   return (
@@ -319,8 +276,8 @@ function ContextRecap({
 
 /**
  * A saved chat, bound to the provider it started with. `sessionId` is the
- * provider-side session (Hermes session / Codex thread); pre-migration Hermes
- * chats have none and keep chaining via `lastResponseId` (Responses API).
+ * provider-side session (Hermes session / Codex thread); Hermes chats on a
+ * server without sessions have none and chain via `lastResponseId` (Responses API).
  */
 type Conversation = {
   id: string;
@@ -369,7 +326,6 @@ type QueuedMessage = Outgoing;
 
 const STORE_KEY = "gmail:hermes-chat:v2";
 const PANEL_TABS_KEY = "gmail:panel-tabs";
-const LEGACY_KEY = "gmail:hermes-chat:v1";
 const MAX_STORED_TURNS = 80;
 const MAX_CONVERSATIONS = 40;
 
@@ -386,10 +342,6 @@ function clampTitle(text: string): string {
   const t = text.trim();
   if (!t) return "New chat";
   return t.length > 56 ? `${t.slice(0, 56)}…` : t;
-}
-
-function deriveTitle(turns: ChatTurn[]): string {
-  return clampTitle(turns.find((t) => t.role === "user")?.text ?? "");
 }
 
 function newConversation(provider: ProviderKind = "openrouter"): Conversation {
@@ -449,7 +401,7 @@ function turnsFromMessages(messages: ChatSessionMessage[]): ChatTurn[] {
       if (pending?.kind === "step") pending.output = m.text || "(done)";
     }
   }
-  return turns.filter((t) => t.role === "user" || itemsOf(t).length > 0);
+  return turns.filter((t) => t.role === "user" || (t.items?.length ?? 0) > 0);
 }
 
 /**
@@ -490,12 +442,8 @@ function loadStore(): Store {
   try {
     const v2 = JSON.parse(localStorage.getItem(STORE_KEY) ?? "") as Partial<Store>;
     if (Array.isArray(v2.conversations)) {
-      // Older chats carry no session / provider fields (they were all Hermes).
       conversations = v2.conversations.map((c) => ({
         ...c,
-        provider: c.provider ?? "hermes",
-        sessionId: c.sessionId ?? null,
-        sessionOwned: c.sessionOwned ?? false,
         // A turn can only be picked up again in the session it was sent to.
         openRequest: c.sessionId ? (c.openRequest ?? null) : null,
       }));
@@ -503,31 +451,7 @@ function loadStore(): Store {
       tabs = Array.isArray(v2.tabs) ? v2.tabs : [];
     }
   } catch {
-    // fall through to legacy migration
-  }
-  if (conversations.length === 0) {
-    try {
-      const v1 = JSON.parse(localStorage.getItem(LEGACY_KEY) ?? "") as {
-        turns?: ChatTurn[];
-        lastResponseId?: string | null;
-      };
-      if (v1.turns && v1.turns.length > 0) {
-        conversations = [
-          {
-            id: crypto.randomUUID(),
-            title: deriveTitle(v1.turns),
-            turns: v1.turns,
-            provider: "hermes",
-            sessionId: null,
-            sessionOwned: false,
-            lastResponseId: v1.lastResponseId ?? null,
-            updatedAt: Date.now(),
-          },
-        ];
-      }
-    } catch {
-      // no legacy data
-    }
+    // nothing saved yet
   }
   // Only non-empty sessions are kept. A panel with only pages needs no chat.
   conversations = conversations.filter((c) => c.turns.length > 0);
@@ -1218,28 +1142,12 @@ export function AgentChatPanel({
   // (cache hit — the reader fetched it). Both are pointer-only; the agent
   // reads the bodies itself.
   const accountsQuery = useAccounts();
-  const openContextItem = (item: { title: string; target?: ChatChange["target"] }) => {
-    void (async () => {
-      let target = item.target;
-      // Older saved turns kept only a subject. Recover an unambiguous conversation.
-      if (!target) {
-        const result = await gmailApi.searchMessages({ q: item.title });
-        const matches = result.messages.filter((m) => m.subject === item.title && m.accountId);
-        const threads = new Map(matches.map((m) => [`${m.accountId}:${m.threadId || m.id}`, m]));
-        if (threads.size !== 1 || result.nextPageToken)
-          throw new Error("This older context doesn't identify a unique conversation.");
-        const message = [...threads.values()][0];
-        target = {
-          kind: "thread",
-          id: message.threadId || message.id,
-          accountId: message.accountId!,
-        };
-      }
-      await onOpenChange({ title: item.title, action: "updated", target });
-    })().catch((error: unknown) =>
-      toast.error("Couldn't open this item", {
-        description: error instanceof Error ? error.message : String(error),
-      }),
+  const openContextItem = (item: { title: string; target: ChatChange["target"] }) => {
+    onOpenChange({ title: item.title, action: "updated", target: item.target }).catch(
+      (error: unknown) =>
+        toast.error("Couldn't open this item", {
+          description: error instanceof Error ? error.message : String(error),
+        }),
     );
   };
   const accountEmailById = (id: string | undefined) =>
@@ -1364,7 +1272,7 @@ export function AgentChatPanel({
           const nextTurns = [...c.turns];
           const turn = nextTurns[nextTurns.length - 1];
           if (!turn || turn.role !== "assistant") return c;
-          const items = [...itemsOf(turn)];
+          const items = [...(turn.items ?? [])];
           const updated: ChatTurn = { ...turn, items };
           const last = items[items.length - 1];
           if (event.type === "change") {
@@ -1446,37 +1354,7 @@ export function AgentChatPanel({
       conversations: s.conversations.map((c) => (c.id === id ? fn(c) : c)),
     }));
   };
-
-  // Chats saved before turns kept their steps in order: the first time one
-  // opens, its agent turns are read back from the agent's own session.
-  const upgraded = useRef(new Set<string>());
   const patchConversationForEffect = useLatest(patchConversation);
-  useEffect(() => {
-    const c = active;
-    if (!c?.sessionId || runs[c.id] || upgraded.current.has(c.id)) return;
-    if (!c.turns.some((t) => t.role === "assistant" && !t.items)) return;
-    const host = providersState?.providers.find((p) => p.kind === c.provider);
-    if (!host?.sessions || !isProviderUsable(host)) return;
-    upgraded.current.add(c.id);
-    gmailApi.agentSessionMessages(c.provider, c.sessionId).then(
-      (messages) => {
-        const fresh = turnsFromMessages(messages).filter((t) => t.role === "assistant");
-        patchConversationForEffect.current(c.id, (current) => {
-          // Only when the session lines up with the chat, turn for turn.
-          if (fresh.length !== current.turns.filter((t) => t.role === "assistant").length)
-            return current;
-          let i = 0;
-          const turns = current.turns.map((t) => {
-            if (t.role !== "assistant") return t;
-            const items = fresh[i++].items;
-            return t.items ? t : { ...t, items };
-          });
-          return { ...current, turns };
-        });
-      },
-      (error) => console.log("[AgentChat:upgrade] failed", { error: String(error) }),
-    );
-  }, [active, runs, providersState, patchConversationForEffect, upgraded]);
 
   // A turn the app quit during (or lost the connection in) is picked up
   // again: the provider shows how far its run got, then streams the rest.
@@ -2422,7 +2300,7 @@ export function AgentChatPanel({
                   const isLast = turn.id === turns[turns.length - 1]?.id;
                   const live = streamingActive && isLast && !turn.finishedAt && !turn.error;
                   // Progress messages and tool steps fold away; the final reply stays.
-                  const items = itemsOf(turn).filter(
+                  const items = (turn.items ?? []).filter(
                     (item) => item.kind === "step" || item.text.trim(),
                   );
                   const lastStep = items.findLastIndex((item) => item.kind === "step");

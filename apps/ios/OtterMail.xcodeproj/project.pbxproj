@@ -323,7 +323,6 @@
 				);
 				MARKETING_VERSION = 0.6.11;
 				GOOGLE_IOS_CLIENT_ID = 997327858649-0dfa4knnv1ur7021dn1ojuovoj1i3ed8.apps.googleusercontent.com;
-				GOOGLE_IOS_LEGACY_CLIENT_ID = 187875144740-tegr2te43tofcdogbr72tesmfcg3vbk3.apps.googleusercontent.com;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.otterware.mail.dev;
                 CODE_SIGN_ENTITLEMENTS = OtterMail/OtterMail.entitlements;
                 NOTIFICATION_APP_GROUP = group.dev.otterware.mail.dev.notifications;
@@ -364,7 +363,6 @@
 				);
 				MARKETING_VERSION = 0.6.11;
 				GOOGLE_IOS_CLIENT_ID = 997327858649-vcvktkdnrs6p8c31ucsp1oeia7l8taho.apps.googleusercontent.com;
-				GOOGLE_IOS_LEGACY_CLIENT_ID = 187875144740-vu3ordog4vcqnn0nvh2o4jocvtbkbbdi.apps.googleusercontent.com;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.otterware.mail;
                 CODE_SIGN_ENTITLEMENTS = OtterMail/OtterMail.entitlements;
                 NOTIFICATION_APP_GROUP = group.dev.otterware.mail.notifications;
@@ -434,7 +432,6 @@
                 GENERATE_INFOPLIST_FILE = YES;
                 INFOPLIST_FILE = OtterMailNotificationService/Info.plist;
                 GOOGLE_IOS_CLIENT_ID = 997327858649-0dfa4knnv1ur7021dn1ojuovoj1i3ed8.apps.googleusercontent.com;
-                GOOGLE_IOS_LEGACY_CLIENT_ID = 187875144740-tegr2te43tofcdogbr72tesmfcg3vbk3.apps.googleusercontent.com;
                 NOTIFICATION_APP_GROUP = group.dev.otterware.mail.dev.notifications;
                 PRODUCT_BUNDLE_IDENTIFIER = dev.otterware.mail.dev.notifications;
                 PRODUCT_NAME = "$(TARGET_NAME)";
@@ -458,7 +455,6 @@
                 GENERATE_INFOPLIST_FILE = YES;
                 INFOPLIST_FILE = OtterMailNotificationService/Info.plist;
                 GOOGLE_IOS_CLIENT_ID = 997327858649-vcvktkdnrs6p8c31ucsp1oeia7l8taho.apps.googleusercontent.com;
-                GOOGLE_IOS_LEGACY_CLIENT_ID = 187875144740-vu3ordog4vcqnn0nvh2o4jocvtbkbbdi.apps.googleusercontent.com;
                 NOTIFICATION_APP_GROUP = group.dev.otterware.mail.notifications;
                 PRODUCT_BUNDLE_IDENTIFIER = dev.otterware.mail.notifications;
                 PRODUCT_NAME = "$(TARGET_NAME)";

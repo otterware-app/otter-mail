@@ -5,30 +5,19 @@ import Testing
 nonisolated struct NotificationTests: Sendable {
     private func data(_ json: String) -> Data { Data(json.utf8) }
 
-    @Test func existingGoogleGrantKeepsItsOriginalClientAndTopic() throws {
-        let email = "legacy-grant-test@otter.example"
-        // The unsigned CI simulator has no shared-Keychain entitlement.
-        var saved = [GoogleCredentials.refreshKey(email): "fake-original-refresh"]
-        let credential = try #require(GoogleCredentials.credential(email, read: { saved[$0] }))
-        #expect(credential.refreshToken == "fake-original-refresh")
-        #expect(credential.clientID == GoogleCredentials.legacyClientID)
-        #expect(GoogleCredentials.pushTopic(email, fallback: "legacy-topic", read: { saved[$0] }) == "legacy-topic")
-        try #require(GoogleCredentials.save(email, credential: credential, write: { saved[$0] = $1; return true }))
-        #expect(GoogleCredentials.credential(email, read: { saved[$0] })?.clientID == GoogleCredentials.legacyClientID)
-    }
-
-    @Test func newGoogleGrantRecordsItsClientAndSelectsTheNewTopic() throws {
-        let email = "current-grant-test@otter.example"
+    @Test func googleGrantRecordsItsClient() throws {
+        let email = "grant-test@otter.example"
         let accessKey = "google-access-token:\(email)"
-        var saved = [accessKey: "fake-previous-client-access"]
-        try #require(GoogleCredentials.save(email, credential: .init(refreshToken: "fake-current-refresh", clientID: GoogleCredentials.clientID), write: { saved[$0] = $1; return true }))
+        // The unsigned CI simulator has no shared-Keychain entitlement.
+        var saved = [accessKey: "fake-replaced-access"]
+        try #require(GoogleCredentials.save(email, credential: .init(refreshToken: "fake-refresh", clientID: GoogleCredentials.clientID), write: { saved[$0] = $1; return true }))
         #expect(saved[accessKey] == nil)
         let credential = try #require(GoogleCredentials.credential(email, read: { saved[$0] }))
-        #expect(credential.refreshToken == "fake-current-refresh")
+        #expect(credential.refreshToken == "fake-refresh")
         #expect(credential.clientID == GoogleCredentials.clientID)
-        #expect(GoogleCredentials.pushTopic(email, fallback: "legacy-topic", read: { saved[$0] }) == "projects/otterware/topics/gmail-push")
+        saved[GoogleCredentials.refreshKey(email)] = "fake-bare-refresh"
+        #expect(GoogleCredentials.credential(email, read: { saved[$0] }) == nil)
     }
-
 
     @Test func previewKeepsLinkLabelsAndFormattedWords() throws {
         let snippet = "[Rasur Shop](https://example.com/pages/products) [Besuchen Sie uns]\n(https://example.com/track?id=123) Lieber Laurin, **something big** is coming &amp; it’s exciting."

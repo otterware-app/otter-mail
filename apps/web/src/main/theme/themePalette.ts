@@ -37,27 +37,15 @@ const RESERVED_THEME_IDS: ReadonlySet<string> = new Set([
   "light",
   "dark",
   ...APP_THEMES.map((theme) => theme.id),
-  "t3-chat-dark",
-  "t3-grove",
-  "t3-ocean",
-  "t3-ember",
-  "t3-iris",
 ]);
 
 export { EMBER_THEME, GROVE_THEME, IRIS_THEME, OCEAN_THEME, T3_CHAT_THEME, THEME_COLOR_ROLES };
 export type { ThemeAppearance, ThemeColorRole, ThemeColors, ThemeDefinition, ThemeVariants };
 
-export const T3_CHAT_THEME_ID = "t3-chat" as const;
-const GROVE_THEME_ID = "grove" as const;
-export const OCEAN_THEME_ID = "ocean" as const;
-const EMBER_THEME_ID = "ember" as const;
-const IRIS_THEME_ID = "iris" as const;
 export const THEME_FILE_VERSION = 1 as const;
 // Mail: synced with the Otter account (synced-preferences.ts), so the iPhone
 // app wears these too (apps/ios's Theme/CustomThemes.swift).
 export const CUSTOM_THEMES_STORAGE_KEY = "otter:themes:v1";
-
-const LEGACY_T3_CHAT_DARK_THEME_ID = "t3-chat-dark";
 
 // Mail: upstream's is an Effect schema.
 export type ThemePreference = string;
@@ -270,40 +258,6 @@ export function subscribeToCustomThemes(listener: () => void): () => void {
     customThemeListeners.delete(listener);
     window.removeEventListener("storage", handleStorage);
   };
-}
-
-// Earlier builds shipped every maintainer theme under a t3- prefix; only the
-// genuinely T3-branded palette keeps it. Stored preferences and mixes with the
-// old ids stay readable through this alias table.
-const LEGACY_THEME_ID_ALIASES: Readonly<Record<string, string>> = {
-  [LEGACY_T3_CHAT_DARK_THEME_ID]: T3_CHAT_THEME_ID,
-  "t3-grove": GROVE_THEME_ID,
-  "t3-ocean": OCEAN_THEME_ID,
-  "t3-ember": EMBER_THEME_ID,
-  "t3-iris": IRIS_THEME_ID,
-};
-
-function normalizeThemeId(themeId: string): string {
-  return LEGACY_THEME_ID_ALIASES[themeId] ?? themeId;
-}
-
-/**
- * Map a stored preference onto the id the runtime applies, so selection state
- * matches the theme cards. The legacy dark-variant id stays as-is because it
- * still carries the appearance hint getThemePreferenceMode reads.
- */
-export function canonicalThemePreference(theme: string): string {
-  return theme === LEGACY_T3_CHAT_DARK_THEME_ID ? theme : normalizeThemeId(theme);
-}
-
-function themeIdFromPreference(theme: ThemePreference): string {
-  return normalizeThemeId(theme);
-}
-
-// Older builds stored the dark T3 Chat palette as a separate theme. Keep
-// those preferences readable while mapping them to the dark variant.
-function legacyThemeMode(theme: ThemePreference): ThemeAppearance | null {
-  return theme === LEGACY_T3_CHAT_DARK_THEME_ID ? "dark" : null;
 }
 
 /**
@@ -1048,13 +1002,12 @@ export function updateThemeColorFamily(
 const BUILT_IN_THEME_DEFINITIONS: ReadonlyArray<ThemeDefinition> = BUILT_IN_THEMES;
 
 export function getThemeDefinition(theme: ThemePreference): ThemeDefinition | null {
-  const themeId = themeIdFromPreference(theme);
-  const builtIn = BUILT_IN_THEME_DEFINITIONS.find((definition) => definition.id === themeId);
+  const builtIn = BUILT_IN_THEME_DEFINITIONS.find((definition) => definition.id === theme);
   // Mail: a built-in as it's painted (see displayedTheme), so a duplicate
   // starts from exactly what's on screen.
   return (
     (builtIn ? displayedTheme(builtIn) : null) ??
-    getCustomThemes().find((definition) => definition.id === themeId) ??
+    getCustomThemes().find((definition) => definition.id === theme) ??
     null
   );
 }
@@ -1112,8 +1065,6 @@ export function getThemeModes(theme: ThemeDefinition): ReadonlyArray<ThemeAppear
 export function getThemePreferenceMode(theme: ThemePreference): ThemeAppearance | null {
   if (theme === "system") return null;
   if (theme === "light" || theme === "dark") return theme;
-  const legacyMode = legacyThemeMode(theme);
-  if (legacyMode) return legacyMode;
   return getThemeDefinition(theme)?.appearance ?? null;
 }
 

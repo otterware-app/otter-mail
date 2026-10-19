@@ -92,8 +92,6 @@ export const KEYBINDING_COMMANDS = [
 ] as const;
 
 export const LABEL_MOVE_PREFIX = "label.move:";
-/** Label shortcuts saved before they became moves; they now move too. */
-const LEGACY_LABEL_PREFIX = "label.toggle:";
 
 export type LabelMoveCommand = `${typeof LABEL_MOVE_PREFIX}${string}`;
 
@@ -108,9 +106,8 @@ export function labelMoveCommand(labelName: string): LabelMoveCommand {
 
 /** The label name of a `label.move:<name>` command, else null. */
 export function labelMoveName(command: string): string | null {
-  const prefix = [LABEL_MOVE_PREFIX, LEGACY_LABEL_PREFIX].find((p) => command.startsWith(p));
-  if (!prefix) return null;
-  const name = command.slice(prefix.length).trim();
+  if (!command.startsWith(LABEL_MOVE_PREFIX)) return null;
+  const name = command.slice(LABEL_MOVE_PREFIX.length).trim();
   return name || null;
 }
 

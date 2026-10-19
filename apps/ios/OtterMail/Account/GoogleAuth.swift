@@ -59,10 +59,7 @@ final class GoogleAuth {
     private static var redirectURI: String { "\(redirectScheme):/oauth2redirect" }
     private static func refreshKey(_ email: String) -> String { "google-refresh-token:\(email.lowercased())" }
 
-    func isSignedIn(_ email: String) -> Bool {
-        Keychain.migrateGoogle(email)
-        return Keychain.get(Self.refreshKey(email)) != nil
-    }
+    func isSignedIn(_ email: String) -> Bool { Keychain.get(Self.refreshKey(email)) != nil }
 
     /** Opens Google's sign-in; keeps the refresh token for the address it signed in. */
     func signIn(loginHint: String? = nil) async throws -> (profile: Profile, tokens: Tokens) {

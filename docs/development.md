@@ -168,7 +168,7 @@ The same renderer runs in a browser, with the mail backend (`packages/core`) in 
 
 ```sh
 # once (gitignored): the relay's secrets
-printf 'BETTER_AUTH_SECRET=any-long-local-secret\nGOOGLE_GMAIL_CLIENT_SECRET=...\nGOOGLE_WEB_CLIENT_SECRET=...\n' > infra/relay/.dev.vars
+printf 'BETTER_AUTH_SECRET=any-long-local-secret\nGOOGLE_GMAIL_CLIENT_SECRET=...\n' > infra/relay/.dev.vars
 pnpm dev    # the app on http://localhost:5833, the relay on http://localhost:8787
 ```
 

@@ -71,9 +71,9 @@ const imapSettings = z
 const microsoftScope = "https://graph.microsoft.com/Mail.ReadBasic";
 const microsoftIdentityScope = "https://graph.microsoft.com/User.Read";
 const authority = "https://login.microsoftonline.com/common/oauth2/v2.0";
-const googleClient = (env: Env) => env.NOTIFICATION_GOOGLE_CLIENT_ID || env.GOOGLE_WEB_CLIENT_ID;
+const googleClient = (env: Env) => env.NOTIFICATION_GOOGLE_CLIENT_ID || env.GOOGLE_GMAIL_CLIENT_ID;
 const googleSecret = (env: Env) =>
-  env.NOTIFICATION_GOOGLE_CLIENT_SECRET || env.GOOGLE_WEB_CLIENT_SECRET;
+  env.NOTIFICATION_GOOGLE_CLIENT_SECRET || env.GOOGLE_GMAIL_CLIENT_SECRET;
 const callback = (env: Env, provider: "gmail" | "outlook") =>
   `${env.BETTER_AUTH_URL}${provider === "gmail" ? "/v1/gmail/callback" : "/v1/notifications/callback"}`;
 const key = (env: Env) => {

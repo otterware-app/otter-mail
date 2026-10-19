@@ -68,12 +68,6 @@ export async function listViews(): Promise<MailView[]> {
   return readViews();
 }
 
-/** One-time import of the renderer's legacy localStorage views; no-op once views.json exists. */
-export async function importViews(views: MailView[]): Promise<void> {
-  if ((await readJson("views.json")) !== null) return;
-  await writeViews(views);
-}
-
 function genId(): string {
   return `v_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }

@@ -58,7 +58,7 @@ final class MicrosoftAuth {
     private static var redirectURI: String { "\(redirectScheme)://auth" }
     private static func refreshKey(_ email: String) -> String { "microsoft-refresh-token:\(email.lowercased())" }
 
-    func isSignedIn(_ email: String) -> Bool { Keychain.migrateShared(Self.refreshKey(email)); return Keychain.get(Self.refreshKey(email)) != nil }
+    func isSignedIn(_ email: String) -> Bool { Keychain.get(Self.refreshKey(email)) != nil }
 
     /** Opens Microsoft's sign-in; keeps the refresh token for the address it signed in. */
     func signIn(loginHint: String? = nil) async throws -> (profile: Profile, tokens: Tokens) {
