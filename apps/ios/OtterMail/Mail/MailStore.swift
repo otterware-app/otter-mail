@@ -87,9 +87,40 @@ final class MailStore {
     }
 
     func setSignedOut(_ signedOut: Bool, _ email: String) {
+        if !signedOut { setLostSignIn(false, email) }
         guard var mailbox = mailbox(email), mailbox.signedOut != signedOut else { return }
         mailbox.signedOut = signedOut
         upsert(mailbox: mailbox)
+    }
+
+    // ── Sync health ──────────────────────────────────────────────────────────
+
+    /** How a mailbox's last sync went, for the drawer's status line. */
+    struct SyncHealth: Equatable {
+        var syncedAt: Date?
+        /** Why the last sync failed ("Can't connect"); nil when it worked. */
+        var failure: String?
+    }
+    private(set) var health: [String: SyncHealth] = [:]
+
+    func recordSync(_ email: String, failure: String?) {
+        var entry = health[email] ?? SyncHealth()
+        if failure == nil { entry.syncedAt = .now }
+        entry.failure = failure
+        health[email] = entry
+    }
+
+    /**
+     * Mailboxes this iPhone was signed in to until the provider ended it
+     * (revoked, expired, a refused password): raised on the mail list, not
+     * just in the drawer. Kept across launches until signed in again.
+     */
+    private(set) var lostSignIn = Set(UserDefaults.standard.stringArray(forKey: "mail.lostSignIn") ?? [])
+
+    func setLostSignIn(_ lost: Bool, _ email: String) {
+        guard lostSignIn.contains(email) != lost else { return }
+        if lost { lostSignIn.insert(email) } else { lostSignIn.remove(email) }
+        UserDefaults.standard.set(lostSignIn.sorted(), forKey: "mail.lostSignIn")
     }
 
     func setOn(_ on: Bool, _ mailbox: Mailbox) {

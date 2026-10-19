@@ -52,6 +52,7 @@ function ensureStatus(accountId: string): SyncStatus {
     lastSyncAt: state.lastSyncAt,
     fullSyncDone: state.fullSyncDone,
     error: null,
+    signInNeeded: false,
     download: null,
     revision: 0,
   };
@@ -189,7 +190,7 @@ export function syncAccount(
   // Nothing to sync with until the account signs in again (Settings → Accounts).
   if (!isSignedIn(accountId)) {
     stopWatch(accountId);
-    update(accountId, { syncing: false, error: signedOutMessage(accountId) });
+    update(accountId, { syncing: false, error: signedOutMessage(accountId), signInNeeded: true });
     return;
   }
   startWatch(accountId);
@@ -284,6 +285,11 @@ function describeSyncError(accountId: string, err: unknown): string {
   return text.length > 240 ? `${text.slice(0, 240)}…` : text;
 }
 
+/** Whether only signing in again (or the password, for IMAP) gets this account syncing again. */
+function needsSignIn(accountId: string, provider: MailProvider, err: unknown): boolean {
+  return !isSignedIn(accountId) || provider.errorKind(err) === "auth";
+}
+
 /** A sync run is background work: it only spends quota the user isn't using. */
 function runSync(accountId: string): Promise<void> {
   const provider = providerFor(accountId);
@@ -332,6 +338,7 @@ async function runSyncNow(accountId: string, provider: MailProvider): Promise<vo
     synced = true;
     update(accountId, {
       ...laneStatus(accountId, false),
+      signInNeeded: false,
       lastSyncAt: startedAt,
       fullSyncDone: store.getSyncState(accountId).fullSyncDone,
     });
@@ -345,6 +352,7 @@ async function runSyncNow(accountId: string, provider: MailProvider): Promise<vo
     update(accountId, {
       ...laneStatus(accountId, false),
       error: describeSyncError(accountId, err),
+      signInNeeded: needsSignIn(accountId, provider, err),
     });
     // The server refused the sign-in (the provider set it aside): nothing more
     // to try, IDLE included, until the user signs in again.
@@ -407,7 +415,11 @@ function startBackfill(accountId: string, provider: MailProvider): void {
         recordFailure(accountId, backfillFailures);
         const reason = describeSyncError(accountId, err);
         logger.error("mail-sync", `backfill failed for ${accountId}: ${reason}`);
-        update(accountId, { ...laneStatus(accountId), error: reason });
+        update(accountId, {
+          ...laneStatus(accountId),
+          error: reason,
+          signInNeeded: needsSignIn(accountId, provider, err),
+        });
       },
     );
 }
@@ -513,7 +525,12 @@ async function downloadBodies(accountId: string, provider: MailProvider): Promis
         } catch (err) {
           if (err instanceof SyncCancelled) throw err;
           const kind = provider.errorKind(err);
-          if (kind === "rateLimit" || kind === "network" || !isSignedIn(accountId)) {
+          if (
+            kind === "rateLimit" ||
+            kind === "network" ||
+            kind === "auth" ||
+            !isSignedIn(accountId)
+          ) {
             // Not the message's fault: leave it queued and end this pass.
             for (const each of ids) attempted.delete(each);
             pushedBack = true;

@@ -518,7 +518,7 @@ function providerScenario(
     await setImapPassword(accountId, "nope");
     try {
       const err = await sync(accountId).catch((e: unknown) => e);
-      expect(provider.errorKind(err)).toBeNull();
+      expect(provider.errorKind(err)).toBe("auth");
       expect(provider.describeError(err)).toBe(`Wrong password for ${settings.username}`);
       // Set aside, so nothing logs in with it again until the user enters one.
       expect(provider.isSignedIn(accountId)).toBe(false);

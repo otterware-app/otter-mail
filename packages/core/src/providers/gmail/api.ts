@@ -104,7 +104,20 @@ export function errorKind(err: unknown): ErrorKind | null {
   if (isRateLimitError(err)) return "rateLimit";
   if (isNetworkError(err)) return "network";
   if (err instanceof GmailApiError && err.status === 404) return "notFound";
+  if (isSignInError(err)) return "auth";
   return null;
+}
+
+/** Google revoked or expired the sign-in, or it lacks the scopes Gmail needs. */
+function isSignInError(err: unknown): boolean {
+  if (err instanceof GmailApiError) {
+    return (
+      err.status === 401 ||
+      (err.status === 403 && /insufficient(Permissions| authentication scopes)/i.test(err.body))
+    );
+  }
+  const text = String(err);
+  return text.includes(SIGNED_OUT_MESSAGE) || text.includes("Google sign-in expired");
 }
 
 /** A short, readable reason for the status line (Gmail errors carry whole JSON bodies). */
@@ -117,7 +130,7 @@ export function describeError(err: unknown): string {
   }
   if (err instanceof GmailApiError) {
     if (err.status === 401) {
-      return "Gmail rejected this account's sign-in — try removing and re-adding it";
+      return "Gmail rejected this account's sign-in — sign in to it again";
     }
     if (err.status >= 500) return "Gmail is having trouble right now — retrying shortly";
     let detail = "";

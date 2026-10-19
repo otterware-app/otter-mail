@@ -75,6 +75,8 @@ export function errorKind(err: unknown): ErrorKind | null {
   if (err instanceof GraphError && (err.throttled || err.status === 503)) return "rateLimit";
   if (isNetworkError(err)) return "network";
   if (isNotFound(err)) return "notFound";
+  if (err instanceof GraphError && (err.status === 401 || err.status === 403)) return "auth";
+  if (String(err).includes(OUTLOOK_SIGNED_OUT_MESSAGE)) return "auth";
   return null;
 }
 

@@ -106,6 +106,7 @@ import { ProjectsOverview } from "./gmail/projects-overview";
 import { ProjectView } from "./gmail/project-view";
 import { NewProjectDialog } from "./gmail/project-menus";
 import { UpdateCard } from "./updates";
+import { useSignInAlerts } from "./gmail/sync-health";
 import { useRecordRecentlyViewed } from "./recently-viewed";
 import { SetupFlow } from "./onboarding/setup";
 import { newTab, openLink, selectTab, useBrowser, useBrowserEvents } from "./browser/store";
@@ -533,6 +534,7 @@ function MailHome() {
 
   const globalSync = useGlobalSyncStatus(accountIds);
   useGmailWriteFailureToasts();
+  useSignInAlerts();
   useExternalMailChanges();
   useBrowserEvents();
 

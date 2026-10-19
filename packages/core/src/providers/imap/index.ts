@@ -23,6 +23,7 @@ const tooManyConnections = (err: MailProtocolError) =>
 function errorKind(err: unknown): ErrorKind | null {
   if (err instanceof reads.MessageGone) return "notFound";
   if (!(err instanceof MailProtocolError)) return null;
+  if (err.kind === "auth") return "auth";
   if (tooManyConnections(err)) return "rateLimit";
   if (err.kind === "network" || err.kind === "timeout") return "network";
   // Too many connections, or the server is unwell: back off like a rate limit.

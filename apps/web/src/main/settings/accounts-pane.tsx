@@ -32,6 +32,7 @@ import {
   getAccountDisplayName,
 } from "../gmail/account-style";
 import type { GmailAccount, SyncStatus } from "../gmail/types";
+import { StatusText, accountStatus, needsSignIn, takeRequestedMailbox } from "../gmail/sync-health";
 import { Btn, HintTooltip, cn, restoreFocusForKeyboardOnly } from "../gmail/ui";
 import {
   DraftInput,
@@ -49,43 +50,6 @@ import { searchableSetting } from "./settings-search";
  * reorder), then the selected mailbox's settings (status, profile, signature,
  * removal) below it.
  */
-
-function timeAgo(ts: number): string {
-  const mins = Math.floor((Date.now() - ts) / 60_000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  return `${Math.floor(hrs / 24)}d ago`;
-}
-
-type StatusLine = { text: string; tone: "muted" | "active" | "error"; detail?: string };
-
-function syncLine(status: SyncStatus | undefined): {
-  text: string;
-  tone: "muted" | "active" | "error";
-  detail?: string;
-} {
-  if (!status) return { text: "…", tone: "muted" };
-  // Only a full sync reads as "Syncing": the routine check for new mail runs
-  // every tick and would otherwise blink here all the time.
-  if (status.syncing && (status.phase === "full" || !status.lastSyncAt)) {
-    const progress =
-      status.phase === "full" && status.total
-        ? ` ${status.synced.toLocaleString()} of ~${status.total.toLocaleString()}`
-        : "";
-    return { text: `Syncing${progress}…`, tone: "active" };
-  }
-  if (status.error && !status.syncing) {
-    return { text: "Sync failed — will retry", tone: "error", detail: status.error };
-  }
-  const synced = status.lastSyncAt ? `Synced ${timeAgo(status.lastSyncAt)}` : "Not synced yet";
-  if (status.download) {
-    const left = Math.max(0, status.download.total - status.download.done);
-    return { text: `${synced} · Saving ${left.toLocaleString()} for offline`, tone: "muted" };
-  }
-  return { text: synced, tone: "muted" };
-}
 
 /** Read-only sync status (the main view starts syncs; settings only watches). */
 function useSyncStatusOnly(accountId: string) {
@@ -151,51 +115,6 @@ function ColorPicker({
         </Popover.Content>
       </Popover.Portal>
     </Popover.Root>
-  );
-}
-
-/** Sync state for an account, with a signed-out account called out first. */
-function accountStatus(account: GmailAccount, status: SyncStatus | undefined): StatusLine {
-  // Never synced here: it was added on another device (through the Otter account).
-  if (account.signedOut && status && !status.lastSyncAt) {
-    return {
-      text: "Not signed in on this device",
-      tone: "muted",
-      detail: "Added on another device. Sign in to use it here.",
-    };
-  }
-  if (account.signedOut) {
-    return {
-      text: "Signed out",
-      tone: "error",
-      detail: "Sign in again to sync this account. Its cached mail stays.",
-    };
-  }
-  return syncLine(status);
-}
-
-function StatusText({ status, className }: { status: StatusLine; className?: string }) {
-  return (
-    <span
-      title={status.detail}
-      className={cn(
-        "flex min-w-0 items-center gap-1.5",
-        status.tone === "error" && "text-destructive-foreground",
-        status.tone === "active" && "text-foreground/80",
-        className,
-      )}
-    >
-      {status.tone !== "muted" ? (
-        <span
-          aria-hidden
-          className={cn(
-            "size-1.5 shrink-0 rounded-full",
-            status.tone === "error" ? "bg-destructive" : "bg-primary",
-          )}
-        />
-      ) : null}
-      <span className="truncate">{status.text}</span>
-    </span>
   );
 }
 
@@ -498,7 +417,7 @@ function AccountEditor({ account }: { account: GmailAccount }) {
           control={
             account.signedOut && signsInWithPassword(account) ? (
               <ImapPasswordForm account={account} />
-            ) : account.signedOut ? (
+            ) : needsSignIn(account, sync.data) ? (
               <SignInButton
                 email={account.email}
                 provider={signInProvider(account)}
@@ -755,7 +674,8 @@ export function AccountsPane() {
     setDragEmail(null);
     setDropSpot(null);
   };
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // A mailbox asked for elsewhere (its password, from the sidebar or a toast).
+  const [selectedId, setSelectedId] = useState<string | null>(takeRequestedMailbox);
   const current = accounts.find((a) => a.id === selectedId) ?? accounts[0];
   // Signatures live in Gmail: pick up edits made there.
   useEffect(() => void gmailApi.refreshSignatures().catch(() => {}), []);

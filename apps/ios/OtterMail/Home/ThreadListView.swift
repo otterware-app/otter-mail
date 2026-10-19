@@ -99,6 +99,8 @@ struct ThreadListView: View {
         .onChange(of: selecting) { _, _ in swipedThread = nil }
         .onChange(of: query) { _, _ in swipedThread = nil }
         .contentMargins(.bottom, 24, for: .scrollContent)
+        // A mailbox whose sign-in was ended, under the title until it's back (or closed).
+        .safeAreaInset(edge: .top, spacing: 0) { SignedOutBanners() }
         .searchable(text: $query, prompt: "Search")
         // Keep the header in place and return to a button instead of expanding
         // another search field while the keyboard is being dismissed.

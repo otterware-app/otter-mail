@@ -202,9 +202,11 @@ final class MailSync {
             let before = Dictionary(store.allThreads(of: email).map { ($0.id, $0) }) { a, _ in a }
             let delta = try await run(email) { provider, state, known in try await provider.sync(&state, known: known) }
             if notify { await announce(delta.threads, before: before) }
+            store.recordSync(email, failure: nil)
             let provider = provider(email)
             let labels = try await provider.labels()
-            let signature = try await provider.signature()
+            // A Gmail sign-in from before settings were asked for can't read it; the mail still syncs.
+            let signature = try? await provider.signature()
             // Read after the awaits, so what changed meanwhile (a synced signature) isn't written over.
             if var mailbox = store.mailbox(email) {
                 mailbox.labels = labels
@@ -216,9 +218,13 @@ final class MailSync {
             // A password the server refuses is no use kept (as GoogleAuth drops a revoked sign-in).
             if store.mailbox(email)?.imap != nil { ImapProvider.setPassword(nil, for: email) }
             store.setSignedOut(true, email)
+            store.setLostSignIn(true, email)
             stop(email)
+        } catch is CancellationError {
         } catch {
             // Offline or the server refused: the copy stands, and the next sync tries again.
+            guard !Task.isCancelled, (error as? URLError)?.code != .cancelled else { return }
+            store.recordSync(email, failure: error is URLError ? "Can't connect" : "Sync failed")
         }
     }
 
@@ -226,6 +232,8 @@ final class MailSync {
     private static func signedOut(_ error: Error) -> Bool {
         if case GoogleAuth.Failure.signedOut = error { return true }
         if case MicrosoftAuth.Failure.signedOut = error { return true }
+        // Refused even with a fresh token (both APIs retry a 401 with one).
+        if (error as? GmailAPI.Failure)?.status == 401 || (error as? GraphAPI.Failure)?.status == 401 { return true }
         return (error as? ImapError)?.isSignedOut == true
     }
 
