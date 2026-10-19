@@ -111,7 +111,8 @@ export type EventInput = {
   videoCall?: boolean;
 };
 
-export type ErrorKind = "rateLimit" | "network" | "notFound";
+/** `auth`: the server refused this device's sign-in, which only signing in again fixes. */
+export type ErrorKind = "rateLimit" | "network" | "notFound" | "auth";
 
 export interface MailProvider {
   readonly kind: MailProviderKind;

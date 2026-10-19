@@ -13,6 +13,7 @@ import { Field } from "~/components/ui/field";
 import { Input } from "~/components/ui/input";
 import { Text } from "~/components/ui/text";
 import { toast } from "./toast";
+import { MailboxHealth } from "./sync-health";
 import {
   ContextMenu,
   ContextMenuTrigger,
@@ -400,12 +401,23 @@ type AccountsSidebarProps = {
 
 /** The sidebar: the mailbox's page between the title and the footer. */
 export function AccountsSidebar(props: AccountsSidebarProps) {
+  const { accounts } = useMailboxes();
+  const { selectedAccountId } = props;
   return (
     <div className="flex h-full min-w-0 flex-col">
       <SidebarTitle />
       <div className="min-h-0 flex-1">
         <MailboxSidebarPage {...props} />
       </div>
+      <MailboxHealth
+        accountIds={
+          selectedAccountId === COMBINED_ACCOUNT_ID
+            ? accounts.map((a) => a.id)
+            : selectedAccountId
+              ? [selectedAccountId]
+              : []
+        }
+      />
       <UpdateCard />
     </div>
   );

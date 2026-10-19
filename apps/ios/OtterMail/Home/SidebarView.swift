@@ -113,10 +113,17 @@ struct SidebarView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 2) {
                 if let mailbox = scope.flatMap(store.mailbox), mailbox.signedOut {
-                    Label("Sign in to \(mailbox.email) in Settings › Mailboxes", systemImage: "exclamationmark.circle")
-                        .font(.subheadline)
-                        .foregroundStyle(palette.warning)
-                        .padding(12)
+                    HStack(spacing: 10) {
+                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(palette.warning)
+                        Text(signedOutTitle(mailbox)).font(.subheadline).lineLimit(1)
+                        Spacer(minLength: 8)
+                        SignInAgainButton(mailbox: mailbox)
+                    }
+                    .foregroundStyle(palette.sidebarText)
+                    .padding(.horizontal, 12)
+                    .frame(minHeight: 48)
+                    .background(palette.sidebarSelected, in: .rect(cornerRadius: 12))
+                    .padding(.bottom, 8)
                 }
                 // Important is Gmail's sorting, and Outlook's high importance; IMAP has neither.
                 let sorts = scope.flatMap(store.mailbox)?.provider != .imap
@@ -135,15 +142,15 @@ struct SidebarView: View {
         }
         .scrollIndicators(.hidden)
         .contentMargins(.top, 4, for: .scrollContent)
-        .contentMargins(.bottom, 96, for: .scrollContent)
+        .contentMargins(.bottom, 126, for: .scrollContent)
         // iOS's soft edge under the chips, only once rows scroll there.
         .scrollEdgeEffectStyle(.soft, for: .top)
-        // Rows fade only as they slide under Compose (at rest the last one sits above it).
+        // Rows fade only as they slide under the status line and Compose (at rest the last one sits above them).
         .mask {
             VStack(spacing: 0) {
                 Color.black
                 LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom).frame(height: 28)
-                Color.clear.frame(height: 60)
+                Color.clear.frame(height: 112)
             }
             .ignoresSafeArea()
         }
@@ -198,6 +205,16 @@ struct SidebarView: View {
     }
 
     private var footer: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SyncStatusLine(scope: page == Self.all ? nil : page)
+                .padding(.horizontal, 4)
+            footerButtons
+        }
+        .padding(.horizontal, 20)
+        .padding(.bottom, 8)
+    }
+
+    private var footerButtons: some View {
         HStack {
             Button(action: onCompose) {
                 Label("Compose", systemImage: "square.and.pencil")
@@ -217,8 +234,6 @@ struct SidebarView: View {
                 .foregroundStyle(palette.sidebarText)
                 .glassEffect(.regular.interactive(), in: .circle)
         }
-        .padding(.horizontal, 20)
-        .padding(.bottom, 8)
     }
 }
 

@@ -56,6 +56,8 @@ from GitHub Releases. Everything in the Mac column works the same, except:
 | Google profile picture per mailbox                        | ✓ (kept current)   | ✓ (kept current)                    | —                       |
 | Remove a mailbox (unlinks it everywhere)                  | ✓                  | ✓                                   | ✓                       |
 | Mailbox linked elsewhere shows "signed out"               | ✓                  | ✓                                   | ✓                       |
+| Sync health at the foot of the sidebar, Sync now          | ✓                  | ✓                                   | ✓ (tap to sync)         |
+| Refused sign-in: toast and card to sign in again          | ✓                  | ✓                                   | ✓ (banner on the list)  |
 | Demo mailbox                                              | —                  | `pnpm dev:fake` only                | TestFlight / Xcode only |
 
 ## Reading
