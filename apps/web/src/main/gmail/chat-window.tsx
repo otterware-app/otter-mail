@@ -1,7 +1,8 @@
 /**
- * The agent over the mail (⌘I): a small window at the mail's bottom right,
- * showing one chat with the mail on screen as its context. Open in workspace
- * takes the chat to the AI workspace, where what it used and made are tabs.
+ * The agent over the mail (⌘I): a small window at the workspace's bottom right
+ * (over the browser when it's open), showing one chat with the mail on screen
+ * as its context. Open in workspace takes the chat to the AI workspace, where
+ * what it used and made are tabs.
  * Closed, its launcher stays in the corner: it spins while a chat works, and
  * a dot says one waits on you or finished while you were away.
  */
@@ -84,7 +85,7 @@ export function ChatWindow({
       role="dialog"
       aria-label="Agent"
       data-tour="agent"
-      className="absolute bottom-3 right-3 z-30 flex h-[min(38rem,calc(100%-4.5rem))] w-[min(27rem,calc(100%-1.5rem))] flex-col overflow-hidden rounded-2xl border border-foreground/10 bg-canvas shadow-[0_24px_60px_-20px_rgb(0_0_0/45%)] dark:shadow-[0_24px_60px_-20px_rgb(0_0_0/80%)]"
+      className="absolute bottom-4 right-4 web:bottom-3 web:right-3 z-30 flex h-[min(38rem,calc(100%-4.5rem))] w-[min(27rem,calc(100%-1.5rem))] flex-col overflow-hidden rounded-2xl border border-foreground/10 bg-canvas shadow-[0_24px_60px_-20px_rgb(0_0_0/45%)] dark:shadow-[0_24px_60px_-20px_rgb(0_0_0/80%)]"
     >
       <div className="relative flex h-11 shrink-0 items-center gap-1 border-b border-border/60 ps-3.5 pe-1.5">
         <MousePointer2Icon className="size-3.5 shrink-0 text-muted-foreground" />
@@ -182,7 +183,7 @@ export function ChatLauncher({ onOpen }: { onOpen: () => void }) {
         aria-label={label}
         data-tour="agent"
         onClick={onOpen}
-        className="absolute bottom-4 right-4 z-30 flex size-11 cursor-pointer items-center justify-center rounded-full border border-foreground/10 bg-canvas text-foreground shadow-[0_12px_32px_-12px_rgb(0_0_0/45%)] outline-none transition-transform duration-150 hover:scale-105 focus-visible:ring-2 focus-visible:ring-focus-ring dark:shadow-[0_12px_32px_-12px_rgb(0_0_0/80%)]"
+        className="absolute bottom-5 right-5 web:bottom-4 web:right-4 z-30 flex size-11 cursor-pointer items-center justify-center rounded-full border border-foreground/10 bg-canvas text-foreground shadow-[0_12px_32px_-12px_rgb(0_0_0/45%)] outline-none transition-transform duration-150 hover:scale-105 focus-visible:ring-2 focus-visible:ring-focus-ring dark:shadow-[0_12px_32px_-12px_rgb(0_0_0/80%)]"
       >
         {working && !waiting ? (
           <LoaderCircleIcon className="size-5 animate-spin text-muted-foreground" />

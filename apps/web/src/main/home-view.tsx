@@ -1783,19 +1783,6 @@ function MailHome() {
                   </div>
                 </div>
               </div>
-              {/* The agent over the mail: its small window, or the launcher in its corner. */}
-              {isChats || settingsRoute ? null : chatWindowOpen ? (
-                <ChatWindow
-                  context={mailChatContext}
-                  onClearQuote={() => setPendingQuote(null)}
-                  onOpenChange={openChatChange}
-                  onOpenWorkspace={openWorkspace}
-                  onClose={() => setChatWindow(false)}
-                  inputRef={chatInputRef}
-                />
-              ) : (
-                <ChatLauncher onOpen={openChat} />
-              )}
             </div>
             {browserPresent ? (
               <>
@@ -1823,6 +1810,20 @@ function MailHome() {
                 </div>
               </>
             ) : null}
+            {/* The agent: its small window, or the launcher, in the workspace's
+                corner (over the browser when it's open). */}
+            {isChats || settingsRoute ? null : chatWindowOpen ? (
+              <ChatWindow
+                context={mailChatContext}
+                onClearQuote={() => setPendingQuote(null)}
+                onOpenChange={openChatChange}
+                onOpenWorkspace={openWorkspace}
+                onClose={() => setChatWindow(false)}
+                inputRef={chatInputRef}
+              />
+            ) : (
+              <ChatLauncher onOpen={openChat} />
+            )}
           </div>
         </div>
       </div>
