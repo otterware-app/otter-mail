@@ -653,7 +653,7 @@ authed.put(
 // ── Agent chats (chats.ts) ──────────────────────────────────────────────────
 
 async function chatsChanged(env: Env, userId: string): Promise<void> {
-  await hub(env, userId).publish({ type: "chats" });
+  await hub(env, userId).publish({ type: "chats", email: "" });
 }
 
 const chatId = z.object({ id: z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/) });

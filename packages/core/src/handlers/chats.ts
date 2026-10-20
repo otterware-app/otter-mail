@@ -26,6 +26,9 @@ function chat(value: unknown): Chat {
 export function registerChatHandlers(): void {
   handle("chats:list", () => chats.listChats());
   handle("chats:get", (params: unknown) => chats.getChat(str((params as Params)?.id, "id")));
-  handle("chats:save", (params: unknown) => chats.saveChat(chat((params as Params)?.chat)));
+  handle("chats:save", (params: unknown) => {
+    const p = params as Params;
+    return chats.saveChat(chat(p?.chat), p?.settled !== false);
+  });
   handle("chats:delete", (params: unknown) => chats.deleteChat(str((params as Params)?.id, "id")));
 }

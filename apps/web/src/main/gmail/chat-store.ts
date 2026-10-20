@@ -27,7 +27,7 @@ import {
 
 import { ipc } from "~/lib/ipc";
 import { closeChatPages } from "../browser/store";
-import { isProviderUsable } from "./agent-providers";
+import { isProviderUsable, useAgentProviders } from "./agent-providers";
 import {
   gmailApi,
   type ApprovalDecision,
@@ -308,9 +308,15 @@ const { getState: get, setState: set } = useChats;
 const chatsApi = {
   list: () => ipc<{ chats: Omit<Chat, "turns">[]; device: Device }>("chats:list"),
   get: (id: string) => ipc<Chat | null>("chats:get", { id }),
-  save: (chat: Chat) => ipc<void>("chats:save", { chat }),
+  /** `settled`: no turn runs in it, so other devices can have it now (else in a while). */
+  save: (chat: Chat, settled: boolean) => ipc<void>("chats:save", { chat, settled }),
   delete: (id: string) => ipc<void>("chats:delete", { id }),
 };
+
+/** The turns in flight when the app last quit, read before anything writes the key again. */
+const savedOpenRequests = readJson<Record<string, string>>(OPEN_REQUESTS_KEY, {});
+/** Chats core has listed: one gone from its list was deleted, one never in it is new here. */
+const coreIds = new Set<string>();
 
 /** Chats as core has them: nothing to save. */
 const fromCore = new WeakSet<Conversation>();
@@ -333,7 +339,7 @@ function scheduleSave(id: string): void {
       if (!convo || !convo.loaded || convo.turns.length === 0) return;
       saving.add(id);
       chatsApi
-        .save(toChat(convo))
+        .save(toChat(convo), !get().runs[id])
         .catch((error: unknown) => console.log("[AgentChat:save] failed", { error: String(error) }))
         .finally(() => saving.delete(id));
     }, 1500),
@@ -358,7 +364,8 @@ useChats.subscribe((state, prev) => {
 /** The chats core has, over this window's: those changed elsewhere come in (turns to load again). */
 async function loadChats(): Promise<void> {
   const { chats, device } = await chatsApi.list();
-  const openRequests = readJson<Record<string, string>>(OPEN_REQUESTS_KEY, {});
+  const known = new Set(coreIds);
+  for (const chat of chats) coreIds.add(chat.id);
   set((s) => {
     const mine = new Map(s.conversations.map((c) => [c.id, c]));
     const listed = new Set(chats.map((c) => c.id));
@@ -371,13 +378,17 @@ async function loadChats(): Promise<void> {
         turns: local?.turns ?? [],
         loaded: false,
         // A turn can only be picked up again in the session it was sent to.
-        openRequest: chat.sessionId ? (local?.openRequest ?? openRequests[chat.id] ?? null) : null,
+        openRequest: chat.sessionId
+          ? (local?.openRequest ?? savedOpenRequests[chat.id] ?? null)
+          : null,
       });
     });
-    // A new chat stays; one deleted elsewhere goes, unless it's running here.
+    // A chat new here stays (core hasn't had it yet); one deleted elsewhere goes,
+    // unless it's running here.
     for (const c of s.conversations) {
-      if (!listed.has(c.id) && (isBlank(c) || s.runs[c.id])) conversations.push(c);
+      if (!listed.has(c.id) && (!known.has(c.id) || s.runs[c.id])) conversations.push(c);
     }
+    const unseen = new Set([...s.unseen].filter((id) => conversations.some((c) => c.id === id)));
     conversations.sort((a, b) => b.updatedAt - a.updatedAt);
     let activeId = s.activeId;
     if (!conversations.some((c) => c.id === activeId)) {
@@ -385,7 +396,7 @@ async function loadChats(): Promise<void> {
       if (!conversations.includes(blank)) conversations.unshift(blank);
       activeId = blank.id;
     }
-    return { conversations, device, ready: true, activeId };
+    return { conversations, device, ready: true, activeId, unseen };
   });
 }
 
@@ -400,7 +411,7 @@ export async function loadChat(id: string): Promise<void> {
     if (!chat) return;
     set((s) => ({
       conversations: s.conversations.map((c) =>
-        c.id === id && !c.loaded && !s.runs[id]
+        c.id === id && !c.loaded
           ? asLoaded({ ...chat, loaded: true, openRequest: c.openRequest })
           : c,
       ),
@@ -831,12 +842,21 @@ export function deleteConversation(id: string, provider: ProviderKind): void {
   closeChatPages(id);
   set((s) => {
     const conversations = s.conversations.filter((c) => c.id !== id);
-    if (s.activeId !== id) return { conversations };
+    const request = running?.requestId;
+    const unseen = new Set(s.unseen);
+    unseen.delete(id);
+    const left = {
+      approvals: s.approvals.filter((a) => a.requestId !== request),
+      questions: s.questions.filter((q) => q.requestId !== request),
+      unseen,
+    };
+    if (s.activeId !== id) return { conversations, ...left };
     // The latest chat shows instead, or a fresh one.
     const next = conversations[0] ?? newConversation(provider);
     return {
       conversations: conversations.includes(next) ? conversations : [next, ...conversations],
       activeId: next.id,
+      ...left,
     };
   });
 }
@@ -900,29 +920,32 @@ export function resumeRuns(providers: ProviderSnapshot[]): void {
     if (resumeTried.get(requestId) === host) continue;
     resumeTried.set(requestId, host);
     console.log("[AgentChat:resume]", { provider: c.provider, requestId });
-    set((s) => ({
-      runs: { ...s.runs, [c.id]: { requestId, convoId: c.id, provider: c.provider } },
-    }));
+    const sessionId = c.sessionId;
     const giveUp = () => {
       patchConversation(c.id, (current) =>
         current.openRequest === requestId ? { ...current, openRequest: null } : current,
       );
       endRun(requestId);
     };
-    // The run's turns stream into the chat's own, so those come first.
-    void (c.loaded ? Promise.resolve() : loadChat(c.id))
-      .then(() =>
-        gmailApi.agentResume({ provider: c.provider, requestId, sessionId: c.sessionId! }),
-      )
-      .then(
-        ({ resumed }) => {
-          if (!resumed) giveUp();
-        },
-        (error) => {
-          console.log("[AgentChat:resume] failed", { error: String(error) });
-          endRun(requestId);
-        },
-      );
+    void (async () => {
+      // The run's turns stream after the chat's own, so those come first.
+      if (!c.loaded) await loadChat(c.id);
+      if (get().runs[c.id]) return;
+      set((s) => ({
+        runs: { ...s.runs, [c.id]: { requestId, convoId: c.id, provider: c.provider } },
+      }));
+      try {
+        const { resumed } = await gmailApi.agentResume({
+          provider: c.provider,
+          requestId,
+          sessionId,
+        });
+        if (!resumed) giveUp();
+      } catch (error) {
+        console.log("[AgentChat:resume] failed", { error: String(error) });
+        endRun(requestId);
+      }
+    })();
   }
 }
 
@@ -1080,6 +1103,15 @@ let reloadTimer: ReturnType<typeof setTimeout> | null = null;
 
 /** The main window's part: chats load, and turns stream into them while any view, or none, shows them. */
 export function useChatEvents(): void {
+  // A turn the app quit during is picked up once its provider can run.
+  const providers = useAgentProviders().data?.providers;
+  useEffect(() => {
+    if (!providers) return;
+    resumeRuns(providers);
+    return useChats.subscribe((s, prev) => {
+      if (s.conversations !== prev.conversations || s.runs !== prev.runs) resumeRuns(providers);
+    });
+  }, [providers]);
   useEffect(() => {
     void loadChats().catch((error: unknown) =>
       console.log("[AgentChat:load] failed", { error: String(error) }),

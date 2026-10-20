@@ -14,6 +14,7 @@ import {
   chatForSync,
   type Chat,
   type ChatSummary,
+  type ChatTurn,
   type ListChatsResponse,
 } from "@otter-mail/contracts/chats";
 
@@ -30,19 +31,20 @@ export const CHATS_CHANGED = "chats:changed";
 type Device = { id: string; name: string };
 type ChatsFile = { chats: Chat[]; pending: string[]; device: Device };
 
-let state: ChatsFile | null = null;
+let loading: Promise<ChatsFile> | null = null;
 let writes: Promise<unknown> = Promise.resolve();
 
-async function load(): Promise<ChatsFile> {
-  if (state) return state;
-  const saved = await readJson<Partial<ChatsFile>>(FILE);
-  const name = platform().deviceName ?? "This computer";
-  state = {
-    chats: Array.isArray(saved?.chats) ? saved.chats : [],
-    pending: Array.isArray(saved?.pending) ? saved.pending : [],
-    device: saved?.device?.id ? { id: saved.device.id, name } : { id: crypto.randomUUID(), name },
-  };
-  return state;
+function load(): Promise<ChatsFile> {
+  loading ??= (async () => {
+    const saved = await readJson<Partial<ChatsFile>>(FILE);
+    const name = platform().deviceName ?? "This computer";
+    return {
+      chats: Array.isArray(saved?.chats) ? saved.chats : [],
+      pending: Array.isArray(saved?.pending) ? saved.pending : [],
+      device: saved?.device?.id ? { id: saved.device.id, name } : { id: crypto.randomUUID(), name },
+    };
+  })();
+  return loading;
 }
 
 /** One change at a time, written to disk before the next; `changed` is broadcast. */
@@ -62,10 +64,14 @@ function mutate<T>(
   return run;
 }
 
-function queue(file: ChatsFile, id: string): void {
+/** `delay`: a chat whose turn still streams goes in a while, the rest at once. */
+function queue(file: ChatsFile, id: string, delay = 300): void {
   if (!file.pending.includes(id)) file.pending.push(id);
-  schedulePush();
+  schedulePush(delay);
 }
+
+/** While a turn streams, the relay (and so every other device) has the chat this often. */
+const STREAMING_PUSH_MS = 15_000;
 
 const summary = ({ turns: _turns, ...chat }: Chat): Omit<ChatSummary, "deletedAt"> => chat;
 
@@ -82,16 +88,21 @@ export async function getChat(id: string): Promise<Chat | null> {
   return (await load()).chats.find((c) => c.id === id) ?? null;
 }
 
-/** A chat as the renderer has it now; a Claude or Codex chat is this device's. */
-export function saveChat(chat: Chat): Promise<void> {
+/**
+ * A chat as the renderer has it now; a Claude or Codex chat is this device's.
+ * `settled`: no turn runs in it. Past the limit, the oldest chats go (everywhere).
+ */
+export function saveChat(chat: Chat, settled = true): Promise<void> {
   return mutate(
     (file) => {
       const local = LOCAL_CHAT_PROVIDERS.includes(chat.provider);
       const saved = { ...chat, device: local ? (chat.device ?? file.device) : null };
-      file.chats = [saved, ...file.chats.filter((c) => c.id !== chat.id)]
-        .sort((a, b) => b.updatedAt - a.updatedAt)
-        .slice(0, CHAT_LIMITS.chats);
-      queue(file, chat.id);
+      const chats = [saved, ...file.chats.filter((c) => c.id !== chat.id)].sort(
+        (a, b) => b.updatedAt - a.updatedAt,
+      );
+      file.chats = chats.slice(0, CHAT_LIMITS.chats);
+      for (const dropped of chats.slice(CHAT_LIMITS.chats)) queue(file, dropped.id);
+      queue(file, chat.id, settled ? 300 : STREAMING_PUSH_MS);
     },
     () => [chat.id],
   );
@@ -194,29 +205,39 @@ function schedulePull(): void {
   }, 300);
 }
 
-/** The relay's copy over this device's, keeping thumbnails this device has of its turns' images. */
-function withThumbs(remote: Chat, local: Chat | undefined): Chat {
+/**
+ * The relay's copy over this device's, keeping what the relay leaves out
+ * (`chatForSync`): the older turns before its first, steps' whole outputs,
+ * and the thumbnails of this device's images.
+ */
+function merged(remote: Chat, local: Chat | undefined): Chat {
   if (!local) return remote;
-  const thumbs = new Map(
-    local.turns.flatMap((t) =>
-      (t.attachments ?? []).flatMap((a) => (a.thumb ? [[`${t.id}:${a.name}`, a.thumb]] : [])),
-    ),
-  );
-  if (thumbs.size === 0) return remote;
-  return {
-    ...remote,
-    turns: remote.turns.map((t) =>
-      t.attachments
-        ? {
-            ...t,
-            attachments: t.attachments.map((a) => ({
-              ...a,
-              thumb: thumbs.get(`${t.id}:${a.name}`) ?? a.thumb,
-            })),
-          }
-        : t,
-    ),
-  };
+  const mine = new Map(local.turns.map((t) => [t.id, t]));
+  const first = remote.turns[0]?.id;
+  const at = first === undefined ? -1 : local.turns.findIndex((t) => t.id === first);
+  const turns = remote.turns.map((turn): ChatTurn => {
+    const own = mine.get(turn.id);
+    if (!own) return turn;
+    return {
+      ...turn,
+      items: turn.items?.map((item, i) => {
+        const whole = own.items?.[i];
+        return item.kind === "step" &&
+          whole?.kind === "step" &&
+          item.output !== undefined &&
+          whole.output !== undefined &&
+          item.output.endsWith("…") &&
+          whole.output.startsWith(item.output.slice(0, -1))
+          ? { ...item, output: whole.output }
+          : item;
+      }),
+      attachments: turn.attachments?.map((a) => ({
+        ...a,
+        thumb: a.thumb ?? own.attachments?.find((b) => b.name === a.name)?.thumb,
+      })),
+    };
+  });
+  return { ...remote, turns: [...(at > 0 ? local.turns.slice(0, at) : []), ...turns] };
 }
 
 /**
@@ -260,7 +281,7 @@ export async function pullChats(): Promise<void> {
         const chat = fetched.get(r.id);
         const local = chats.get(r.id);
         if (chat && (local?.updatedAt ?? -1) < chat.updatedAt) {
-          chats.set(r.id, withThumbs(chat, local));
+          chats.set(r.id, merged(chat, local));
           changed.push(r.id);
         }
       }

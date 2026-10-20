@@ -194,7 +194,8 @@ export function ChatComposer({
     if (
       (!question && !activeSkill && files.count === 0 && citations.length === 0) ||
       !usable ||
-      !convo
+      // A chat's turns load first: sending before would start it over.
+      !convo?.loaded
     )
       return null;
     if (files.staging) {

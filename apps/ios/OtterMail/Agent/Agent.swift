@@ -655,16 +655,17 @@ final class Agent {
         synced.removeAll { $0.id == chat.id }
     }
 
-    /** After a turn, this chat in the account's: the turns it came with, then this iPhone's. */
+    /**
+     * After a turn, this chat in the account's: the relay's copy as it is now
+     * (another device may have added to it), then this iPhone's turns since.
+     */
     func saveChat() async {
         guard let relay, relay.token != nil, readOnly == nil, turns.contains(where: { $0.role == .user }) else { return }
-        // A provider's session that's one of the account's chats: added to, not replaced.
-        if chatBase == nil, let chatID, let object = try? await relay.chat(chatID) {
-            chatBase = object
-            baseTurns = turns.count - 2
-        }
+        let fresh: [String: Any]? = if let chatID { try? await relay.chat(chatID) } else { nil }
+        // A provider's session that's one of the account's chats: only the last exchange is new.
+        if chatBase == nil, fresh != nil { baseTurns = max(0, turns.count - 2) }
         let id = chatID ?? UUID().uuidString.lowercased()
-        var chat = chatBase ?? [:]
+        var chat = fresh ?? chatBase ?? [:]
         chat["id"] = id
         if chat["title"] == nil {
             chat["title"] = String((turns.first { $0.role == .user }?.text ?? "New chat").prefix(56))
@@ -678,8 +679,8 @@ final class Agent {
         if chat["tabs"] == nil { chat["tabs"] = [Any]() }
         chat["updatedAt"] = ChatJSON.now
         chat.removeValue(forKey: "deletedAt")
-        let before = chatBase?["turns"] as? [[String: Any]] ?? []
-        chat["turns"] = Array((before + ChatJSON.objects(Array(turns.dropFirst(max(0, baseTurns))))).suffix(80))
+        let before = chat["turns"] as? [[String: Any]] ?? []
+        chat["turns"] = Array((before + ChatJSON.objects(Array(turns.dropFirst(baseTurns)))).suffix(80))
         do {
             try await relay.putChat(chat)
             chatID = id

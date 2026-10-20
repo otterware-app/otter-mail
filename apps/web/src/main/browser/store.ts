@@ -287,7 +287,9 @@ export function useBrowserEvents(): void {
     const offs = [
       window.desktopBridge.on("browser:openTab", (params) => {
         const { url, background } = params as { url: string; background?: boolean };
-        openTab(url, { background });
+        // From a chat's page in the workspace: another of its pages.
+        if (linkHandler) linkHandler(url);
+        else openTab(url, { background });
       }),
       window.desktopBridge.on("browser:newTab", newTab),
       window.desktopBridge.on("browser:focusAddress", focusAddress),

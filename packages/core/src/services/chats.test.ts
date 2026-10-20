@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import type { Chat, ChatSummary } from "@otter-mail/contracts/chats";
+import { CHAT_LIMITS, chatForSync, type Chat, type ChatSummary } from "@otter-mail/contracts/chats";
 
 /** The relay, as far as chats go: its chats (deleted ones without turns), and every call made to it. */
 const relay = {
@@ -154,6 +154,45 @@ describe("chats", () => {
     expect(relay.chats.get("c6")?.title).toBe("Mine");
   });
 
+  it("keeps the older turns and whole outputs the relay leaves out when another device writes", async () => {
+    const long = "x".repeat(5000);
+    const turns = Array.from({ length: 90 }, (_, i) => ({
+      id: `t${i}`,
+      role: "assistant" as const,
+      text: "",
+      items: [
+        { kind: "step" as const, step: { kind: "tool" as const, title: "Read" }, output: long },
+      ],
+    }));
+    await chats.saveChat(chat("c8", { turns, updatedAt: 100 }));
+    await settle();
+    const synced = relay.chats.get("c8")!;
+    expect(synced.turns).toHaveLength(80);
+    // Another device adds a turn to what the relay has.
+    relay.chats.set("c8", {
+      ...synced,
+      updatedAt: 200,
+      turns: [...synced.turns, { id: "t90", role: "user", text: "And then?" }],
+    });
+
+    await chats.pullChats();
+
+    const here = (await chats.getChat("c8"))!;
+    expect(here.turns.map((t) => t.id)).toEqual([...turns.map((t) => t.id), "t90"]);
+    const step = here.turns[50].items?.[0];
+    expect(step?.kind === "step" && step.output).toBe(long);
+  });
+
+  it("lets the oldest chats go everywhere past the limit", async () => {
+    for (let i = 0; i < 500; i++) await chats.saveChat(chat(`old${i}`, { updatedAt: 1000 + i }));
+    await chats.saveChat(chat("newest", { updatedAt: 5000 }));
+    await settle();
+
+    expect(await chats.getChat("old0")).toBeNull();
+    expect(relay.calls).toContain("DELETE /v1/chats/old0");
+    expect(await chats.getChat("newest")).not.toBeNull();
+  });
+
   it("deletes on the relay what's deleted here", async () => {
     await chats.saveChat(chat("c7"));
     await settle();
@@ -162,5 +201,44 @@ describe("chats", () => {
 
     expect(relay.calls.at(-1)).toBe("DELETE /v1/chats/c7");
     expect(relay.chats.get("c7")?.deletedAt).not.toBeNull();
+  });
+});
+
+describe("chatForSync", () => {
+  it("leaves out tabs the relay wouldn't keep", () => {
+    const synced = chatForSync(
+      chat("c9", {
+        tabs: [
+          {
+            id: "page:a",
+            title: "Short",
+            ref: { kind: "page", url: "https://a.example" },
+            addedAt: 1,
+          },
+          {
+            id: "page:b",
+            title: "Long",
+            ref: { kind: "page", url: `https://t.example/?${"x".repeat(3000)}` },
+            addedAt: 1,
+          },
+        ],
+      }),
+    );
+    expect(synced.tabs.map((t) => t.title)).toEqual(["Short"]);
+  });
+
+  it("fits the relay in bytes, even a single long turn", () => {
+    const items = Array.from({ length: 200 }, () => ({
+      kind: "step" as const,
+      step: { kind: "tool" as const, title: "Read" },
+      output: "猫".repeat(3000),
+    }));
+    const synced = chatForSync(
+      chat("c10", { turns: [{ id: "a", role: "assistant", text: "", items }] }),
+    );
+    expect(new TextEncoder().encode(JSON.stringify(synced)).length).toBeLessThanOrEqual(
+      CHAT_LIMITS.bytes,
+    );
+    expect(synced.turns).toHaveLength(1);
   });
 });

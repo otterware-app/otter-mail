@@ -136,35 +136,60 @@ export const CHAT_LIMITS = {
   title: 300,
   /** A step's output, as other devices see it. */
   output: 4000,
-  /** A chat as the relay keeps it (JSON). */
+  /** A tab's address (a page's, a file's link). */
+  address: 2048,
+  /** A chat as the relay keeps it (JSON, in bytes). */
   bytes: 500_000,
 } as const;
 
 const clip = (text: string, max: number) => (text.length > max ? `${text.slice(0, max)}…` : text);
 
+const bytes = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).length;
+
+/** A tab the relay keeps: one whose address and ids fit. */
+function fits(tab: ChatTab): boolean {
+  const { ref } = tab;
+  if (ref.kind === "page") return ref.url.length <= CHAT_LIMITS.address;
+  if (ref.kind === "file") return ref.href.length <= CHAT_LIMITS.address;
+  return ref.accountId.length <= 320 && ref.id.length <= 512;
+}
+
+/** A turn with its steps' outputs at most `max` long (none at 0). */
+const withOutputs = (turn: ChatTurn, max: number): ChatTurn => ({
+  ...turn,
+  items: turn.items?.map((item) =>
+    item.kind === "step" && item.output !== undefined
+      ? { ...item, output: max > 0 ? clip(item.output, max) : undefined }
+      : item,
+  ),
+});
+
 /**
  * A chat as it's written to the relay: its latest turns and tabs, steps'
  * outputs clipped and image thumbnails left on the device that sent them,
- * and older turns dropped until it fits.
+ * then older turns dropped until it fits (and a last turn too big alone,
+ * its steps' outputs shortened, then left out).
  */
 export function chatForSync(chat: Chat): Chat {
-  const turns = chat.turns.slice(-CHAT_LIMITS.turns).map((turn) => ({
-    ...turn,
-    items: turn.items?.map((item) =>
-      item.kind === "step" && item.output !== undefined
-        ? { ...item, output: clip(item.output, CHAT_LIMITS.output) }
-        : item,
-    ),
+  const turns = chat.turns.slice(-CHAT_LIMITS.turns).map((turn): ChatTurn => ({
+    ...withOutputs(turn, CHAT_LIMITS.output),
     attachments: turn.attachments?.map(({ thumb: _thumb, ...rest }) => rest),
   }));
-  const synced = {
+  const synced: Chat = {
     ...chat,
     title: clip(chat.title, CHAT_LIMITS.title),
-    tabs: chat.tabs.slice(-CHAT_LIMITS.tabs),
+    tabs: chat.tabs
+      .filter(fits)
+      .slice(-CHAT_LIMITS.tabs)
+      .map((tab) => ({ ...tab, title: clip(tab.title, CHAT_LIMITS.title) })),
     turns,
   };
-  while (synced.turns.length > 1 && JSON.stringify(synced).length > CHAT_LIMITS.bytes) {
+  while (synced.turns.length > 1 && bytes(synced) > CHAT_LIMITS.bytes) {
     synced.turns = synced.turns.slice(Math.ceil(synced.turns.length / 4));
+  }
+  for (const max of [500, 0]) {
+    if (bytes(synced) <= CHAT_LIMITS.bytes) break;
+    synced.turns = synced.turns.map((turn) => withOutputs(turn, max));
   }
   return synced;
 }

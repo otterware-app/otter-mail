@@ -197,19 +197,25 @@ export function ChatWorkspace({
     recentRef.current = [shownId, ...recentRef.current.filter((id) => id !== shownId)];
   }, [shownId, recentRef]);
   const workspaceRef = useRef<HTMLDivElement>(null);
+  const previousTab = () => {
+    const id = mostRecentTab(
+      tabs.map((t) => t.id),
+      shown?.id ?? "",
+      recentRef.current,
+    );
+    if (!id) return false;
+    showChatTab(chatId, id);
+    return true;
+  };
   useCommandHandlers({
     "tab.previous": (event) => {
       if (!(event.target instanceof Node) || !workspaceRef.current?.contains(event.target))
         return false;
-      const id = mostRecentTab(
-        tabs.map((t) => t.id),
-        shown?.id ?? "",
-        recentRef.current,
-      );
-      if (!id) return false;
-      showChatTab(chatId, id);
+      return previousTab();
     },
   });
+  // Control + Tab in one of the chat's pages (their keys never reach the window's dispatcher).
+  useEffect(() => window.desktopBridge.on("browser:previousTab", previousTab));
   const {
     ref: stripRef,
     draggingId,
@@ -245,7 +251,11 @@ export function ChatWorkspace({
           tabs.length > 0 ? "min-w-[300px] shrink" : "min-w-0 flex-1",
         )}
       >
-        <div className="drag-region flex h-(--workspace-topbar-height) shrink-0 items-center gap-2 px-4">
+        {/* data-toolbar: the window's own drag strip steps back, so it can't swallow the tabs' clicks. */}
+        <div
+          data-toolbar=""
+          className="drag-region flex h-(--workspace-topbar-height) shrink-0 items-center gap-2 px-4"
+        >
           {titleLeading}
           <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
             {convo && convo.turns.length > 0 ? convo.title : "New chat"}

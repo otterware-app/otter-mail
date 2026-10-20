@@ -1355,7 +1355,7 @@ describe("chats", () => {
     const device = await connect(other.token);
     await call("PUT", "/v1/chats/c_1", token, chat);
     await until(() => device.events.length > 0, "the chats event");
-    expect(device.events).toEqual([{ type: "chats" }]);
+    expect(device.events).toEqual([{ type: "chats", email: "" }]);
     device.socket.close();
   });
 });

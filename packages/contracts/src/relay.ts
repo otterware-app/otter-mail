@@ -278,5 +278,9 @@ export type RelayEvent =
   | { type: "accounts" }
   /** The preferences changed on another device. */
   | { type: "preferences" }
-  /** Agent chats changed on another device (or this one): see chats.ts. */
-  | { type: "chats" };
+  /**
+   * Agent chats changed on another device (or this one): see chats.ts. `email`
+   * is empty for builds before chats, which take an event they don't know for
+   * a mailbox's: they find none and go on.
+   */
+  | { type: "chats"; email: "" };
