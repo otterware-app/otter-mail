@@ -7,6 +7,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type CSSProperties,
   type ReactNode,
   type PointerEvent as ReactPointerEvent,
@@ -210,9 +211,15 @@ function useRouteSettings(): SettingsRoute | null {
   return useMemo(() => (pane ? { pane, target } : null), [pane, target]);
 }
 
+function onWindowResize(listener: () => void): () => void {
+  window.addEventListener("resize", listener);
+  return () => window.removeEventListener("resize", listener);
+}
+
 /**
  * Drag-resizable pane width persisted to localStorage. `room` (when given)
- * caps the width at drag start so neighbouring panes keep their minimum.
+ * caps it so neighbouring panes keep their minimum: at drag start, and as
+ * the window shrinks (the stored width comes back when it grows).
  */
 function useStoredWidth(
   key: string,
@@ -226,7 +233,11 @@ function useStoredWidth(
     const saved = Number(localStorage.getItem(key));
     return Number.isFinite(saved) && saved >= min && saved <= max ? saved : def;
   });
-  const widthRef = useLatest(width);
+  // What fits now. Only a change to it re-renders, not every resize.
+  const shown = useSyncExternalStore(onWindowResize, () =>
+    room ? Math.min(width, Math.max(min, room())) : width,
+  );
+  const widthRef = useLatest(shown);
   // The pane element itself, resized imperatively during a drag.
   const paneRef = useRef<HTMLDivElement>(null);
   // The animated frame around a collapsible pane: follows the drag with its
@@ -311,7 +322,7 @@ function useStoredWidth(
     [min, max],
   );
 
-  return { width, start, widen, paneRef, frameRef };
+  return { width: shown, start, widen, paneRef, frameRef };
 }
 
 function PaneResizer({ onPointerDown }: { onPointerDown: (e: ReactPointerEvent) => void }) {
@@ -566,20 +577,6 @@ function MailHome() {
     start: listStart,
     paneRef: listPaneRef,
   } = useStoredWidth("gmail:pane:list", 340, 280, 640);
-  // The browser can grow wide, as long as the reader keeps READER_MIN_WIDTH.
-  const browserRoom = () =>
-    window.innerWidth -
-    RAIL_WIDTH -
-    (sidebarOpen ? sidebarWidth : 0) -
-    (wideInbox ? 0 : listWidth) -
-    READER_MIN_WIDTH;
-  const {
-    width: browserWidth,
-    start: browserStart,
-    widen: widenBrowser,
-    paneRef: browserPaneRef,
-    frameRef: browserFrameRef,
-  } = useStoredWidth("gmail:pane:browser", 340, 280, 1200, -1, browserRoom);
   // The browser panel (the Mac app's), and the agent's small window over the mail.
   const [browserOpen, setBrowserOpen] = useState(
     () => features.browser && localStorage.getItem("gmail:browser-open") === "1",
@@ -597,6 +594,20 @@ function MailHome() {
   );
   // A view's space has no sidebar: only its list.
   const sidebarOpen = settingsRoute ? settingsSidebarOpen : mailSidebarOpen && !viewSpace;
+  // The browser can grow wide, as long as the reader keeps READER_MIN_WIDTH.
+  const browserRoom = () =>
+    window.innerWidth -
+    RAIL_WIDTH -
+    (sidebarOpen ? sidebarWidth : 0) -
+    (wideInbox ? 0 : listWidth) -
+    READER_MIN_WIDTH;
+  const {
+    width: browserWidth,
+    start: browserStart,
+    widen: widenBrowser,
+    paneRef: browserPaneRef,
+    frameRef: browserFrameRef,
+  } = useStoredWidth("gmail:pane:browser", 340, 280, 1200, -1, browserRoom);
   // Entering or leaving Settings swaps panes in place rather than animating them.
   const { active: panelAnimationsActive, durationMs: panelAnimationDurationMs } =
     usePanelAnimationSettings(settingsRoute ? "settings" : "mail");
