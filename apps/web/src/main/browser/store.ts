@@ -1,8 +1,9 @@
 /**
- * The agent panel's browser (the Mac app's): its tabs, which sit after the
- * chats' in the panel's strip, and where links from mail and chat open. The
- * pages are `<webview>`s (browser-view.tsx) in a session of their own, with
- * the Chrome Web Store's extensions (apps/desktop/src/services/browser.ts).
+ * The browser (the Mac app's): the panel's tabs beside the mail, where links
+ * from mail and chat open, and the pages chats opened, shown beside each chat
+ * in the AI workspace. The pages are `<webview>`s (browser-view.tsx) in a
+ * session of their own, with the Chrome Web Store's extensions
+ * (apps/desktop/src/services/browser.ts).
  */
 
 import { useEffect } from "react";
@@ -17,6 +18,8 @@ export type BrowserTab = {
   title: string;
   favicon: string | null;
   loading: boolean;
+  /** A page a chat opened: one of its tabs in the workspace, not the panel's. */
+  chatId?: string;
 };
 
 /** Where links from mail and chat open (Settings › Browser). */
@@ -24,7 +27,7 @@ export type OpenLinksIn = "app" | "browser";
 
 type BrowserState = {
   tabs: BrowserTab[];
-  /** The tab showing in the panel; null while a chat is. */
+  /** The panel's tab showing. */
   activeId: string | null;
   /** Counts tabs asking to be seen: the home view opens the panel (and leaves Settings). */
   revealed: number;
@@ -57,7 +60,13 @@ export const CHROME_WEB_STORE_URL = "https://chromewebstore.google.com/";
 function savedTabs(): Pick<BrowserState, "tabs" | "activeId"> {
   try {
     const saved = JSON.parse(localStorage.getItem(TABS_KEY) ?? "") as {
-      tabs?: { id?: unknown; url?: unknown; title?: unknown; favicon?: unknown }[];
+      tabs?: {
+        id?: unknown;
+        url?: unknown;
+        title?: unknown;
+        favicon?: unknown;
+        chatId?: unknown;
+      }[];
       activeId?: unknown;
     };
     const tabs = (saved.tabs ?? []).flatMap((tab) =>
@@ -69,6 +78,7 @@ function savedTabs(): Pick<BrowserState, "tabs" | "activeId"> {
               title: typeof tab.title === "string" ? tab.title : "",
               favicon: typeof tab.favicon === "string" ? tab.favicon : null,
               loading: false,
+              ...(typeof tab.chatId === "string" ? { chatId: tab.chatId } : {}),
             },
           ]
         : [],
@@ -91,7 +101,13 @@ export const useBrowser = create<BrowserState>(() => ({
 
 useBrowser.subscribe((state, prev) => {
   if (state.tabs === prev.tabs && state.activeId === prev.activeId) return;
-  const tabs = state.tabs.map(({ id, url, title, favicon }) => ({ id, url, title, favicon }));
+  const tabs = state.tabs.map(({ id, url, title, favicon, chatId }) => ({
+    id,
+    url,
+    title,
+    favicon,
+    chatId,
+  }));
   localStorage.setItem(TABS_KEY, JSON.stringify({ tabs, activeId: state.activeId }));
 });
 
@@ -125,6 +141,29 @@ function blankTab(url: string): BrowserTab {
   };
 }
 
+/** The panel's tabs (not the pages chats opened). */
+export const panelTabs = (tabs: BrowserTab[]) => tabs.filter((tab) => !tab.chatId);
+
+/** The browser tab for a chat's page tab (its id there). */
+export const chatPageId = (chatId: string, tabId: string) => `${chatId}|${tabId}`;
+
+/** A chat's page, made for the workspace the first time it shows there. */
+export function ensureChatPage(chatId: string, tabId: string, url: string, title: string): void {
+  const id = chatPageId(chatId, tabId);
+  if (get().tabs.some((tab) => tab.id === id)) return;
+  set((s) => ({ tabs: [...s.tabs, { ...blankTab(url), id, title, chatId }] }));
+}
+
+export function closeChatPage(chatId: string, tabId: string): void {
+  const id = chatPageId(chatId, tabId);
+  set((s) => ({ tabs: s.tabs.filter((tab) => tab.id !== id) }));
+}
+
+/** A chat's pages, gone with it. */
+export function closeChatPages(chatId: string): void {
+  set((s) => ({ tabs: s.tabs.filter((tab) => tab.chatId !== chatId) }));
+}
+
 /** Opens `url` in a tab after the one showing, and shows it unless `background`. */
 export function openTab(url: string, { background = false } = {}): void {
   const tab = blankTab(url);
@@ -141,7 +180,7 @@ export function newTab(): void {
   set((s) => ({ tabs: [...s.tabs, tab], activeId: tab.id, revealed: s.revealed + 1 }));
 }
 
-/** ⌘L: the showing tab's address bar, or a new tab's while a chat shows. */
+/** ⌘L: the showing tab's address bar, or a new tab's. */
 export function focusAddress(): void {
   const tabId = get().activeId;
   if (!tabId) {
@@ -154,20 +193,33 @@ export function focusAddress(): void {
   }));
 }
 
-/** Shows a tab; null shows the chat. */
+/** Shows one of the panel's tabs (a chat's pages show in its workspace). */
 export function selectTab(id: string | null): void {
+  if (id && get().tabs.find((tab) => tab.id === id)?.chatId) return;
   set({ activeId: id });
 }
 
-/** Closes a tab; prefer the one before it, then the one after it, else the chat. */
+/** Closes a tab; in the panel, the one before it shows, then the one after it. */
 export function closeTab(id: string): void {
   set((s) => {
-    const at = s.tabs.findIndex((tab) => tab.id === id);
-    if (at < 0) return s;
-    const tabs = s.tabs.toSpliced(at, 1);
-    const activeId = s.activeId === id ? (tabs[at - 1]?.id ?? tabs[at]?.id ?? null) : s.activeId;
-    return { tabs, activeId };
+    const closing = s.tabs.find((tab) => tab.id === id);
+    if (!closing) return s;
+    const tabs = s.tabs.filter((tab) => tab !== closing);
+    if (closing.chatId || s.activeId !== id) return { tabs };
+    const panel = panelTabs(s.tabs);
+    const at = panel.indexOf(closing);
+    return { tabs, activeId: (panel[at - 1] ?? panel[at + 1])?.id ?? null };
   });
+}
+
+/** The panel's tabs in a new order (a drag in its strip). */
+export function reorderTabs(order: string[]): void {
+  set((s) => ({
+    tabs: [
+      ...order.flatMap((id) => s.tabs.filter((tab) => tab.id === id && !tab.chatId)),
+      ...s.tabs.filter((tab) => tab.chatId || !order.includes(tab.id)),
+    ],
+  }));
 }
 
 export function updateTab(id: string, patch: Partial<Omit<BrowserTab, "id">>): void {
@@ -195,7 +247,7 @@ export function setOpenLinksIn(value: OpenLinksIn): void {
 }
 
 /**
- * A link from mail or chat: a tab in the agent panel (Mac), unless Settings › Browser says
+ * A link from mail or chat: a tab in the browser panel (Mac), unless Settings › Browser says
  * otherwise. ⌘-click (`flip`) opens it the other way.
  */
 export function openLink(url: string, { flip = false } = {}): void {

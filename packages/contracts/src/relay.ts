@@ -1,9 +1,10 @@
 /**
  * The Otter Mail relay's HTTP API (infra/relay), shared by the Worker and the
  * apps. The relay knows who an Otter account is, which mailboxes it has
- * linked (Gmail, IMAP, Outlook), the account's preferences, and when Gmail or
- * Outlook says one of them changed. It never sees mail or keeps Gmail or
- * Microsoft tokens or IMAP passwords.
+ * linked (Gmail, IMAP, Outlook), the account's preferences and agent chats
+ * (chats.ts), and when Gmail or Outlook says one of them changed. It sees no
+ * mail but what the chats carry, and keeps no Gmail or Microsoft tokens or
+ * IMAP passwords.
  *
  * Otter accounts are better-auth's, under `/v1/auth` (the app uses
  * better-auth's client): `sign-in/social` with `{ provider: "google",
@@ -28,7 +29,6 @@ export interface RelayUser {
   signInMethods?: SignInMethod[];
 }
 
-import type { AgentToken } from "./agent-tokens.js";
 import type { ImapSettings, MailProviderKind } from "./mail.js";
 
 /** A mailbox linked to an Otter account, with the profile shown in the app. */
@@ -278,25 +278,5 @@ export type RelayEvent =
   | { type: "accounts" }
   /** The preferences changed on another device. */
   | { type: "preferences" }
-  /** A project changed (on another device, or by an agent): see projects.ts. */
-  | { type: "projects" };
-
-/**
- * Agent tokens (agent-tokens.ts): how an agent that runs elsewhere (Hermes)
- * reaches the account's projects through the relay's MCP server, `POST /mcp`
- * (Streamable HTTP, stateless). A token opens the project tools
- * (project-tools.ts) and nothing else: no mail, no mailboxes, no preferences.
- *
- * - `GET /v1/agent-tokens` → `ListAgentTokensResponse`
- * - `POST /v1/agent-tokens` with `{ name }` → `CreateAgentTokenResponse`: the
- *   token is shown this once; the relay keeps only its hash.
- * - `DELETE /v1/agent-tokens/:id` revokes it.
- */
-export interface ListAgentTokensResponse {
-  tokens: AgentToken[];
-}
-
-export interface CreateAgentTokenResponse {
-  token: string;
-  agentToken: AgentToken;
-}
+  /** Agent chats changed on another device (or this one): see chats.ts. */
+  | { type: "chats" };

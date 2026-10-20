@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import { ChevronsRightIcon, FolderIcon, InboxIcon, XIcon } from "lucide-react";
+import { ChevronsRightIcon, InboxIcon, XIcon } from "lucide-react";
 import type { GmailLabel } from "./types";
 
 /** Badge chrome shared by every chip (Otter Code's `Badge`, size sm). */
@@ -121,34 +121,6 @@ export function LabelChip({
     <span className={`${PILL} ${OUTLINE} ${selected ? "border-foreground/20" : ""}`}>
       {text}
       {remove}
-    </span>
-  );
-}
-
-/** A project the conversation is in (reader header): opens it; × takes the conversation out. */
-export function ProjectChip({
-  name,
-  onOpen,
-  onRemove,
-}: {
-  name: string;
-  onOpen: () => void;
-  onRemove: () => void;
-}) {
-  return (
-    <span
-      role="button"
-      tabIndex={0}
-      title={`Open the project “${name}”`}
-      onClick={onOpen}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") onOpen();
-      }}
-      className={`${PILL} ${OUTLINE} max-w-40 cursor-pointer hover:text-foreground`}
-    >
-      <FolderIcon className="size-3 shrink-0" />
-      <span className="truncate">{name}</span>
-      <RemoveButton label={`Remove from “${name}”`} onRemove={onRemove} />
     </span>
   );
 }

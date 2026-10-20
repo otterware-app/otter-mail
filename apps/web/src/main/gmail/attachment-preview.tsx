@@ -214,14 +214,28 @@ export function AttachmentPreview({
 
 type Loaded = { url: string; text: { text: string; truncated: boolean } | null };
 
+/** A file's preview in place (a workspace tab), without the window around it. */
+export function FilePreview({ file }: { file: PreviewFile }) {
+  const preview = attachmentPreview(file.name, file.mimeType);
+  if (!preview)
+    return (
+      <div className="flex flex-1 items-center justify-center px-6 text-center text-sm text-muted-foreground">
+        This file type can't be previewed.
+      </div>
+    );
+  return <PreviewSurface key={`${file.name}:${file.size}`} file={file} inline {...preview} />;
+}
+
 function PreviewSurface({
   file,
   kind,
   mimeType,
+  inline = false,
 }: {
   file: PreviewFile;
   kind: PreviewKind;
   mimeType: string;
+  inline?: boolean;
 }) {
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -356,7 +370,11 @@ function PreviewSurface({
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex h-11 shrink-0 items-center gap-1 border-b border-border/60 ps-4 pe-2">
-        <DialogTitle className="min-w-0 truncate text-sm font-medium">{file.name}</DialogTitle>
+        {inline ? (
+          <span className="min-w-0 truncate text-sm font-medium">{file.name}</span>
+        ) : (
+          <DialogTitle className="min-w-0 truncate text-sm font-medium">{file.name}</DialogTitle>
+        )}
         <span className="ms-1 shrink-0 text-xs text-muted-foreground tabular-nums">
           {formatAttachmentSize(file.size)}
         </span>
@@ -396,13 +414,15 @@ function PreviewSurface({
             </IconBtn>
           </HintTooltip>
         ) : null}
-        <HintTooltip label="Close">
-          <DialogClose asChild>
-            <IconBtn label="Close">
-              <XIcon className="size-4" />
-            </IconBtn>
-          </DialogClose>
-        </HintTooltip>
+        {inline ? null : (
+          <HintTooltip label="Close">
+            <DialogClose asChild>
+              <IconBtn label="Close">
+                <XIcon className="size-4" />
+              </IconBtn>
+            </DialogClose>
+          </HintTooltip>
+        )}
       </div>
       {loaded?.text?.truncated && !(kind === "html" && rendered) ? (
         <div className="shrink-0 border-b border-border/60 px-4 py-1.5 text-xs text-muted-foreground">

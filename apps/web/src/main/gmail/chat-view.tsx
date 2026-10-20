@@ -1,14 +1,15 @@
 /**
  * One chat: its transcript with the composer pinned below, or, while its
  * provider can't run yet, what to set up. Files dropped on it go with the
- * next message; passages selected in a reply are cited in it.
+ * next message; passages selected in a reply are cited in it. A Claude or
+ * Codex chat from another computer reads here and continues there.
  */
 
-import { useCallback, useState, type RefObject } from "react";
+import { useCallback, useEffect, useState, type RefObject } from "react";
 import { MessageScroller } from "@shadcn/react/message-scroller";
 import { ArrowDownIcon, MailIcon } from "lucide-react";
 import { ScrollArea } from "~/components/ui/scroll-area";
-import { buttonClass } from "./ui";
+import { buttonClass, cn } from "./ui";
 import { gmailApi, type AgentSettingsPatch, type ChatChange, type ProviderKind } from "./api";
 import {
   ProviderIcon,
@@ -25,7 +26,7 @@ import {
 } from "./chat-cite";
 import { AttachmentPreview, attachmentPreview, type PreviewFile } from "./attachment-preview";
 import { DropOverlay, useChatAttachments, useFileDrop } from "./chat-attachments";
-import { setCitations, useChats } from "./chat-store";
+import { isElsewhere, loadChat, setCitations, useChats } from "./chat-store";
 import { ChatTranscript } from "./chat-transcript";
 import { ChatComposer } from "./chat-composer";
 import { isProviderUsable } from "./agent-providers";
@@ -52,14 +53,25 @@ export function ChatView({
   onClearQuote,
   inputRef,
   onOpenChange,
+  onOpenFile,
+  compact = false,
 }: {
   chatId: string;
   context: MailChatContext;
   onClearQuote?: () => void;
   inputRef: RefObject<HTMLTextAreaElement | null>;
   onOpenChange: (change: ChatChange) => Promise<void>;
+  /** Where a file the agent linked opens; by default, a preview over the app. */
+  onOpenFile?: (href: string) => void;
+  /** The small window's: a smaller headline, closer to the edges. */
+  compact?: boolean;
 }) {
   const convo = useChats((s) => s.conversations.find((c) => c.id === chatId));
+  const device = useChats((s) => s.device);
+  const unloaded = convo !== undefined && !convo.loaded;
+  useEffect(() => {
+    if (unloaded) void loadChat(chatId);
+  }, [unloaded, chatId]);
   const streaming = useChats((s) => Boolean(s.runs[chatId]));
   const hydrating = useChats((s) => s.hydrating === chatId);
   const citations = useChats((s) => s.citations[chatId]) ?? NO_CITATIONS;
@@ -99,7 +111,7 @@ export function ChatView({
 
   const [previewFile, setPreviewFile] = useState<PreviewFile | null>(null);
   const loadChatImage = useChatImageLoader(convo?.provider, convo?.sessionId);
-  const openChatFile = (href: string) => {
+  const previewChatFile = (href: string) => {
     if (!convo) return;
     void gmailApi
       .agentReadFile(convo.provider, convo.sessionId ?? "", href)
@@ -121,14 +133,16 @@ export function ChatView({
     );
   };
 
+  const openChatFile = onOpenFile ?? previewChatFile;
   // An empty chat whose provider can't run yet shows setup instead of a composer.
   const needsSetup = Boolean(chat.state) && !chat.usable && turns.length === 0;
+  const elsewhere = convo && isElsewhere(convo, device) ? convo.device : null;
   const setupSummary = providerSummary(chat.provider);
   const fallback = chat.state?.providers.find(
     (p) => p.kind !== chat.kind && isProviderUsable(p) && p.checkedAt !== null,
   );
   // An empty chat shows a centered headline above the pinned composer (Codex).
-  const hero = turns.length === 0 && !hydrating;
+  const hero = turns.length === 0 && !hydrating && !unloaded;
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col" {...(needsSetup ? {} : drop.handlers)}>
@@ -166,7 +180,11 @@ export function ChatView({
           <MessageScroller.Root className="relative min-h-0 flex-1">
             <ScrollArea
               className="h-full"
-              viewportClassName="topbar-scroll-fade px-3 pb-3 pt-(--workspace-titlebar-scroll-fade-height)"
+              viewportClassName={
+                compact
+                  ? "px-1 pb-2 pt-2"
+                  : "topbar-scroll-fade px-3 pb-3 pt-(--workspace-titlebar-scroll-fade-height)"
+              }
               render={<MessageScroller.Viewport />}
             >
               <MessageScroller.Content
@@ -228,29 +246,42 @@ export function ChatView({
             {/* An empty chat shows its headline in the middle of the column. */}
             {hero ? (
               <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-4 px-6">
-                <MailIcon
-                  aria-hidden
-                  strokeWidth={1.25}
-                  className="size-10 text-muted-foreground"
-                />
-                <h1 className="w-full max-w-3xl text-balance text-center text-2xl font-normal tracking-tight text-foreground">
+                {compact ? null : (
+                  <MailIcon
+                    aria-hidden
+                    strokeWidth={1.25}
+                    className="size-10 text-muted-foreground"
+                  />
+                )}
+                <h1
+                  className={cn(
+                    "w-full max-w-3xl text-balance text-center font-normal tracking-tight text-foreground",
+                    compact ? "text-lg" : "text-2xl",
+                  )}
+                >
                   {context.headline}
                 </h1>
               </div>
             ) : null}
           </MessageScroller.Root>
-          <ChatComposer
-            chatId={chatId}
-            convo={convo}
-            chat={chat}
-            context={context}
-            onClearQuote={onClearQuote}
-            files={files}
-            inputRef={inputRef}
-            onEditCitation={(id, anchor) => setCommenting({ id, anchor, side: "above" })}
-            onSent={() => setCommenting(null)}
-            updateSettings={updateSettings}
-          />
+          {elsewhere ? (
+            <p className="shrink-0 px-6 pb-4 pt-2 text-center text-[13px] text-muted-foreground">
+              This chat ran in {chat.name} on {elsewhere.name}. Continue it there.
+            </p>
+          ) : (
+            <ChatComposer
+              chatId={chatId}
+              convo={convo}
+              chat={chat}
+              context={context}
+              onClearQuote={onClearQuote}
+              files={files}
+              inputRef={inputRef}
+              onEditCitation={(id, anchor) => setCommenting({ id, anchor, side: "above" })}
+              onSent={() => setCommenting(null)}
+              updateSettings={updateSettings}
+            />
+          )}
         </MessageScroller.Provider>
       )}
       <AttachmentPreview file={previewFile} onClose={() => setPreviewFile(null)} />

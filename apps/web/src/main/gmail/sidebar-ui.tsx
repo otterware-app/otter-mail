@@ -1,7 +1,7 @@
 /**
  * What every space's sidebar is built from (ChatGPT's): the heading with its
  * actions, the New row, sections of rows, and the scrolling body. The mailbox
- * sidebar, the Projects sidebar and the peek all draw with these.
+ * sidebar, the Chats sidebar and the peek all draw with these.
  */
 
 import {
@@ -159,7 +159,7 @@ export function Section({
   title: string;
   action?: ReactNode;
   children: ReactNode;
-  /** Folded until opened (Projects' Settled). */
+  /** Folded until opened. */
   defaultOpen?: boolean;
   /** Its `data-tour` part, for the tour's spotlight. */
   tour?: string;

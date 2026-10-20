@@ -6,12 +6,12 @@
 
 import { registerTodoistHandlers } from "./handlers/todoist.js";
 import { registerAgentHandlers } from "./handlers/agent.js";
+import { registerChatHandlers } from "./handlers/chats.js";
 import { registerCalendarHandlers } from "./handlers/calendar.js";
 import { registerGmailHandlers } from "./handlers/gmail.js";
 import { registerImapAccountHandlers } from "./handlers/imap-accounts.js";
 import { registerOutlookAccountHandlers } from "./handlers/outlook-accounts.js";
 import { registerOtterAccountHandlers } from "./handlers/otter-account.js";
-import { registerProjectHandlers } from "./handlers/projects.js";
 import { registerSearchHandlers } from "./handlers/search.js";
 import { registerTranslationHandlers } from "./handlers/translation.js";
 import { registerSupportHandlers } from "./handlers/support.js";
@@ -49,8 +49,8 @@ export async function startCore(platform: Platform): Promise<void> {
   registerOtterAccountHandlers();
   registerTranslationHandlers();
   registerAgentHandlers();
+  registerChatHandlers();
   registerSupportHandlers();
-  registerProjectHandlers();
   registerTodoistHandlers();
   handle("keybindings:read", async () => readKeybindings());
   handle("preferences:getUi", async (params: unknown) =>

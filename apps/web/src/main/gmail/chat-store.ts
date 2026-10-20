@@ -1,18 +1,32 @@
 /**
- * The agent chats, shared by every view that shows one: the saved chats and
- * the ones open as tabs, the turns in flight and what they wait on, the
- * follow-ups queued behind them, and each chat's unsent draft and citations.
- * Each chat is bound to the provider it started with; turns stream through
- * the backend's provider layer as canonical chat events, which
- * `useChatEvents` (the main window's) lays into their chat whether or not a
- * view shows it. The chats are saved on this device, for instant paint.
+ * The agent chats, shared by every view that shows one (the small window over
+ * the mail, the AI workspace): the account's chats and the one showing, the
+ * turns in flight and what they wait on, the follow-ups queued behind them,
+ * and each chat's unsent draft and citations. Each chat is bound to the
+ * provider it started with; turns stream through the backend's provider
+ * layer as canonical chat events, which `useChatEvents` (the main window's)
+ * lays into their chat whether or not a view shows it.
+ *
+ * Chats are the account's (contracts' chats.ts): core keeps them and syncs
+ * them through the relay. Each comes from core without its turns, which load
+ * when it's first shown (`loadChat`), and each change here is saved back. A
+ * chat also keeps what it used, made and opened as tabs, for the workspace.
  */
 
 import { useEffect } from "react";
 import { create } from "zustand";
+import {
+  LOCAL_CHAT_PROVIDERS,
+  chatTabId,
+  type Chat,
+  type ChatContextMeta,
+  type ChatTab,
+  type ChatTabRef,
+  type ChatTurn,
+} from "@otter-mail/contracts/chats";
 
-import { useBrowser } from "../browser/store";
-import { features } from "../features";
+import { ipc } from "~/lib/ipc";
+import { closeChatPages } from "../browser/store";
 import { isProviderUsable } from "./agent-providers";
 import {
   gmailApi,
@@ -31,57 +45,22 @@ import {
 import type { SentAttachment } from "./chat-attachments";
 import { mergeChatChanges } from "./chat-changes";
 import type { Citation } from "./chat-cite";
-import type { ContextMeta } from "./chat-context";
+import { isChatFileLink } from "./chat-links";
 import type { FollowUpBehavior } from "./chat-queue";
 import { toast } from "./toast";
-import type { TurnItem } from "./work-log";
 
-/** One transcript entry. */
-export type ChatTurn = {
-  id: string;
-  role: "user" | "assistant";
-  /** The user's message. */
-  text: string;
-  /** Agent turns: what the agent said and the steps it took, in order. */
-  items?: TurnItem[];
-  /** Confirmed results of this turn, shown underneath its reply. */
-  changes?: ChatChange[];
-  /** Attached mail context, shown as a chip above the user's message. */
-  context?: ContextMeta;
-  /** Invoked skill, rendered as a badge on the user's message. */
-  skill?: string;
-  /** How a user message was delivered (Otter Code's inputIntent marker). */
-  intent?: "queued" | "steer" | "promoted";
-  /** Files sent with a user message (thumbnails for images). */
-  attachments?: SentAttachment[];
-  /** Passages of earlier replies the user message quotes, with their comments. */
-  citations?: Omit<Citation, "id">[];
-  error?: string;
-  /** Agent turns: when the run started / settled, for the "Worked for" fold. */
-  startedAt?: number;
-  finishedAt?: number;
-};
+export type { ChatTab, ChatTurn };
 
-/**
- * A saved chat, bound to the provider it started with. `sessionId` is the
- * provider-side session (Hermes session / Codex thread); Hermes chats on a
- * server without sessions have none and chain via `lastResponseId` (Responses API).
- */
-export type Conversation = {
-  id: string;
-  title: string;
-  turns: ChatTurn[];
-  provider: ProviderKind;
-  sessionId: string | null;
-  /** Created by this app (deleting the chat deletes the session) vs. opened from the provider. */
-  sessionOwned: boolean;
-  lastResponseId: string | null;
+/** A chat, and what this device keeps of it besides. */
+export type Conversation = Chat & {
   /**
-   * The turn in flight (its request id), saved so one the app quits during is
-   * picked up again on the next launch, where the provider's runs outlive it.
+   * The turn in flight (its request id), kept on this device so one the app
+   * quits during is picked up again on the next launch, where the provider's
+   * runs outlive it.
    */
   openRequest?: string | null;
-  updatedAt: number;
+  /** Its turns are here: a chat from core loads them when first shown. */
+  loaded: boolean;
 };
 
 /** A turn in flight, bound to its conversation (several chats can run at once). */
@@ -98,7 +77,7 @@ export type Outgoing = {
   input: string;
   skill?: Skill;
   title: string;
-  context?: ContextMeta;
+  context?: ChatContextMeta;
   attachments?: ChatAttachment[];
   sent?: SentAttachment[];
   citations?: Citation[];
@@ -111,15 +90,24 @@ export type Outgoing = {
  */
 export type QueuedMessage = Outgoing;
 
+type Device = { id: string; name: string };
+
 type ChatsState = {
+  /** The account's chats, newest first, and a new one before its first message. */
   conversations: Conversation[];
-  /** The chat showing; "" while the panel holds only browser pages. */
+  /** Core's list is in. */
+  ready: boolean;
+  /** This device: Claude and Codex chats continue only on theirs. */
+  device: Device | null;
+  /** The chat showing: in the small window, and the one the workspace last showed. */
   activeId: string;
-  /** Open chats, in strip order; empty while only browser tabs remain. */
-  tabs: string[];
-  /** Turns in flight, by chat: each streams into its own chat, so tabs work in parallel. */
+  /** Each chat's tab showing in the workspace. */
+  activeTabs: Record<string, string>;
+  /** The chat on screen now (the small window open, or the workspace): its replies are seen. */
+  watched: string | null;
+  /** Turns in flight, by chat: each streams into its own chat, so chats work in parallel. */
   runs: Record<string, Run>;
-  /** Background chats whose turn finished since you last looked at them. */
+  /** Chats whose turn finished since you last looked at them. */
   unseen: ReadonlySet<string>;
   /** Approvals the running turns wait on (oldest first). */
   approvals: { requestId: string; approval: ApprovalRequest }[];
@@ -136,9 +124,20 @@ type ChatsState = {
   citations: Record<string, Citation[]>;
 };
 
-const STORE_KEY = "gmail:hermes-chat:v2";
-const MAX_STORED_TURNS = 80;
-const MAX_CONVERSATIONS = 40;
+const ACTIVE_KEY = "gmail:chat-active";
+const ACTIVE_TABS_KEY = "gmail:chat-active-tabs";
+const OPEN_REQUESTS_KEY = "gmail:chat-open-requests";
+// Chats were kept here before they synced; they start over.
+localStorage.removeItem("gmail:hermes-chat:v2");
+localStorage.removeItem("gmail:panel-tabs");
+
+function readJson<T>(key: string, fallback: T): T {
+  try {
+    return (JSON.parse(localStorage.getItem(key) ?? "") as T) ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
 
 export function clampTitle(text: string): string {
   const t = text.trim();
@@ -147,17 +146,29 @@ export function clampTitle(text: string): string {
 }
 
 function newConversation(provider: ProviderKind = "openrouter"): Conversation {
+  const now = Date.now();
   return {
     id: crypto.randomUUID(),
     title: "New chat",
-    turns: [],
     provider,
     sessionId: null,
     sessionOwned: false,
     lastResponseId: null,
-    updatedAt: Date.now(),
+    device: null,
+    createdAt: now,
+    updatedAt: now,
+    tabs: [],
+    turns: [],
+    loaded: true,
   };
 }
+
+/** A new chat, before its first message: nowhere but here. */
+export const isBlank = (c: Conversation) => c.loaded && c.turns.length === 0;
+
+/** A Claude or Codex chat that ran on another computer: read here, continued there. */
+export const isElsewhere = (c: Conversation, device: Device | null) =>
+  LOCAL_CHAT_PROVIDERS.includes(c.provider) && c.device !== null && c.device.id !== device?.id;
 
 /** Hydrated user turns show the question, not the context block sent with it. */
 function stripHandoff(text: string): string {
@@ -272,42 +283,13 @@ function friendlyError(code: string, provider: ProviderKind): string {
   }
 }
 
-type Saved = Pick<ChatsState, "conversations" | "activeId" | "tabs">;
-
-function loadStore(): Saved {
-  let conversations: Conversation[] = [];
-  let activeId: string | null = null;
-  let tabs: string[] = [];
-  try {
-    const v2 = JSON.parse(localStorage.getItem(STORE_KEY) ?? "") as Partial<Saved>;
-    if (Array.isArray(v2.conversations)) {
-      conversations = v2.conversations.map((c) => ({
-        ...c,
-        // A turn can only be picked up again in the session it was sent to.
-        openRequest: c.sessionId ? (c.openRequest ?? null) : null,
-      }));
-      activeId = v2.activeId ?? null;
-      tabs = Array.isArray(v2.tabs) ? v2.tabs : [];
-    }
-  } catch {
-    // nothing saved yet
-  }
-  // Only non-empty sessions are kept. A panel with only pages needs no chat.
-  conversations = conversations.filter((c) => c.turns.length > 0);
-  if (activeId === "" && tabs.length === 0 && features.browser && useBrowser.getState().tabs.length)
-    return { conversations, activeId, tabs };
-  if (!activeId || !conversations.some((c) => c.id === activeId)) {
-    const fresh = newConversation();
-    conversations = [fresh, ...conversations];
-    activeId = fresh.id;
-  }
-  tabs = tabs.filter((id) => conversations.some((c) => c.id === id));
-  if (!tabs.includes(activeId)) tabs = [...tabs, activeId];
-  return { conversations, activeId, tabs };
-}
-
 export const useChats = create<ChatsState>(() => ({
-  ...loadStore(),
+  conversations: [],
+  ready: false,
+  device: null,
+  activeId: localStorage.getItem(ACTIVE_KEY) ?? "",
+  activeTabs: readJson<Record<string, string>>(ACTIVE_TABS_KEY, {}),
+  watched: null,
   runs: {},
   unseen: new Set(),
   approvals: [],
@@ -319,31 +301,117 @@ export const useChats = create<ChatsState>(() => ({
   citations: {},
 }));
 
-useChats.subscribe((state, prev) => {
-  if (
-    state.conversations === prev.conversations &&
-    state.activeId === prev.activeId &&
-    state.tabs === prev.tabs
-  )
-    return;
-  const conversations = state.conversations
-    .slice(0, MAX_CONVERSATIONS)
-    .map((c) => ({ ...c, turns: c.turns.slice(-MAX_STORED_TURNS) }));
-  localStorage.setItem(
-    STORE_KEY,
-    JSON.stringify({ conversations, activeId: state.activeId, tabs: state.tabs }),
+const { getState: get, setState: set } = useChats;
+
+// ── Saving ───────────────────────────────────────────────────────────────────
+
+const chatsApi = {
+  list: () => ipc<{ chats: Omit<Chat, "turns">[]; device: Device }>("chats:list"),
+  get: (id: string) => ipc<Chat | null>("chats:get", { id }),
+  save: (chat: Chat) => ipc<void>("chats:save", { chat }),
+  delete: (id: string) => ipc<void>("chats:delete", { id }),
+};
+
+/** Chats as core has them: nothing to save. */
+const fromCore = new WeakSet<Conversation>();
+const asLoaded = (c: Conversation) => (fromCore.add(c), c);
+
+const toChat = ({ openRequest: _open, loaded: _loaded, ...chat }: Conversation): Chat => chat;
+
+/** Chats being saved: their own `chats:changed` is no news. */
+const saving = new Set<string>();
+const saveTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+/** Saves a chat after a beat, and at most that often while its turn streams. */
+function scheduleSave(id: string): void {
+  if (saveTimers.has(id)) return;
+  saveTimers.set(
+    id,
+    setTimeout(() => {
+      saveTimers.delete(id);
+      const convo = get().conversations.find((c) => c.id === id);
+      if (!convo || !convo.loaded || convo.turns.length === 0) return;
+      saving.add(id);
+      chatsApi
+        .save(toChat(convo))
+        .catch((error: unknown) => console.log("[AgentChat:save] failed", { error: String(error) }))
+        .finally(() => saving.delete(id));
+    }, 1500),
   );
+}
+
+useChats.subscribe((state, prev) => {
+  if (state.activeId !== prev.activeId) localStorage.setItem(ACTIVE_KEY, state.activeId);
+  if (state.activeTabs !== prev.activeTabs)
+    localStorage.setItem(ACTIVE_TABS_KEY, JSON.stringify(state.activeTabs));
+  if (state.conversations === prev.conversations) return;
+  const before = new Map(prev.conversations.map((c) => [c.id, c]));
+  const open: Record<string, string> = {};
+  for (const c of state.conversations) {
+    if (c.openRequest) open[c.id] = c.openRequest;
+    if (c === before.get(c.id) || fromCore.has(c) || !c.loaded || c.turns.length === 0) continue;
+    scheduleSave(c.id);
+  }
+  localStorage.setItem(OPEN_REQUESTS_KEY, JSON.stringify(open));
 });
 
-const { getState: get, setState: set } = useChats;
+/** The chats core has, over this window's: those changed elsewhere come in (turns to load again). */
+async function loadChats(): Promise<void> {
+  const { chats, device } = await chatsApi.list();
+  const openRequests = readJson<Record<string, string>>(OPEN_REQUESTS_KEY, {});
+  set((s) => {
+    const mine = new Map(s.conversations.map((c) => [c.id, c]));
+    const listed = new Set(chats.map((c) => c.id));
+    const conversations: Conversation[] = chats.map((chat) => {
+      const local = mine.get(chat.id);
+      // Changed here since (its save on its way), or running here: it stays.
+      if (local && (local.updatedAt >= chat.updatedAt || s.runs[chat.id])) return local;
+      return asLoaded({
+        ...chat,
+        turns: local?.turns ?? [],
+        loaded: false,
+        // A turn can only be picked up again in the session it was sent to.
+        openRequest: chat.sessionId ? (local?.openRequest ?? openRequests[chat.id] ?? null) : null,
+      });
+    });
+    // A new chat stays; one deleted elsewhere goes, unless it's running here.
+    for (const c of s.conversations) {
+      if (!listed.has(c.id) && (isBlank(c) || s.runs[c.id])) conversations.push(c);
+    }
+    conversations.sort((a, b) => b.updatedAt - a.updatedAt);
+    let activeId = s.activeId;
+    if (!conversations.some((c) => c.id === activeId)) {
+      const blank = conversations.find(isBlank) ?? newConversation();
+      if (!conversations.includes(blank)) conversations.unshift(blank);
+      activeId = blank.id;
+    }
+    return { conversations, device, ready: true, activeId };
+  });
+}
+
+const loading = new Set<string>();
+
+/** A chat's turns, from core; a view showing a chat that hasn't them asks. */
+export async function loadChat(id: string): Promise<void> {
+  if (loading.has(id)) return;
+  loading.add(id);
+  try {
+    const chat = await chatsApi.get(id);
+    if (!chat) return;
+    set((s) => ({
+      conversations: s.conversations.map((c) =>
+        c.id === id && !c.loaded && !s.runs[id]
+          ? asLoaded({ ...chat, loaded: true, openRequest: c.openRequest })
+          : c,
+      ),
+    }));
+  } finally {
+    loading.delete(id);
+  }
+}
 
 function patchConversation(id: string, fn: (c: Conversation) => Conversation): void {
   set((s) => ({ conversations: s.conversations.map((c) => (c.id === id ? fn(c) : c)) }));
-}
-
-/** Empty chats that aren't open anywhere are dropped (no litter). */
-function pruned(conversations: Conversation[], tabs: string[]): Conversation[] {
-  return conversations.filter((c) => c.turns.length > 0 || tabs.includes(c.id));
 }
 
 function endRun(requestId: string): void {
@@ -408,6 +476,13 @@ function appendExchange(
       },
     ],
   }));
+  // The mail it's about opens beside the chat.
+  for (const { title, target } of msg.context?.items ?? []) {
+    if (target.kind === "thread")
+      openChatTab(convoId, { kind: "thread", accountId: target.accountId, id: target.id }, title, {
+        show: false,
+      });
+  }
 }
 
 /** Starts a new turn in the message's conversation. */
@@ -430,9 +505,11 @@ function startTurn(msg: Outgoing, intent?: ChatTurn["intent"]): void {
   }));
   patchConversation(msg.convoId, (c) => ({
     ...c,
-    // The first turn pins the chat to the provider it was sent with.
+    // The first turn pins the chat to the provider it was sent with (and Claude's or Codex's to this device).
     provider: firstTurn ? kind : c.provider,
     title: firstTurn ? msg.title : c.title,
+    device:
+      firstTurn && LOCAL_CHAT_PROVIDERS.includes(kind) ? get().device : firstTurn ? null : c.device,
     openRequest: requestId,
   }));
   appendExchange(msg.convoId, msg, requestId, intent);
@@ -598,6 +675,103 @@ export async function answerQuestion(
   }
 }
 
+// ── What a chat opens beside it (the workspace's tabs) ───────────────────────
+
+/**
+ * Keeps `ref` as one of the chat's tabs (once: opening it again finds it) and,
+ * with `show`, shows it in the workspace.
+ */
+export function openChatTab(
+  convoId: string,
+  ref: ChatTabRef,
+  title: string,
+  { show = true }: { show?: boolean } = {},
+): void {
+  const id = chatTabId(ref);
+  set((s) => {
+    const convo = s.conversations.find((c) => c.id === convoId);
+    if (!convo) return s;
+    const conversations = convo.tabs.some((t) => t.id === id)
+      ? s.conversations
+      : s.conversations.map((c) =>
+          c === convo
+            ? {
+                ...c,
+                tabs: [...c.tabs, { id, title: clampTitle(title), ref, addedAt: Date.now() }],
+                updatedAt: Date.now(),
+              }
+            : c,
+        );
+    const activeTabs =
+      show || !s.activeTabs[convoId] ? { ...s.activeTabs, [convoId]: id } : s.activeTabs;
+    return { conversations, activeTabs };
+  });
+}
+
+export function showChatTab(convoId: string, tabId: string): void {
+  set((s) => ({ activeTabs: { ...s.activeTabs, [convoId]: tabId } }));
+}
+
+/** Closes a tab; the one before it shows (or after it, for the first). */
+export function closeChatTab(convoId: string, tabId: string): void {
+  set((s) => {
+    const convo = s.conversations.find((c) => c.id === convoId);
+    const at = convo?.tabs.findIndex((t) => t.id === tabId) ?? -1;
+    if (!convo || at < 0) return s;
+    const tabs = convo.tabs.filter((t) => t.id !== tabId);
+    const shown = s.activeTabs[convoId];
+    const activeTabs = { ...s.activeTabs };
+    if (shown === tabId || !shown) {
+      const next = tabs[at - 1] ?? tabs[at];
+      if (next) activeTabs[convoId] = next.id;
+      else delete activeTabs[convoId];
+    }
+    return {
+      conversations: s.conversations.map((c) =>
+        c === convo ? { ...c, tabs, updatedAt: Date.now() } : c,
+      ),
+      activeTabs,
+    };
+  });
+}
+
+/** The chat's tabs in a new order (a drag in the strip); tabs the strip didn't show keep their place at the end. */
+export function reorderChatTabs(convoId: string, order: string[]): void {
+  patchConversation(convoId, (c) => ({
+    ...c,
+    tabs: [
+      ...order.flatMap((id) => c.tabs.filter((t) => t.id === id)),
+      ...c.tabs.filter((t) => !order.includes(t.id)),
+    ],
+    updatedAt: Date.now(),
+  }));
+}
+
+const hostOf = (url: string) => URL.parse(url)?.host.replace(/^www\./, "") ?? url;
+const basename = (path: string) => path.split(/[\\/]/).pop() || path;
+
+/** What an agent's result opens as: the conversation or draft, or the event's page. */
+function changeTab(change: ChatChange): { ref: ChatTabRef; title: string } | null {
+  const { target } = change;
+  if (target.kind === "thread" || target.kind === "draft")
+    return {
+      ref: { kind: target.kind, accountId: target.accountId, id: target.id },
+      title: change.title,
+    };
+  if (target.kind === "event" && target.url && change.action !== "deleted")
+    return { ref: { kind: "page", url: target.url }, title: change.title };
+  return null;
+}
+
+/** Markdown links to files in what the agent said: what it wrote or made. */
+function linkedFiles(text: string): { title: string; href: string }[] {
+  return [...text.matchAll(/\[([^\]]*)\]\(<?([^)\s>]+)>?\)/g)].flatMap(([, label, href]) =>
+    isChatFileLink(href) && !href.startsWith("data:")
+      ? [{ title: label.trim() || basename(href), href }]
+      : [],
+  );
+}
+
 export function setDraft(convoId: string, text: string): void {
   set((s) => ({ drafts: { ...s.drafts, [convoId]: text } }));
 }
@@ -606,73 +780,39 @@ export function setCitations(convoId: string, update: (list: Citation[]) => Cita
   set((s) => ({ citations: { ...s.citations, [convoId]: update(s.citations[convoId] ?? []) } }));
 }
 
-/**
- * A fresh chat, in a new tab beside the current one. An already-empty active
- * chat is kept instead (no empty duplicates) unless `reuseEmpty` is false.
- */
-export function newChat(provider: ProviderKind, reuseEmpty = true): void {
-  const { conversations, activeId } = get();
-  const active = conversations.find((c) => c.id === activeId);
-  if (reuseEmpty && active && active.turns.length === 0) return;
-  console.log("[AgentChat:newChat]");
-  const fresh = newConversation(provider);
+/** Shows a chat (in the small window; the workspace follows its address). */
+export function showChat(id: string): void {
   set((s) => {
-    const at = s.tabs.indexOf(s.activeId);
-    const tabs = [...s.tabs.slice(0, at + 1), fresh.id, ...s.tabs.slice(at + 1)];
-    return { conversations: pruned([fresh, ...s.conversations], tabs), activeId: fresh.id, tabs };
-  });
-}
-
-/** The panel's last page closed with no chat open: a fresh chat takes its place. */
-export function ensureChat(): void {
-  if (get().tabs.length > 0) return;
-  const fresh = newConversation();
-  set((s) => ({
-    conversations: [fresh, ...s.conversations],
-    activeId: fresh.id,
-    tabs: [fresh.id],
-  }));
-}
-
-/** Shows a chat: its tab if open, else a new tab. */
-export function switchTo(id: string): void {
-  set((s) => {
-    // Opens in a new tab beside the current one (an empty "New chat" tab
-    // is simply reused).
-    const at = s.tabs.indexOf(s.activeId);
-    const current = s.conversations.find((c) => c.id === s.activeId);
-    const tabs = s.tabs.includes(id)
-      ? s.tabs
-      : current && current.turns.length === 0 && !s.runs[s.activeId]
-        ? s.tabs.map((t) => (t === s.activeId ? id : t))
-        : [...s.tabs.slice(0, at + 1), id, ...s.tabs.slice(at + 1)];
+    if (!s.unseen.has(id)) return s.activeId === id ? s : { activeId: id };
     const unseen = new Set(s.unseen);
     unseen.delete(id);
-    return { conversations: pruned(s.conversations, tabs), activeId: id, tabs, unseen };
+    return { activeId: id, unseen };
   });
 }
 
-/**
- * Closes a chat's tab; it stays in history (a running turn finishes there).
- * With no page open either, the last chat gives way to a fresh one.
- */
-export function closeChat(id: string, provider: ProviderKind, { pagesOpen = false } = {}): void {
+/** A view shows `id` now (null: none does): what it finished is seen. */
+export function watchChat(id: string | null): void {
   set((s) => {
-    if (s.tabs.length < 2 && !pagesOpen) {
-      const current = s.conversations.find((c) => c.id === id);
-      if (!current || current.turns.length === 0) return s;
-      const fresh = newConversation(provider);
-      return {
-        conversations: pruned([fresh, ...s.conversations], [fresh.id]),
-        activeId: fresh.id,
-        tabs: [fresh.id],
-      };
-    }
-    const at = s.tabs.indexOf(id);
-    const tabs = s.tabs.filter((t) => t !== id);
-    const activeId = s.activeId === id ? (tabs[Math.max(0, at - 1)] ?? "") : s.activeId;
-    return { conversations: pruned(s.conversations, tabs), activeId, tabs };
+    if (!id || !s.unseen.has(id)) return s.watched === id ? s : { watched: id };
+    const unseen = new Set(s.unseen);
+    unseen.delete(id);
+    return { watched: id, unseen };
   });
+}
+
+/** A fresh chat, shown: the new chat already there if there's one. Its id. */
+export function newChat(provider: ProviderKind): string {
+  const blank = get().conversations.find(isBlank);
+  if (blank) {
+    // A new chat follows the picker until its first message.
+    if (blank.provider !== provider) patchConversation(blank.id, (c) => ({ ...c, provider }));
+    showChat(blank.id);
+    return blank.id;
+  }
+  console.log("[AgentChat:newChat]");
+  const fresh = newConversation(provider);
+  set((s) => ({ conversations: [fresh, ...s.conversations], activeId: fresh.id }));
+  return fresh.id;
 }
 
 export function deleteConversation(id: string, provider: ProviderKind): void {
@@ -683,29 +823,25 @@ export function deleteConversation(id: string, provider: ProviderKind): void {
   }
   // Sessions this app created go with the chat; ones opened from the provider only unlink.
   const target = get().conversations.find((c) => c.id === id);
-  if (target?.sessionId && target.sessionOwned) {
+  if (!target) return;
+  if (target.sessionId && target.sessionOwned) {
     void gmailApi.agentDeleteSession(target.provider, target.sessionId).catch(() => {});
   }
+  if (!isBlank(target)) void chatsApi.delete(id).catch(() => {});
+  closeChatPages(id);
   set((s) => {
-    const remaining = s.conversations.filter((c) => c.id !== id);
-    const openTabs = s.tabs.filter((t) => t !== id);
-    if (s.activeId !== id) return { conversations: remaining, tabs: openTabs };
-    // The deleted chat was showing: its neighbour tab, else the latest chat.
-    const at = s.tabs.indexOf(id);
-    if (openTabs.length > 0)
-      return {
-        conversations: remaining,
-        activeId: openTabs[Math.max(0, at - 1)],
-        tabs: openTabs,
-      };
-    const latest = remaining.find((c) => c.turns.length > 0);
-    if (latest) return { conversations: remaining, activeId: latest.id, tabs: [latest.id] };
-    const fresh = newConversation(provider);
-    return { conversations: [fresh, ...remaining], activeId: fresh.id, tabs: [fresh.id] };
+    const conversations = s.conversations.filter((c) => c.id !== id);
+    if (s.activeId !== id) return { conversations };
+    // The latest chat shows instead, or a fresh one.
+    const next = conversations[0] ?? newConversation(provider);
+    return {
+      conversations: conversations.includes(next) ? conversations : [next, ...conversations],
+      activeId: next.id,
+    };
   });
 }
 
-/** Resumes a session persisted on the provider (e.g. started in Hermes' WebUI) as a chat. */
+/** Resumes a session persisted on the provider (e.g. started in Hermes' WebUI) as a chat, shown. */
 export function openServerSession(
   session: ChatSession,
   provider: ProviderKind,
@@ -715,7 +851,7 @@ export function openServerSession(
     (c) => c.sessionId === session.id && c.provider === provider,
   );
   if (existing) {
-    switchTo(existing.id);
+    showChat(existing.id);
     return;
   }
   console.log("[AgentChat:openServerSession]", {
@@ -724,30 +860,16 @@ export function openServerSession(
     source: session.source,
   });
   const convo: Conversation = {
-    id: crypto.randomUUID(),
+    ...newConversation(provider),
     title: clampTitle(session.title || session.preview || `${providerName} session`),
-    turns: [],
-    provider,
     sessionId: session.id,
-    sessionOwned: false,
-    lastResponseId: null,
     updatedAt: session.lastActive,
   };
-  set((s) => {
-    // A new tab, like any chat opened from history (an empty tab is reused).
-    const at = s.tabs.indexOf(s.activeId);
-    const current = s.conversations.find((c) => c.id === s.activeId);
-    const tabs =
-      current && current.turns.length === 0 && !s.runs[s.activeId]
-        ? s.tabs.map((t) => (t === s.activeId ? convo.id : t))
-        : [...s.tabs.slice(0, at + 1), convo.id, ...s.tabs.slice(at + 1)];
-    return {
-      conversations: pruned([convo, ...s.conversations], tabs),
-      activeId: convo.id,
-      tabs,
-      hydrating: convo.id,
-    };
-  });
+  set((s) => ({
+    conversations: [convo, ...s.conversations.filter((c) => !isBlank(c) || c.id === s.activeId)],
+    activeId: convo.id,
+    hydrating: convo.id,
+  }));
   gmailApi
     .agentSessionMessages(provider, session.id)
     .then(
@@ -787,15 +909,20 @@ export function resumeRuns(providers: ProviderSnapshot[]): void {
       );
       endRun(requestId);
     };
-    gmailApi.agentResume({ provider: c.provider, requestId, sessionId: c.sessionId }).then(
-      ({ resumed }) => {
-        if (!resumed) giveUp();
-      },
-      (error) => {
-        console.log("[AgentChat:resume] failed", { error: String(error) });
-        endRun(requestId);
-      },
-    );
+    // The run's turns stream into the chat's own, so those come first.
+    void (c.loaded ? Promise.resolve() : loadChat(c.id))
+      .then(() =>
+        gmailApi.agentResume({ provider: c.provider, requestId, sessionId: c.sessionId! }),
+      )
+      .then(
+        ({ resumed }) => {
+          if (!resumed) giveUp();
+        },
+        (error) => {
+          console.log("[AgentChat:resume] failed", { error: String(error) });
+          endRun(requestId);
+        },
+      );
   }
 }
 
@@ -806,6 +933,12 @@ function onChatEvent(raw: unknown): void {
     ? Object.values(get().runs).find((r) => r.requestId === event.requestId)
     : undefined;
   if (!event || !s) return;
+  // What the event opens beside the chat: a result (shown), pages and files it used (kept).
+  const opens: {
+    result: { ref: ChatTabRef; title: string } | null;
+    pages: string[];
+    files: { title: string; href: string }[];
+  } = { result: null, pages: [], files: [] };
   // Approvals live beside the transcript, not in it.
   if (event.type === "approval") {
     set((st) => ({
@@ -861,6 +994,7 @@ function onChatEvent(raw: unknown): void {
     const last = items[items.length - 1];
     if (event.type === "change") {
       updated.changes = mergeChatChanges([...(turn.changes ?? []), event.change]);
+      opens.result = changeTab(event.change);
     } else if (event.type === "delta" || event.type === "text") {
       // Text continues the text before it; after a step it starts anew.
       const index = event.id
@@ -877,6 +1011,8 @@ function onChatEvent(raw: unknown): void {
       else items.push({ kind: "text", id: event.id, text: event.text });
     } else if (event.type === "tool") {
       items.push({ kind: "step", id: event.id, step: event.step });
+      const url = event.step.kind === "web" ? event.step.detail?.trim() : undefined;
+      if (url && /^https?:\/\//i.test(url)) opens.pages.push(url);
     } else if (event.type === "toolResult") {
       // Its step by id; else the latest one still running.
       const index = items.findLastIndex(
@@ -890,7 +1026,15 @@ function onChatEvent(raw: unknown): void {
     } else if (event.type === "error") {
       updated.error = friendlyError(event.message, s.provider);
     }
-    if (event.type === "done" || event.type === "error") updated.finishedAt = Date.now();
+    if (event.type === "done" || event.type === "error") {
+      updated.finishedAt = Date.now();
+      for (const item of items) {
+        if (item.kind === "text") opens.files.push(...linkedFiles(item.text));
+        else if (item.step.kind === "edit")
+          for (const path of (item.step.detail ?? "").split("\n").filter(Boolean))
+            opens.files.push({ title: basename(path), href: path });
+      }
+    }
     nextTurns[nextTurns.length - 1] = updated;
     const lastResponseId =
       event.type === "done" && event.responseId ? event.responseId : c.lastResponseId;
@@ -899,12 +1043,17 @@ function onChatEvent(raw: unknown): void {
       event.type === "error" && event.message === "session_not_found" ? null : c.sessionId;
     return { ...c, turns: nextTurns, lastResponseId, sessionId, updatedAt: Date.now() };
   });
+  if (opens.result) openChatTab(s.convoId, opens.result.ref, opens.result.title);
+  for (const url of opens.pages)
+    openChatTab(s.convoId, { kind: "page", url }, hostOf(url), { show: false });
+  for (const file of opens.files)
+    openChatTab(s.convoId, { kind: "file", href: file.href }, file.title, { show: false });
   if (event.type === "done" || event.type === "error") {
     set((st) => ({
       conversations: st.conversations.map((c) =>
         c.openRequest === event.requestId ? { ...c, openRequest: null } : c,
       ),
-      unseen: s.convoId === st.activeId ? st.unseen : new Set(st.unseen).add(s.convoId),
+      unseen: s.convoId === st.watched ? st.unseen : new Set(st.unseen).add(s.convoId),
     }));
     endRun(event.requestId);
   }
@@ -927,7 +1076,26 @@ function onChatEvent(raw: unknown): void {
   }
 }
 
-/** The main window's part: turns stream into their chats while any view, or none, shows them. */
+let reloadTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** The main window's part: chats load, and turns stream into them while any view, or none, shows them. */
 export function useChatEvents(): void {
-  useEffect(() => window.desktopBridge.on("agent:chatEvent", onChatEvent), []);
+  useEffect(() => {
+    void loadChats().catch((error: unknown) =>
+      console.log("[AgentChat:load] failed", { error: String(error) }),
+    );
+    const offs = [
+      window.desktopBridge.on("agent:chatEvent", onChatEvent),
+      // Chats changed elsewhere (another device, another window): this window's catch up.
+      window.desktopBridge.on("chats:changed", (params: unknown) => {
+        const ids = (params as { ids?: string[] } | undefined)?.ids ?? [];
+        if (ids.length > 0 && ids.every((id) => saving.has(id))) return;
+        reloadTimer ??= setTimeout(() => {
+          reloadTimer = null;
+          void loadChats().catch(() => {});
+        }, 200);
+      }),
+    ];
+    return () => offs.forEach((off) => off());
+  }, []);
 }

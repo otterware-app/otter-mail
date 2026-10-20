@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { CheckIcon, HistoryIcon, SearchIcon, Trash2Icon } from "lucide-react";
 import type { ChatSession } from "./api";
-import type { Conversation } from "./chat-store";
+import { cn } from "./ui";
+import { isBlank, type Conversation } from "./chat-store";
 
 /** Human label for a session's origin (WebUI, CLI, this API, …). */
 function sourceLabel(source: string): string {
@@ -45,8 +46,14 @@ export function HistoryList({
   serverLoading,
   onPickServer,
   providerName,
+  className,
+  backdropClassName,
 }: {
   providerName: string;
+  /** Where the sheet sits, under its button. */
+  className?: string;
+  /** What the click-away backdrop covers. */
+  backdropClassName?: string;
   conversations: Conversation[];
   activeId: string;
   onPick: (id: string) => void;
@@ -71,7 +78,7 @@ export function HistoryList({
   const [query, setQuery] = useState("");
   const q = query.trim().toLowerCase();
   const matches = (text: string) => !q || text.toLowerCase().includes(q);
-  const all = conversations.filter((c) => c.turns.length > 0);
+  const all = conversations.filter((c) => !isBlank(c));
   const items = all.filter((c) => matches(c.title));
   const showServer = serverSessions !== undefined || serverLoading;
   const server = (serverSessions ?? []).filter((s) => matches(s.title || s.preview || s.id));
@@ -84,12 +91,17 @@ export function HistoryList({
   return (
     <>
       <div
-        className="absolute inset-x-0 bottom-0 top-(--workspace-topbar-height) z-10"
+        className={cn("absolute inset-x-0 bottom-0 z-10", backdropClassName)}
         onClick={onClose}
         aria-hidden
       />
-      {/* Under the History button (right), like a menu, not across the panel. */}
-      <div className="absolute right-2 top-[calc(var(--workspace-topbar-height)-4px)] z-20 flex max-h-[70%] w-80 max-w-[calc(100%-1rem)] flex-col overflow-hidden rounded-xl border border-foreground/10 bg-popover text-foreground shadow-[0_16px_40px_-18px_rgb(0_0_0/55%)] dark:shadow-[0_18px_44px_-18px_rgb(0_0_0/80%)]">
+      {/* Under the History button, like a menu, not across the window. */}
+      <div
+        className={cn(
+          "absolute z-20 flex max-h-[70%] w-80 max-w-[calc(100%-1rem)] flex-col overflow-hidden rounded-xl border border-foreground/10 bg-popover text-foreground shadow-[0_16px_40px_-18px_rgb(0_0_0/55%)] dark:shadow-[0_18px_44px_-18px_rgb(0_0_0/80%)]",
+          className,
+        )}
+      >
         {nothingYet ? (
           <div className="flex flex-col items-center gap-2 px-6 py-8 text-center">
             <HistoryIcon className="size-6 text-muted-foreground" strokeWidth={1.5} />

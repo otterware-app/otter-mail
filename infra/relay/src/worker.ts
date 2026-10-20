@@ -1,7 +1,8 @@
 /**
  * The Otter Mail relay: Otter accounts (better-auth, auth.ts), the mailboxes
  * (Gmail, IMAP, Outlook) linked to them, realtime mail notifications, the web app's
- * Gmail and Outlook sign-ins (gmail.ts, outlook.ts) and its tunnel to IMAP/SMTP servers (tunnel.ts). Gmail publishes mailbox changes to a Pub/Sub
+ * Gmail and Outlook sign-ins (gmail.ts, outlook.ts), its tunnel to IMAP/SMTP servers (tunnel.ts), and the
+ * account's agent chats (chats.ts). Gmail publishes mailbox changes to a Pub/Sub
  * topic, Pub/Sub pushes them here, and the relay forwards them to the
  * signed-in devices over WebSocket; Microsoft Graph notifies here directly.
  * The API is described in packages/contracts/src/relay.ts.
@@ -11,15 +12,14 @@ import { zValidator } from "@hono/zod-validator";
 import { WorkerEntrypoint } from "cloudflare:workers";
 import { Hono, type MiddlewareHandler } from "hono";
 import { bearerAuth } from "hono/bearer-auth";
+import { bodyLimit } from "hono/body-limit";
 import { setSignedCookie } from "hono/cookie";
 import { cors } from "hono/cors";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import {
   GMAIL_SIGN_IN_CANCELLED,
-  type CreateAgentTokenResponse,
   type ListAccountsResponse,
-  type ListAgentTokensResponse,
   type MeResponse,
   type OutlookWatchResponse,
   type PreferencesResponse,
@@ -29,17 +29,16 @@ import {
   TUNNEL_CLOSE,
 } from "@otter-mail/contracts/relay";
 import type { MailProviderKind } from "@otter-mail/contracts/mail";
-import { PROJECT_LIMITS, type ListProjectsResponse } from "@otter-mail/contracts/projects";
+import { CHAT_LIMITS, type Chat, type ListChatsResponse } from "@otter-mail/contracts/chats";
 
 import { createAuth, googleClientIds, googleKeys, type Auth } from "./auth.ts";
+import * as chats from "./chats.ts";
 import * as gmail from "./gmail.ts";
 import { InvalidTokenError, remoteKeys, verifyGoogleJwt } from "./google-jwt.ts";
 import identity from "./identity.ts";
-import * as mcp from "./mcp.ts";
 import { MICROSOFT_JWKS_URL, provesMailbox, verifyMicrosoftJwt } from "./microsoft-jwt.ts";
 import * as outlook from "./outlook.ts";
 import * as preferences from "./preferences.ts";
-import * as projects from "./projects.ts";
 import * as store from "./store.ts";
 import * as push from "./push.ts";
 import * as notificationConnections from "./notification-connections.ts";
@@ -651,156 +650,97 @@ authed.put(
   },
 );
 
-// ── Projects (projects.ts) ──────────────────────────────────────────────────
+// ── Agent chats (chats.ts) ──────────────────────────────────────────────────
 
-async function projectsChanged(env: Env, userId: string): Promise<void> {
-  await hub(env, userId).publish({ type: "projects" });
+async function chatsChanged(env: Env, userId: string): Promise<void> {
+  await hub(env, userId).publish({ type: "chats" });
 }
 
-/** A write the relay refused: 404 without the project, 413 past its limits. */
-const refuse = (refusal: projects.Refusal | null) => {
-  if (refusal === "missing") throw new HTTPException(404, { message: "No such project." });
-  if (refusal === "full") throw new HTTPException(413, { message: "Too many for a project." });
-};
-
-const itemId = z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/);
+const chatId = z.object({ id: z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/) });
 const timestamp = z.number().int().nonnegative();
+const tabRef = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.enum(["thread", "draft"]),
+    accountId: z.string().max(320),
+    id: z.string().max(512),
+  }),
+  z.object({ kind: z.literal("page"), url: z.string().max(2048) }),
+  z.object({ kind: z.literal("file"), href: z.string().max(2048) }),
+]);
+/** A chat, written whole (`chatForSync`). Turns are the apps' to read: only their shape is checked. */
+const chatBody = z.object({
+  id: z.string(),
+  title: z.string().max(CHAT_LIMITS.title + 1),
+  provider: z.enum(["hermes", "openclaw", "openrouter", "codex", "claude"]),
+  sessionId: z.string().max(256).nullable(),
+  sessionOwned: z.boolean(),
+  lastResponseId: z.string().max(256).nullable(),
+  device: z.object({ id: z.string().max(64), name: z.string().max(200) }).nullable(),
+  createdAt: timestamp,
+  updatedAt: timestamp,
+  tabs: z
+    .array(
+      z.object({
+        id: z.string().max(2600),
+        title: z.string().max(CHAT_LIMITS.title + 1),
+        ref: tabRef,
+        addedAt: timestamp,
+      }),
+    )
+    .max(CHAT_LIMITS.tabs),
+  turns: z
+    .array(
+      z.looseObject({
+        id: z.string().max(200),
+        role: z.enum(["user", "assistant"]),
+        text: z.string(),
+      }),
+    )
+    .max(CHAT_LIMITS.turns),
+});
 
-authed.get("/projects", async (c) =>
+authed.get("/chats", async (c) =>
   c.json({
-    projects: await projects.list(c.var.db, c.var.session.user.id),
-  } satisfies ListProjectsResponse),
+    chats: await chats.list(c.var.db, c.var.session.user.id),
+  } satisfies ListChatsResponse),
 );
 
-authed.put(
-  "/projects/:id",
-  zValidator("param", z.object({ id: itemId }), rejectInvalid),
-  zValidator(
-    "json",
-    z.object({
-      name: z.string().trim().min(1).max(PROJECT_LIMITS.name),
-      status: z.enum(["active", "settled"]),
-      notes: z.string().max(PROJECT_LIMITS.notes),
-      createdAt: timestamp,
-      settledAt: timestamp.nullable(),
-    }),
-    rejectInvalid,
-  ),
-  async (c) => {
-    const userId = c.var.session.user.id;
-    refuse(await projects.put(c.var.db, userId, c.req.valid("param").id, c.req.valid("json")));
-    await projectsChanged(c.env, userId);
-    return c.body(null, 204);
-  },
-);
-
-authed.delete(
-  "/projects/:id",
-  zValidator("param", z.object({ id: itemId }), rejectInvalid),
-  async (c) => {
-    const userId = c.var.session.user.id;
-    if (await projects.remove(c.var.db, userId, c.req.valid("param").id)) {
-      await projectsChanged(c.env, userId);
-    }
-    return c.body(null, 204);
-  },
-);
-
-const threadParams = z.object({
-  id: itemId,
-  email: mailbox,
-  threadId: z.string().min(1).max(512),
+authed.get("/chats/:id", zValidator("param", chatId, rejectInvalid), async (c) => {
+  const chat = await chats.get(c.var.db, c.var.session.user.id, c.req.valid("param").id);
+  if (!chat) throw new HTTPException(404, { message: "No such chat." });
+  return c.json({ chat });
 });
 
 authed.put(
-  "/projects/:id/threads/:email/:threadId",
-  zValidator("param", threadParams, rejectInvalid),
-  zValidator("json", z.object({ addedAt: timestamp }), rejectInvalid),
+  "/chats/:id",
+  bodyLimit({
+    maxSize: CHAT_LIMITS.bytes + 64 * 1024,
+    onError: () => {
+      throw new HTTPException(413, { message: "This chat is too long to keep." });
+    },
+  }),
+  zValidator("param", chatId, rejectInvalid),
+  zValidator("json", chatBody, rejectInvalid),
   async (c) => {
     const userId = c.var.session.user.id;
-    const { id, email, threadId } = c.req.valid("param");
-    refuse(await projects.putThread(c.var.db, userId, id, email, threadId, c.req.valid("json")));
-    await projectsChanged(c.env, userId);
+    const chat = c.req.valid("json") as Chat;
+    if (chat.id !== c.req.valid("param").id)
+      throw new HTTPException(400, { message: "Invalid request." });
+    const refusal = await chats.put(c.var.db, userId, chat);
+    if (refusal === "stale") throw new HTTPException(409, { message: "This chat changed since." });
+    if (refusal === "full") throw new HTTPException(413, { message: "Too many chats." });
+    await chatsChanged(c.env, userId);
     return c.body(null, 204);
   },
 );
 
-authed.delete(
-  "/projects/:id/threads/:email/:threadId",
-  zValidator("param", threadParams, rejectInvalid),
-  async (c) => {
-    const userId = c.var.session.user.id;
-    const { id, email, threadId } = c.req.valid("param");
-    await projects.removeThread(c.var.db, userId, id, email, threadId);
-    await projectsChanged(c.env, userId);
-    return c.body(null, 204);
-  },
-);
-
-const linkParams = z.object({ id: itemId, linkId: itemId });
-
-authed.put(
-  "/projects/:id/links/:linkId",
-  zValidator("param", linkParams, rejectInvalid),
-  zValidator(
-    "json",
-    z.object({
-      url: z.url().max(PROJECT_LIMITS.url),
-      title: z.string().max(PROJECT_LIMITS.title),
-      addedAt: timestamp,
-    }),
-    rejectInvalid,
-  ),
-  async (c) => {
-    const userId = c.var.session.user.id;
-    const { id, linkId } = c.req.valid("param");
-    refuse(await projects.putLink(c.var.db, userId, id, linkId, c.req.valid("json")));
-    await projectsChanged(c.env, userId);
-    return c.body(null, 204);
-  },
-);
-
-authed.delete(
-  "/projects/:id/links/:linkId",
-  zValidator("param", linkParams, rejectInvalid),
-  async (c) => {
-    const userId = c.var.session.user.id;
-    const { id, linkId } = c.req.valid("param");
-    await projects.removeLink(c.var.db, userId, id, linkId);
-    await projectsChanged(c.env, userId);
-    return c.body(null, 204);
-  },
-);
-
-// ── Agent tokens (mcp.ts) ───────────────────────────────────────────────────
-
-authed.get("/agent-tokens", async (c) =>
-  c.json({
-    tokens: await mcp.listTokens(c.var.db, c.var.session.user.id),
-  } satisfies ListAgentTokensResponse),
-);
-
-authed.post(
-  "/agent-tokens",
-  zValidator("json", z.object({ name: z.string().trim().min(1).max(100) }), rejectInvalid),
-  async (c) =>
-    c.json(
-      (await mcp.createToken(
-        c.var.db,
-        c.var.session.user.id,
-        c.req.valid("json").name,
-      )) satisfies CreateAgentTokenResponse,
-    ),
-);
-
-authed.delete(
-  "/agent-tokens/:id",
-  zValidator("param", z.object({ id: z.string().max(64) }), rejectInvalid),
-  async (c) => {
-    await mcp.deleteToken(c.var.db, c.var.session.user.id, c.req.valid("param").id);
-    return c.body(null, 204);
-  },
-);
+authed.delete("/chats/:id", zValidator("param", chatId, rejectInvalid), async (c) => {
+  const userId = c.var.session.user.id;
+  if (await chats.remove(c.var.db, userId, c.req.valid("param").id)) {
+    await chatsChanged(c.env, userId);
+  }
+  return c.body(null, 204);
+});
 
 /** The device's event stream, handed to the user's Durable Object. */
 authed.get("/events", async (c) => {
@@ -855,23 +795,6 @@ authed.get(
 );
 
 app.route("/v1", authed);
-
-// ── MCP, for agents (mcp.ts) ────────────────────────────────────────────────
-
-/** The project tools, for an agent token's account (Streamable HTTP, stateless). */
-app.all("/mcp", async (c) => {
-  const token = /^Bearer (.+)$/i.exec(c.req.header("authorization") ?? "")?.[1];
-  const userId = token ? await mcp.tokenUser(c.var.db, token) : null;
-  if (!userId) {
-    return c.json({ error: "An agent token is required (Settings › Assistant)." }, 401, {
-      "WWW-Authenticate": 'Bearer realm="otter-mail"',
-    });
-  }
-  return mcp.serve(
-    c.req.raw,
-    projects.backend(c.var.db, userId, () => projectsChanged(c.env, userId)),
-  );
-});
 
 // ── Gmail push ──────────────────────────────────────────────────────────────
 

@@ -27,7 +27,7 @@ when a feature lands or goes.
     The rest of the app asks `hostOS` / `backendOS` and never checks `process.platform`.
   - `src/handlers/`: the desktop-only handlers (default mail app, …); `backend.ts` there holds
     the ones the backend serves.
-  - `src/services/`: Google and Microsoft sign-in (loopback OAuth), the agent panel's
+  - `src/services/`: Google and Microsoft sign-in (loopback OAuth), the
     browser (`browser.ts`: its session, the Web Store, popups and permissions; `extensions.ts`
     with `src/extensions-preload.ts`: Chrome's extension APIs Electron lacks), the local agents
     (Claude, Codex; Hermes is in core) and the MCP server that gives them, and other agents on
@@ -39,8 +39,11 @@ when a feature lands or goes.
   Where the main window is (mailbox, label, conversation, Settings pane) is its route
   (`src/main/router.tsx`, TanStack Router): in the hash in the desktop app, real paths on the web
   (`/you@gmail.com/INBOX/<id>`, `/all/inbox`, `/settings/appearance`).
-  `src/main/browser/` is the agent panel's browser (Mac): `<webview>` tabs beside the chats, and
-  `openLink`, where links from mail and chat go.
+  `src/main/browser/` is the browser (Mac): the panel of `<webview>` tabs beside the mail, a
+  chat's pages in the AI workspace, and `openLink`, where links from mail and chat go.
+  The agent's chats are `src/main/gmail/chat-store.ts` (synced through core), shown in the
+  small window over the mail (⌘I, `chat-window.tsx`) or the AI workspace, the Chats space
+  (`/chats/<id>`, `chat-workspace.tsx`), with what each chat used and made as tabs.
   `src/web/` is the browser shell: core in a Web Worker (SQLite WASM on OPFS) hosted by one
   tab for every open tab (`backend.ts`), and the bridge that stands in for the preload. What only the desktop app has is off in `desktopBridge.features`.
   What the computer is called in copy (Mac / computer) is
@@ -58,8 +61,8 @@ when a feature lands or goes.
   bundles it as JSON.
 - `infra/relay`: https://relay.mail.otterware.app, a Cloudflare Worker (Hono, better-auth,
   Drizzle on D1, a Durable Object per user). Otter accounts, the Gmail accounts linked to them,
-  the account's preferences (core's `services/preferences.ts` syncs them), its projects (core's
-  `services/projects.ts`; agents elsewhere reach them over the relay's MCP server), and realtime
+  the account's preferences (core's `services/preferences.ts` syncs them), its agent chats (core's
+  `services/chats.ts`, transcripts included, so every device reads every chat), and realtime
   mail: Gmail → Pub/Sub → relay → WebSocket to each signed-in device. Opt-in background
   notifications use encrypted limited Gmail/Outlook grants (or an IMAP password) to verify
   unread arrivals and renew watches; APNs carries routing IDs and generic text, and the iPhone

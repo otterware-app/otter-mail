@@ -22,14 +22,14 @@ Mac app works without it; the web app needs it):
   and IMAP passwords remain on the device. Signing out stops that device's turns; deleting
   the Otter account deletes the agent's key and history. Deploy the `AgentHub` binding and
   `v2` migration in `wrangler.jsonc` together with this API and the updated clients.
-- **Projects.** The conversations, links and notes of one piece of work, until it's settled
-  (`packages/contracts/src/projects.ts`). Three tables: the projects, their threads (mailbox
-  and Gmail thread ID, never a subject) and their links, each written on its own so devices and
-  agents changing different parts of a project don't overwrite each other; every write sends
-  the `projects` event. Agents that run elsewhere (Hermes) manage them over MCP at `/mcp`
-  (Streamable HTTP, stateless) with an agent token made in Settings; the relay keeps its
-  SHA-256 hash. The tools are the contracts' `project-tools.ts`, the same the Mac app gives
-  Claude and Codex. See `src/projects.ts` and `src/mcp.ts`.
+- **Agent chats.** Every chat the account's devices have, whatever agent ran it (OpenRouter,
+  Claude, Codex, Hermes, OpenClaw), with its transcript as the apps show it and the tabs it
+  opened in the AI workspace (`packages/contracts/src/chats.ts`), so a chat reads the same on
+  every device. One row per chat, written whole; the device's `updatedAt` decides, so a stale
+  write is refused (409) and that device pulls instead. Transcripts carry what the agent read
+  and wrote, mail included (step outputs clipped, image thumbnails left on their device). A
+  deleted chat keeps its id and time so other devices let it go. Every write sends the `chats`
+  event. See `src/chats.ts`.
 - **Gmail sign-in for the web app.** A browser can't keep a Google refresh token by itself, so
   the relay does the OAuth exchange with the web client and seals the refresh token (only the
   relay can open it, and only for the Otter user it was issued to). The browser keeps the sealed
@@ -86,9 +86,8 @@ Mac ◀──── WebSocket /v1/events ◀── UserHub (Durable Object, one 
 ## Code map
 
 - `src/worker.ts`: routes (Hono). `/v1/auth/*` is better-auth; `/v1/me`, `/v1/accounts`,
-  `/v1/preferences`, `/v1/projects`, `/v1/agent-tokens`, `/v1/events` and `/v1/tunnel` need a
-  session; `/mcp` takes an agent token; `/push/gmail` takes Pub/Sub pushes, `/push/outlook/:email`
-  Graph's.
+  `/v1/preferences`, `/v1/chats`, `/v1/events` and `/v1/tunnel` need a session; `/push/gmail`
+  takes Pub/Sub pushes, `/push/outlook/:email` Graph's.
 - `src/tunnel.ts`: the web app's TCP tunnel (`cloudflare:sockets`), and which hosts and ports
   it may reach.
 - `src/auth.ts`: better-auth: Google sign-in (ID tokens from the Mac app, the redirect flow for
@@ -100,8 +99,7 @@ Mac ◀──── WebSocket /v1/events ◀── UserHub (Durable Object, one 
 - `src/gmail.ts`: the web app's Gmail sign-in popup, and token refreshes.
 - `src/outlook.ts`: the same for Outlook, and Graph subscriptions' `clientState`.
 - `src/preferences.ts`: merging preference sections, sealing the Hermes key.
-- `src/projects.ts`: projects, their threads and links; the project tools' store.
-- `src/mcp.ts`: agent tokens, and the MCP server agents reach projects through.
+- `src/chats.ts`: agent chats, a row each.
 - `src/keys.ts`: keys derived from the auth secret, one per purpose.
 - `src/google-jwt.ts`: verifies Google-signed JWTs (jose): ID tokens, and Pub/Sub's push tokens.
 - `src/microsoft-jwt.ts`: verifies Microsoft ID tokens, and which address one proves.

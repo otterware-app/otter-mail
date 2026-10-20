@@ -1,5 +1,5 @@
 /**
- * The browser in the agent panel: the renderer's `<webview>` tabs, in one
+ * The browser (the panel beside the mail, and chats' pages in the AI workspace): the renderer's `<webview>` tabs, in one
  * persistent session of their own (never the app's), with extensions from the
  * Chrome Web Store (electron-chrome-web-store installs them; extensions.ts
  * gives them Chrome's toolbar and tabs). Around a page it does what Chrome

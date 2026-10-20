@@ -25,8 +25,13 @@ import { MessageList } from "./gmail/message-list";
 import { MessageReader } from "./gmail/message-reader";
 import { NewMessageView } from "./gmail/new-message-view";
 import { CommandPalette } from "./gmail/command-palette";
-import { AgentChatPanel } from "./gmail/agent-chat";
-import { useChatEvents } from "./gmail/chat-store";
+import { BrowserPanel } from "./browser/browser-panel";
+import { ChatLauncher, ChatWindow } from "./gmail/chat-window";
+import { ChatWorkspace } from "./gmail/chat-workspace";
+import { ChatsSidebar } from "./gmail/chats-sidebar";
+import { newChat, showChat, useChatEvents, useChats } from "./gmail/chat-store";
+import { useMailChatContext } from "./gmail/chat-context";
+import { useChatProvider } from "./gmail/agent-providers";
 import { SEARCH_MAILBOX } from "./gmail/gmail-query";
 import { searchTabId, searchTitle, type SearchTab } from "./gmail/search-tabs";
 import {
@@ -93,24 +98,27 @@ import { ALL_MAIL_LABEL_ID } from "./gmail/label-names";
 import { useMonochromeTheme } from "./theme/apply-theme";
 import { features } from "./features";
 import { useMailboxes } from "./mailboxes";
-import { ALL_PROJECTS, useProject, useProjects } from "./gmail/projects";
 import {
-  PROJECTS_SPACE,
+  CHATS_SPACE,
+  NEW_CHAT,
   VIEW_LIST,
   firstLabelOf,
   isViewSpaceId,
   spaceOf,
   spansMailboxes as spanning,
 } from "./gmail/spaces";
-import { ProjectsSidebar } from "./gmail/projects-sidebar";
-import { ProjectsOverview } from "./gmail/projects-overview";
-import { ProjectView } from "./gmail/project-view";
-import { NewProjectDialog } from "./gmail/project-menus";
 import { UpdateCard } from "./updates";
 import { useSignInAlerts } from "./gmail/sync-health";
 import { useRecordRecentlyViewed } from "./recently-viewed";
 import { SetupFlow } from "./onboarding/setup";
-import { newTab, openLink, selectTab, useBrowser, useBrowserEvents } from "./browser/store";
+import {
+  newTab,
+  openLink,
+  panelTabs,
+  selectTab,
+  useBrowser,
+  useBrowserEvents,
+} from "./browser/store";
 import { Tour } from "./onboarding/tour";
 import {
   endTour,
@@ -121,16 +129,16 @@ import {
   useTourRequested,
 } from "./onboarding/onboarding";
 
-/** Narrowest the reader gets when the chat panel is dragged wider. */
+/** Narrowest the reader gets when the browser panel is dragged wider. */
 const READER_MIN_WIDTH = 360;
 /** The mailbox rail's width (styles.css's --workspace-rail-width). */
 const RAIL_WIDTH = 52;
 
 /** A place in the mail, as the route names it (router.tsx). */
 type MailLoc = {
-  /** The space (spaces.ts): an account id, COMBINED_ACCOUNT_ID, a view's id, or PROJECTS_SPACE. */
+  /** The space (spaces.ts): an account id, COMBINED_ACCOUNT_ID, a view's id, or CHATS_SPACE. */
   mailbox: string;
-  /** A label or view id (in Projects, ALL_PROJECTS or a project's id), or SEARCH_MAILBOX. */
+  /** A label or view id (in Chats, a chat's id or NEW_CHAT), or SEARCH_MAILBOX. */
   label: string;
   /** The conversation (or message) open in the reader. */
   messageId: string | null;
@@ -331,7 +339,7 @@ const PANE_SIDEBAR = `${PANE} relative text-sidebar-foreground before:pointer-ev
     list's right, the chat's left. */
 const PANE_LIST = `${PANE} relative after:pointer-events-none after:absolute after:bottom-0 after:right-0 after:top-0 after:z-20 after:w-px after:bg-border/70`;
 const PANE_MAIN = PANE;
-const PANE_CHAT = `${PANE} relative before:pointer-events-none before:absolute before:bottom-0 before:left-0 before:top-0 before:z-20 before:w-px before:bg-border/70`;
+const PANE_BROWSER = `${PANE} relative before:pointer-events-none before:absolute before:bottom-0 before:left-0 before:top-0 before:z-20 before:w-px before:bg-border/70`;
 /** Clips a collapsible pane while its width animates open or closed (Otter
     Code's panel animations); the pane keeps its width so nothing reflows. */
 const PANE_FRAME =
@@ -445,15 +453,15 @@ function MailHome() {
     return window.desktopBridge.on("settings:open", () => void pull());
   }, [openSettingsRef]);
 
-  // ⌘W (File ▸ Close): close the panel's active tab (the last closes the
-  // panel); close the window when the panel is absent.
-  const closeChatTabRef = useRef<(() => boolean) | null>(null);
-  const newChatTabRef = useRef<((reuseEmpty?: boolean) => void) | null>(null);
-  const pendingChatTabs = useRef(0);
+  // ⌘W (File ▸ Close): close the browser panel's page (the last closes the
+  // panel), else the agent's small window; close the window when neither shows.
+  const closeBrowserTabRef = useRef<(() => boolean) | null>(null);
+  const closeChatWindowRef = useRef<() => boolean>(() => false);
   useEffect(
     () =>
       window.desktopBridge.on("window:closeRequest", () => {
-        if (closeChatTabRef.current?.()) return;
+        if (closeBrowserTabRef.current?.()) return;
+        if (closeChatWindowRef.current()) return;
         void gmailApi.closeMainWindow();
       }),
     [],
@@ -519,19 +527,16 @@ function MailHome() {
     ? spaceOf(selectedAccountId, { accounts, views, combined: mailboxes.combined })
     : null;
   const isCombined = space?.kind === "combined";
-  const isProjects = space?.kind === "projects";
+  // The AI workspace: a chat (the label) instead of a list and a reader.
+  const isChats = space?.kind === "chats";
   const mailLayout = useMailLayout();
-  // Projects keep their overview beside the conversation list.
-  const fullInbox = mailLayout === "full" && !isProjects;
-  const floatingLayout = mailLayout === "floating" && !isProjects;
+  const fullInbox = mailLayout === "full" && !isChats;
+  const floatingLayout = mailLayout === "floating" && !isChats;
   const wideInbox = fullInbox || floatingLayout;
   const [mailWorkspace, setMailWorkspace] = useState<HTMLDivElement | null>(null);
   // A view's space: its list, with no sidebar.
   const viewSpace = space?.kind === "view" ? space.view : null;
   const spansMailboxes = spanning(space);
-  const selectedProject = useProject(isProjects ? selectedLabelId : null);
-  const projectsQuery = useProjects();
-  const projectsLoaded = projectsQuery.isSuccess;
 
   const globalSync = useGlobalSyncStatus(accountIds);
   useGmailWriteFailureToasts();
@@ -551,14 +556,14 @@ function MailHome() {
     start: listStart,
     paneRef: listPaneRef,
   } = useStoredWidth("gmail:pane:list", 340, 280, 640);
-  // The chat can grow wide, as long as the reader keeps READER_MIN_WIDTH.
+  // The browser can grow wide, as long as the reader keeps READER_MIN_WIDTH.
   const {
-    width: chatWidth,
-    start: chatStart,
-    paneRef: chatPaneRef,
-    frameRef: chatFrameRef,
+    width: browserWidth,
+    start: browserStart,
+    paneRef: browserPaneRef,
+    frameRef: browserFrameRef,
   } = useStoredWidth(
-    "gmail:pane:chat",
+    "gmail:pane:browser",
     340,
     280,
     1200,
@@ -570,7 +575,13 @@ function MailHome() {
       (wideInbox ? 0 : listWidth) -
       READER_MIN_WIDTH,
   );
-  const [chatOpen, setChatOpen] = useState(() => localStorage.getItem("gmail:chat-open") === "1");
+  // The browser panel (the Mac app's), and the agent's small window over the mail.
+  const [browserOpen, setBrowserOpen] = useState(
+    () => features.browser && localStorage.getItem("gmail:browser-open") === "1",
+  );
+  const [chatWindowOpen, setChatWindowOpen] = useState(
+    () => localStorage.getItem("gmail:chat-window-open") === "1",
+  );
   // Mail and Settings are separate spaces: each keeps its sidebar open or
   // closed on its own, and the toggle acts on the one showing.
   const [mailSidebarOpen, setMailSidebarOpen] = useState(
@@ -584,21 +595,14 @@ function MailHome() {
   // Entering or leaving Settings swaps panes in place rather than animating them.
   const { active: panelAnimationsActive, durationMs: panelAnimationDurationMs } =
     usePanelAnimationSettings(settingsRoute ? "settings" : "mail");
-  const chatVisible = chatOpen && !settingsRoute;
-  useEffect(() => {
-    if (!chatVisible || !newChatTabRef.current) return;
-    while (pendingChatTabs.current > 0) {
-      pendingChatTabs.current--;
-      newChatTabRef.current(false);
-    }
-  }, [chatVisible]);
+  const browserVisible = browserOpen && !settingsRoute;
   const sidebarPresent = usePanelPresence(
     sidebarOpen,
     panelAnimationsActive,
     panelAnimationDurationMs,
   );
-  const chatPresent = usePanelPresence(
-    chatVisible,
+  const browserPresent = usePanelPresence(
+    browserVisible,
     panelAnimationsActive,
     panelAnimationDurationMs,
   );
@@ -611,55 +615,106 @@ function MailHome() {
       return !open;
     });
   };
-  // Rows multi-selected in the list, surfaced to the chat panel's context chip.
+  // Rows multi-selected in the list, surfaced to the agent's context chip.
   const [chatSelection, setChatSelection] = useState<GmailMessageSummary[]>([]);
-  const toggleChat = () => {
-    if (chatOpen) closeChat();
-    else openPanel();
+  const openBrowser = () => {
+    localStorage.setItem("gmail:browser-open", "1");
+    setBrowserOpen(true);
   };
-  const closeChat = () => {
-    localStorage.setItem("gmail:chat-open", "0");
-    setChatOpen(false);
-    setPendingQuote(null);
+  const closeBrowser = () => {
+    localStorage.setItem("gmail:browser-open", "0");
+    setBrowserOpen(false);
   };
-  const openChat = () => {
-    localStorage.setItem("gmail:chat-open", "1");
-    setChatOpen(true);
-  };
-  const openPanel = () => {
+  /** The panel shows the last page, or a new tab's start page. */
+  const toggleBrowser = () => {
+    if (!features.browser) return false;
+    if (browserVisible) {
+      closeBrowser();
+      return;
+    }
+    if (settingsRouteRef.current) leaveSettingsRef.current();
     const browser = useBrowser.getState();
-    if (features.browser && !browser.activeId) {
-      const page = browser.tabs.at(-1);
+    const pages = panelTabs(browser.tabs);
+    if (!pages.some((tab) => tab.id === browser.activeId)) {
+      const page = pages.at(-1);
       if (page) selectTab(page.id);
       else newTab();
     }
-    openChat();
-  };
-  // The panel can fill the window (the mail hides) until it closes, or mail
-  // asks for the window: a new message, a conversation opened from elsewhere.
-  const [chatExpanded, setChatExpanded] = useState(false);
-  useEffect(() => {
-    // oxlint-disable-next-line react/set-state-in-effect -- Synchronize pane and composer state with route, notification and navigation events.
-    if (!chatOpen || composeOpen) setChatExpanded(false);
-  }, [chatOpen, composeOpen]);
-  useEffect(() => {
-    // oxlint-disable-next-line react/set-state-in-effect -- Opening a message returns the expanded panel to the mail view.
-    if (selectedMessageId) setChatExpanded(false);
-  }, [selectedMessageId]);
-  const panelExpanded = chatExpanded && chatVisible;
-  const toggleChatExpanded = () => {
-    if (settingsRouteRef.current) leaveSettingsRef.current();
-    if (!chatVisible) openPanel();
-    setChatExpanded((expanded) => (chatVisible ? !expanded : true));
+    openBrowser();
   };
   // A page opening in the browser (a link, ⌘T) shows in the panel, out of Settings.
   const browserRevealed = useBrowser((s) => s.revealed);
-  const openChatForEffect = useLatest(openChat);
+  const openBrowserForEffect = useLatest(openBrowser);
   useEffect(() => {
     if (!browserRevealed) return;
     if (settingsRouteRef.current) leaveSettingsRef.current();
-    openChatForEffect.current();
-  }, [browserRevealed, leaveSettingsRef, openChatForEffect, settingsRouteRef]);
+    openBrowserForEffect.current();
+  }, [browserRevealed, leaveSettingsRef, openBrowserForEffect, settingsRouteRef]);
+
+  // A highlighted excerpt handed from the reader to the agent (one-shot).
+  const [pendingQuote, setPendingQuote] = useState<QuoteContext | null>(null);
+  const setChatWindow = (open: boolean) => {
+    localStorage.setItem("gmail:chat-window-open", open ? "1" : "0");
+    setChatWindowOpen(open);
+    if (!open) setPendingQuote(null);
+  };
+  /** The agent over the mail: the small window, out of Settings and the workspace. */
+  const openChat = () => {
+    if (settingsRouteRef.current) leaveSettingsRef.current();
+    if (isChats) leaveWorkspace();
+    setChatWindow(true);
+  };
+  useLayoutEffect(() => {
+    closeChatWindowRef.current = () => {
+      if (!chatWindowOpen || isChats || settingsRoute) return false;
+      setChatWindow(false);
+      return true;
+    };
+  });
+  const toggleChat = () => {
+    if (isChats && !settingsRoute) return false;
+    if (chatWindowOpen && !settingsRoute) setChatWindow(false);
+    else openChat();
+  };
+  const chatInputRef = useRef<HTMLTextAreaElement>(null);
+  const { selectedKind } = useChatProvider(undefined);
+  const activeChatId = useChats((s) => s.activeId);
+
+  // Where the mail was before the workspace, to go back to.
+  const mailBeforeChats = useRef<MailLoc | null>(null);
+  useEffect(() => {
+    if (mailLoc && !isChats) mailBeforeChats.current = mailLoc;
+  });
+  /** The workspace, showing `chatId` (the small window's chat moves there). */
+  const openWorkspace = (chatId: string) => {
+    setChatWindow(false);
+    setComposeOpen(false);
+    showChat(chatId);
+    go({ mailbox: CHATS_SPACE, label: chatId, messageId: null, account: null, focusId: null });
+  };
+  const leaveWorkspace = () => {
+    const back = mailBeforeChats.current;
+    if (back && back.mailbox !== CHATS_SPACE) go({ ...back, messageId: null });
+    else if (firstRealAccountId)
+      handleSelectAccount(mailboxes.combined ? COMBINED_ACCOUNT_ID : firstRealAccountId);
+  };
+  // The workspace's address names its chat: "new" gets a new one, at its own address.
+  const showNewChat = useLatest(() => go({ label: newChat(selectedKind) }, true));
+  const chatsLabel = isChats ? selectedLabelId : null;
+  useEffect(() => {
+    if (chatsLabel === NEW_CHAT) showNewChat.current();
+    else if (chatsLabel) showChat(chatsLabel);
+  }, [chatsLabel, showNewChat]);
+  /** A new chat: in the workspace when it shows, else in the small window. */
+  const startNewChat = () => {
+    if (isChats && !settingsRoute) {
+      go({ label: newChat(selectedKind) });
+      return;
+    }
+    newChat(selectedKind);
+    openChat();
+    requestAnimationFrame(() => chatInputRef.current?.focus());
+  };
   // Getting started. A device whose mail was already here skips the setup,
   // and is offered the tour, once.
   useEffect(() => {
@@ -677,9 +732,6 @@ function MailHome() {
     localStorage.setItem("gmail:sidebar-open", "1");
     setMailSidebarOpen(true);
   }, [tourRequested, leaveSettingsRef, settingsRouteRef]);
-
-  // A highlighted excerpt handed from the reader to the chat panel (one-shot).
-  const [pendingQuote, setPendingQuote] = useState<QuoteContext | null>(null);
 
   // MessageList fills this each render; reader archive/trash advance through it.
   const advanceRef = useRef<(fromMessageId: string) => boolean>(() => false);
@@ -818,12 +870,13 @@ function MailHome() {
   // Keyboard commands (Settings › Keybindings; defaults in keybindings/commands.ts).
   useKeybindingDispatcher();
   useKeybindingContext("settingsOpen", settingsRoute !== null);
-  useKeybindingContext("panelExpanded", panelExpanded);
+  useKeybindingContext("workspaceOpen", isChats && !settingsRoute);
+  useKeybindingContext("agentOpen", !settingsRoute && (isChats || chatWindowOpen));
   useKeybindingContext("messageOpen", selectedMessageId !== null);
   const goTo = (combinedViewId: string, labelId: string) => {
-    // From Projects or a view, to the first mailbox's.
+    // From Chats or a view, to the first mailbox's.
     const mailbox =
-      isProjects || viewSpace
+      isChats || viewSpace
         ? mailboxes.combined
           ? COMBINED_ACCOUNT_ID
           : firstRealAccountId
@@ -846,16 +899,16 @@ function MailHome() {
     "commandPalette.toggle": () => setPaletteOpen((o) => !o),
     "sidebar.toggle": () => toggleSidebar(),
     "agent.toggle": () => toggleChat(),
-    "agent.toggleExpanded": () => toggleChatExpanded(),
-    "agent.newTab": () => {
-      if (features.browser) {
-        newTab();
-        return;
-      }
-      if (chatVisible && newChatTabRef.current) newChatTabRef.current(false);
-      else pendingChatTabs.current++;
+    "agent.openWorkspace": () => {
       if (settingsRouteRef.current) leaveSettingsRef.current();
-      openChat();
+      if (isChats) leaveWorkspace();
+      else openWorkspace(activeChatId);
+    },
+    "agent.newChat": () => startNewChat(),
+    "browser.toggle": () => toggleBrowser(),
+    "browser.newTab": () => {
+      if (!features.browser) return false;
+      newTab();
     },
     "search.focus": () => searchFromView(),
     "compose.new": () => setComposeOpen(true),
@@ -971,12 +1024,8 @@ function MailHome() {
   /* oxlint-disable react/exhaustive-effect-dependencies -- Explicit DOM and reset triggers must re-run this lifecycle. */
   useEffect(() => {
     if (!initialized || !viewsLoaded || selectedLabelId === SEARCH_MAILBOX) return;
-    // A project deleted (here or elsewhere): all of them.
-    if (isProjects) {
-      if (projectsLoaded && selectedLabelId !== ALL_PROJECTS && !selectedProject)
-        correctForEffect.current({ label: ALL_PROJECTS, messageId: null });
-      return;
-    }
+    // Chats' labels are chats (the workspace finds a new one for one that's gone).
+    if (isChats) return;
     if (viewSpace) {
       if (selectedLabelId !== VIEW_LIST) correctForEffect.current({ label: VIEW_LIST });
       return;
@@ -995,9 +1044,7 @@ function MailHome() {
     views,
     selectedLabelId,
     effectiveAccountId,
-    isProjects,
-    projectsLoaded,
-    selectedProject,
+    isChats,
     viewSpace,
     correctForEffect,
   ]);
@@ -1033,16 +1080,8 @@ function MailHome() {
     root.setProperty("--ring", brand);
   }, [brand]);
 
-  // Resolve the selected view to concrete per-account rules. Projects list
-  // their conversations like a combined view (every mailbox's), without rules.
+  // Resolve the selected view to concrete per-account rules.
   const combined = (() => {
-    if (isProjects) {
-      return {
-        viewId: `projects:${selectedLabelId}`,
-        name: selectedProject?.name ?? "All projects",
-        rules: [],
-      };
-    }
     if (viewSpace) {
       return {
         viewId: viewSpace.id,
@@ -1112,13 +1151,6 @@ function MailHome() {
     setViewEditor(viewId);
   };
 
-  /** A project's page, with its conversations in the list. */
-  const openProject = (id: string) => {
-    console.log("[HomeView:openProject]");
-    setComposeOpen(false);
-    go({ mailbox: PROJECTS_SPACE, label: id, messageId: null, account: null, focusId: null });
-  };
-
   const handleSelectMessage = (
     messageId: string,
     accountId: string,
@@ -1134,9 +1166,7 @@ function MailHome() {
   const queryClient = useQueryClient();
   /** Agent results open in the app; draft ids resolve to their current message. */
   const openChatChange = async ({ target }: ChatChange) => {
-    if (target.kind === "project") {
-      openProject(target.id);
-    } else if (target.kind === "view") {
+    if (target.kind === "view") {
       goToSpace(target.id, VIEW_LIST);
     } else if (target.kind === "theme") {
       openSettings({ pane: "appearance" });
@@ -1379,6 +1409,13 @@ function MailHome() {
       : effectiveAccountId;
   const readerAccount =
     readerAccountId ?? (spansMailboxes ? firstRealAccountId : effectiveAccountId);
+  // The mail the small window's chat is about: a quote, the selection, or the open conversation.
+  const mailChatContext = useMailChatContext({
+    accountId: selectedMessageId ? readerAccount : null,
+    messageId: selectedMessageId,
+    selectedRows: chatSelection,
+    quote: pendingQuote,
+  });
   useRecordRecentlyViewed({
     ready: initialized,
     href: router.state.location.href,
@@ -1390,9 +1427,8 @@ function MailHome() {
     accounts,
     views,
   });
-  // Without a project yet, Projects is only its overview (which says how to start one).
-  const hasListTarget =
-    (isCombined || effectiveAccountId != null) && !(isProjects && projectsQuery.data?.length === 0);
+  // The workspace has no list: a chat and its tabs.
+  const hasListTarget = (isCombined || effectiveAccountId != null) && !isChats;
   const showMain =
     !!settingsRoute ||
     !wideInbox ||
@@ -1407,7 +1443,9 @@ function MailHome() {
   // and the panel toggle in one row) instead of an empty band above it.
   const readerOwnsBand =
     !settingsRoute && !(composeOpen && composeAccountId) && !!readerAccount && !!selectedMessageId;
-  const titleTrailing = <TitleTrailing showPanelToggle={!chatOpen && !settingsRoute} />;
+  // Room for the pinned browser toggle, while the panel doesn't show (it keeps it then).
+  const browserToggleRoom = features.browser && !browserOpen && !settingsRoute;
+  const titleTrailing = <TitleTrailing showPanelToggle={browserToggleRoom} />;
   // A view's space has no sidebar to toggle.
   const sidebarToggle = !(viewSpace && !settingsRoute);
   const titlebarInset = <TitlebarInset toggle={sidebarToggle} />;
@@ -1437,7 +1475,7 @@ function MailHome() {
       onAdvance={handleReaderAdvance}
       onOpenChat={openChat}
       onQuote={(q) => {
-        if (chatOpen) setPendingQuote(q);
+        if (chatWindowOpen) setPendingQuote(q);
       }}
       onComposeTo={(email) => {
         setMailtoPrefill({ to: email, cc: "", subject: "", body: "" });
@@ -1445,7 +1483,6 @@ function MailHome() {
         setComposeOpen(true);
       }}
       onSearchSender={(email) => handleSearchChange(`from:${email}`)}
-      onOpenProject={openProject}
     />
   );
   // With the sidebar hidden and no list pane, this band is the first after the
@@ -1457,9 +1494,9 @@ function MailHome() {
       leading={mainIsLeftmost ? titlebarInset : null}
       syncing={globalSync.syncing}
       syncLabel={globalSync.label}
-      // Room for the pinned panel toggle while the panel is closed; when
+      // Room for the pinned browser toggle while the panel is closed; when
       // open, the panel's header keeps it. Settings has no panel.
-      showPanelToggle={!chatOpen && !settingsRoute}
+      showPanelToggle={browserToggleRoom}
     />
   );
   return (
@@ -1472,7 +1509,7 @@ function MailHome() {
           features.vibrancy ? "bg-sidebar-surface/(--frame-opacity)" : "bg-sidebar-surface",
         )}
         data-panel-animations={panelAnimationsActive ? "true" : "false"}
-        data-mail-layout={isProjects ? "split" : mailLayout}
+        data-mail-layout={isChats ? "split" : mailLayout}
         style={{ "--panel-animation-duration": `${panelAnimationDurationMs}ms` } as CSSProperties}
       >
         <div className="contents">
@@ -1509,7 +1546,7 @@ function MailHome() {
             <div
               ref={setMailWorkspace}
               data-mail-workspace=""
-              className={cn("relative flex min-h-0 min-w-0 flex-1", panelExpanded && "hidden")}
+              className="relative flex min-h-0 min-w-0 flex-1"
             >
               {peekSpace ? (
                 <SpacePeekCard
@@ -1517,13 +1554,11 @@ function MailHome() {
                   width={sidebarWidth}
                   onHover={(inside) => spacePeek.hover(inside ? peekSpace : null)}
                 >
-                  {peekSpace === PROJECTS_SPACE ? (
-                    <ProjectsSidebar
-                      selectedLabelId={isProjects ? selectedLabelId : ""}
-                      onSelectLabel={(label) => goToSpace(PROJECTS_SPACE, label)}
-                      searchSelected={false}
-                      searchPending={false}
-                      onOpenSearch={() => goToSpace(PROJECTS_SPACE)}
+                  {peekSpace === CHATS_SPACE ? (
+                    <ChatsSidebar
+                      selectedId={isChats ? selectedLabelId : null}
+                      onSelect={(id) => goToSpace(CHATS_SPACE, id)}
+                      onNewChat={() => goToSpace(CHATS_SPACE, NEW_CHAT)}
                     />
                   ) : (
                     <MailboxSidebarPage
@@ -1574,17 +1609,13 @@ function MailHome() {
                             onBack={leaveSettings}
                           />
                         </>
-                      ) : isProjects ? (
+                      ) : isChats ? (
                         <>
                           <SidebarTitle />
-                          <ProjectsSidebar
-                            selectedLabelId={selectedLabelId}
-                            onSelectLabel={handleSelectLabel}
-                            searchSelected={activeSearch?.id === topSearchId}
-                            searchPending={Boolean(
-                              searchTabs.find((t) => t.id === topSearchId)?.draft.trim(),
-                            )}
-                            onOpenSearch={() => openSearch()}
+                          <ChatsSidebar
+                            selectedId={selectedLabelId}
+                            onSelect={handleSelectLabel}
+                            onNewChat={startNewChat}
                           />
                           <UpdateCard />
                         </>
@@ -1640,7 +1671,7 @@ function MailHome() {
                         headerLeading={sidebarOpen ? null : titlebarInset}
                         headerTrailing={wideInbox ? titleTrailing : undefined}
                         roundedLeft={!sidebarOpen}
-                        roundedRight={wideInbox && !chatOpen}
+                        roundedRight={wideInbox && !browserOpen}
                         renderFloatingReader={
                           floatingLayout && !composeOpen
                             ? (navigation, title) => (
@@ -1670,7 +1701,6 @@ function MailHome() {
                         onOpenChat={openChat}
                         onSearchView={searchFromView}
                         viewQueryRef={viewQueryRef}
-                        project={isProjects && !activeSearch ? { id: selectedLabelId } : undefined}
                         search={
                           activeSearch
                             ? {
@@ -1705,7 +1735,9 @@ function MailHome() {
                   )}
                   data-tour={showMain ? "reader" : undefined}
                 >
-                  {readerOwnsBand ? null : titleControls}
+                  {readerOwnsBand || (isChats && !settingsRoute && !composeOpen)
+                    ? null
+                    : titleControls}
                   <div className="flex min-h-0 flex-1 flex-col">
                     {settingsRoute ? (
                       <SettingsPage route={settingsRoute} onNavigate={openSettings} />
@@ -1720,19 +1752,18 @@ function MailHome() {
                         }}
                         prefill={mailtoPrefill ?? undefined}
                       />
-                    ) : isProjects && !selectedMessageId && !searchActive ? (
-                      selectedProject ? (
-                        <ProjectView
-                          project={selectedProject}
-                          onOpenMessage={(accountId, messageId) =>
-                            handleSelectMessage(messageId, accountId)
-                          }
-                          onAskAgent={openChat}
-                          onDeleted={() => handleSelectLabel(ALL_PROJECTS)}
+                    ) : isChats ? (
+                      selectedLabelId !== NEW_CHAT ? (
+                        <ChatWorkspace
+                          key={selectedLabelId}
+                          chatId={selectedLabelId}
+                          titleLeading={sidebarOpen ? null : titlebarInset}
+                          titleTrailing={titleTrailing}
+                          inputRef={chatInputRef}
+                          onNavigate={openChatChange}
+                          onSelectChat={(id) => go({ label: id }, true)}
                         />
-                      ) : (
-                        <ProjectsOverview onOpenProject={openProject} />
-                      )
+                      ) : null
                     ) : readerAccount ? (
                       showMain ? (
                         renderReader()
@@ -1748,43 +1779,41 @@ function MailHome() {
                   </div>
                 </div>
               </div>
+              {/* The agent over the mail: its small window, or the launcher in its corner. */}
+              {isChats || settingsRoute ? null : chatWindowOpen ? (
+                <ChatWindow
+                  context={mailChatContext}
+                  onClearQuote={() => setPendingQuote(null)}
+                  onOpenChange={openChatChange}
+                  onOpenWorkspace={openWorkspace}
+                  onClose={() => setChatWindow(false)}
+                  inputRef={chatInputRef}
+                />
+              ) : (
+                <ChatLauncher onOpen={openChat} />
+              )}
             </div>
-            {chatPresent ? (
+            {browserPresent ? (
               <>
-                {chatVisible && !panelExpanded ? <PaneResizer onPointerDown={chatStart} /> : null}
+                {browserVisible ? <PaneResizer onPointerDown={browserStart} /> : null}
                 <div
-                  ref={chatFrameRef}
-                  data-tour="agent"
-                  style={{ width: panelExpanded ? undefined : chatVisible ? chatWidth : 0 }}
+                  ref={browserFrameRef}
+                  style={{ width: browserVisible ? browserWidth : 0 }}
                   className={cn(
                     PANE_FRAME,
-                    panelExpanded && "flex-1",
-                    chatVisible && "[[data-panel-animations=true]_&]:starting:w-0!",
-                    !chatVisible && "pointer-events-none",
+                    browserVisible && "[[data-panel-animations=true]_&]:starting:w-0!",
+                    !browserVisible && "pointer-events-none",
                   )}
                 >
                   <div
-                    ref={chatPaneRef}
-                    style={{ width: panelExpanded ? undefined : chatWidth }}
-                    className={cn(PANE_CHAT, panelExpanded ? "flex-1 before:hidden" : "shrink-0")}
+                    ref={browserPaneRef}
+                    style={{ width: browserWidth }}
+                    className={cn(PANE_BROWSER, "shrink-0")}
                   >
-                    <AgentChatPanel
-                      expanded={panelExpanded}
-                      onToggleExpanded={toggleChatExpanded}
-                      onOpenChange={openChatChange}
-                      closeTabRef={closeChatTabRef}
-                      newTabRef={newChatTabRef}
-                      onClosePanel={closeChat}
-                      accountId={selectedMessageId ? readerAccount : null}
-                      messageId={selectedMessageId}
-                      selectedRows={chatSelection}
-                      quote={pendingQuote}
-                      onClearQuote={() => setPendingQuote(null)}
-                      project={
-                        selectedProject && !searchActive
-                          ? { id: selectedProject.id, name: selectedProject.name }
-                          : null
-                      }
+                    <BrowserPanel
+                      closeTabRef={closeBrowserTabRef}
+                      onClosePanel={closeBrowser}
+                      onNewChat={startNewChat}
                     />
                   </div>
                 </div>
@@ -1795,24 +1824,18 @@ function MailHome() {
       </div>
 
       {/* Pinned titlebar toggles (Otter Code): same window spot whatever the panes do. */}
-      {!sidebarToggle || panelExpanded ? null : (
+      {!sidebarToggle ? null : (
         <SidebarControl sidebarOpen={sidebarOpen} onToggleSidebar={toggleSidebar} />
       )}
-      {!settingsRoute ? (
-        <PanelControl
-          open={chatOpen}
-          onToggle={() => {
-            if (chatOpen) setPendingQuote(null);
-            toggleChat();
-          }}
-        />
+      {features.browser && !settingsRoute ? (
+        <PanelControl open={browserOpen} onToggle={toggleBrowser} />
       ) : null}
 
       {tourRequested && initialized ? (
         <Tour
           actions={{
-            agentOpen: chatOpen,
-            setAgentOpen: (open) => (open ? openChat() : closeChat()),
+            agentOpen: chatWindowOpen,
+            setAgentOpen: (open) => (open ? openChat() : setChatWindow(false)),
             openMessage: () => {
               if (selectedMessageId) return;
               // A read one where there is one: opening marks a conversation read.
@@ -1828,7 +1851,6 @@ function MailHome() {
       ) : null}
 
       <TodoistDialogs />
-      <NewProjectDialog onOpenProject={openProject} />
       <ViewEditorDialog
         key={viewEditor ?? "closed"}
         open={viewEditor !== null}
@@ -1856,7 +1878,9 @@ function MailHome() {
           onSearchMail={(q) => openSearch(q)}
           onGoToView={handlePaletteGoToView}
           onSelectAccount={handleSelectAccount}
-          onOpenProject={openProject}
+          onOpenChat={openWorkspace}
+          onNewChat={startNewChat}
+          onToggleBrowser={toggleBrowser}
           onCompose={() => setComposeOpen(true)}
           onOpenSettings={(pane = lastPaneRef.current) => openSettings({ pane })}
           onNewView={() => openViewEditor("new")}

@@ -11,7 +11,6 @@ import { useAccounts, useAddAccount } from "../gmail/hooks";
 import { toast } from "../gmail/toast";
 import { Btn, cn } from "../gmail/ui";
 import { otterApi, useOtterAccount } from "../otter-account";
-import { AgentTokensSection } from "./agent-tokens-section";
 import {
   SettingsGroup,
   SettingsPageContainer,
@@ -143,25 +142,6 @@ function DevicesSection() {
   );
 }
 
-/**
- * Agents that run elsewhere (Hermes) manage the account's projects through
- * the relay's MCP server, with a token made here. Claude and Codex on the Mac
- * have Otter Mail's own tools already.
- */
-function AgentsSection() {
-  return (
-    <AgentTokensSection
-      title="Agents"
-      description="Agents that run elsewhere, like Hermes, can create and manage your projects through Otter Mail's MCP server, with a token. They get your projects, not your mail."
-      queryKey="otter:agentTokens"
-      list={otterApi.listAgentTokens}
-      create={otterApi.createAgentToken}
-      revoke={otterApi.deleteAgentToken}
-      defaultName="Hermes"
-    />
-  );
-}
-
 function SignedInPane({ state }: { state: OtterAccountState }) {
   const user = state.user!;
   const mailboxes = useAccounts().data?.length ?? 0;
@@ -209,8 +189,6 @@ function SignedInPane({ state }: { state: OtterAccountState }) {
       </SettingsGroup>
 
       <DevicesSection />
-
-      <AgentsSection />
 
       <SettingsSection title="Delete account">
         <SettingsRow

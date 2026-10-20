@@ -5,7 +5,7 @@
  * one off, on, or away. Extensions call in through extensions-preload.ts;
  * the renderer's toolbar through the `browser:` channels (handlers/browser.ts).
  *
- * Tabs are the agent panel's pages (webview guests), each known by its
+ * Tabs are the browser's pages (webview guests), each known by its
  * webContents id; the main window is the one window.
  */
 
@@ -135,7 +135,7 @@ function windowOf(window: BrowserWindow, populate = false, extensionId: string |
   };
 }
 
-/** A page of the agent panel's browser, as extensions see it (browser.ts calls this as it attaches). */
+/** A page of the browser, as extensions see it (browser.ts calls this as it attaches). */
 export function trackTab(contents: WebContents): void {
   const tabId = contents.id;
   tabs.set(tabId, { contents, favicon: null });

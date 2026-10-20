@@ -1,7 +1,7 @@
 /**
  * The tools Otter Mail gives the agents it runs: the user's mailboxes and
  * calendars, whatever provider each one uses, so an agent needs no mail CLI
- * of its own, the app's color themes, the user's projects and views. The shell serves them (the Mac app:
+ * of its own, the app's color themes and the user's views. The shell serves them (the Mac app:
  * an MCP server that Claude and Codex are pointed at, and other agents on the Mac given a token, apps/desktop
  * agent/mcp-server.ts) and says who is calling; tools that change a mailbox ask that chat's user first, the way
  * the agents' own approvals do, unless the chat has full access.
@@ -12,19 +12,12 @@ import type { ApprovalDecision, ApprovalRequest } from "../types.js";
 import { calendarTools } from "./calendar.js";
 import { mailTools } from "./mail.js";
 import { themeTools } from "./themes.js";
-import { projectTools } from "./projects.js";
 import { viewTools } from "./views.js";
 import type { AgentTool, ToolArgs, ToolCaller } from "./tool.js";
 
 export type { AgentTool, ToolCaller, ToolFiles } from "./tool.js";
 
-const TOOLS: AgentTool[] = [
-  ...mailTools,
-  ...calendarTools,
-  ...themeTools,
-  ...projectTools,
-  ...viewTools,
-];
+const TOOLS: AgentTool[] = [...mailTools, ...calendarTools, ...themeTools, ...viewTools];
 
 /** The MCP server's name: Claude sees the tools as `mcp__otter-mail__<tool>`. */
 export const OTTER_TOOLS_SERVER = "otter-mail";

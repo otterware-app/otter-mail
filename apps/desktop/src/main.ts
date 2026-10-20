@@ -180,7 +180,7 @@ function setupApplicationMenu(): void {
         },
       },
       { type: "separator" },
-      // The agent panel's browser (services/browser.ts).
+      // The browser panel (services/browser.ts).
       {
         label: "New Tab",
         accelerator: "CommandOrControl+T",

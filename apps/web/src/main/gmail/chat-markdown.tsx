@@ -9,6 +9,12 @@ import { openLink } from "../browser/store";
 import { isModClick } from "../keybindings/keys";
 
 type ImagePreview = { src: string; alt: string };
+
+/**
+ * Where a web link in a chat opens, where a view decides (the workspace: as
+ * the chat's tab); elsewhere, `openLink`'s place. `flip` is a ⌘-click.
+ */
+export const ChatLinkOpener = createContext<((url: string, flip: boolean) => void) | null>(null);
 const LinkContext = createContext<{
   onOpenFile?: (href: string) => void;
   loadImage?: (href: string) => Promise<string>;
@@ -17,6 +23,7 @@ const LinkContext = createContext<{
 
 function ChatLink({ href, children }: React.ComponentProps<"a">) {
   const { onOpenFile, showImage } = useContext(LinkContext);
+  const open = useContext(ChatLinkOpener);
   return (
     <a
       href={href}
@@ -27,6 +34,7 @@ function ChatLink({ href, children }: React.ComponentProps<"a">) {
         if (isChatFileLink(href)) onOpenFile?.(href);
         else if (isChatImageLink(href))
           showImage({ src: href, alt: typeof children === "string" ? children : "Image" });
+        else if (open) open(href, isModClick(event));
         else openLink(href, { flip: isModClick(event) });
       }}
     >

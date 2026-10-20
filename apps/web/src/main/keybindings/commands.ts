@@ -7,9 +7,9 @@
  * - editableFocus: typing in an input, textarea, or rich-text field
  * - dialogOpen:    a dialog, popover, or menu is open
  * - settingsOpen:  the settings page is showing
- * - panelExpanded: the agent panel fills the window (the mail is hidden)
+ * - workspaceOpen: the AI workspace is showing (the mail is hidden)
  * - messageOpen:   a conversation is open in the reader
- * - agentOpen:     the agent chat panel is showing
+ * - agentOpen:     a chat is showing (the small window, or the AI workspace)
  * - modelPickerOpen: the composer's model picker is open
  *
  * Besides the closed set, `label.move:<label name>` rules move the selection
@@ -46,10 +46,11 @@ export const KEYBINDING_COMMANDS = [
   "commandPalette.toggle",
   "sidebar.toggle",
   "agent.toggle",
-  "agent.toggleExpanded",
-  "agent.newTab",
+  "agent.openWorkspace",
   "agent.newChat",
-  "agent.previousTab",
+  "browser.toggle",
+  "browser.newTab",
+  "tab.previous",
   "modelPicker.toggle",
   "composer.mode",
   "agent.sendQueuedNow",
@@ -128,7 +129,7 @@ export const WHEN_VARIABLES = [
   "editableFocus",
   "dialogOpen",
   "settingsOpen",
-  "panelExpanded",
+  "workspaceOpen",
   "messageOpen",
   "agentOpen",
   "modelPickerOpen",
@@ -137,18 +138,20 @@ export const WHEN_VARIABLES = [
 ] as const;
 
 const OUTSIDE_FIELDS = "!editableFocus && !dialogOpen";
-export const IN_MAIL = "!editableFocus && !dialogOpen && !settingsOpen && !panelExpanded";
+export const IN_MAIL = "!editableFocus && !dialogOpen && !settingsOpen && !workspaceOpen";
 const ON_MESSAGE = `${IN_MAIL} && messageOpen`;
 
 export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "mod+k", command: "commandPalette.toggle" },
   // ⌘B means bold while typing.
   { key: "mod+b", command: "sidebar.toggle", when: OUTSIDE_FIELDS },
-  { key: "mod+shift+b", command: "agent.toggle", when: "!dialogOpen" },
-  { key: "mod+shift+f", command: "agent.toggleExpanded", when: "!dialogOpen" },
-  { key: "mod+t", command: "agent.newTab", when: "!dialogOpen" },
+  // ⌘I is italic while writing mail: the editor takes it first.
+  { key: "mod+i", command: "agent.toggle", when: "!dialogOpen" },
+  { key: "mod+shift+f", command: "agent.openWorkspace", when: "!dialogOpen" },
   { key: "mod+shift+o", command: "agent.newChat", when: "!dialogOpen" },
-  { key: "ctrl+tab", command: "agent.previousTab", when: "!dialogOpen" },
+  { key: "mod+shift+b", command: "browser.toggle", when: "!dialogOpen" },
+  { key: "mod+t", command: "browser.newTab", when: "!dialogOpen" },
+  { key: "ctrl+tab", command: "tab.previous", when: "!dialogOpen" },
   { key: "mod+shift+m", command: "modelPicker.toggle", when: "agentOpen" },
   { key: "mod+shift+a", command: "composer.mode", when: "agentOpen" },
   {

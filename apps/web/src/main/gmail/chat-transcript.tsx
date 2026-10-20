@@ -13,7 +13,6 @@ import {
   CheckIcon,
   CopyIcon,
   FilePenLineIcon,
-  FolderIcon,
   LayersIcon,
   MailIcon,
   SendIcon,
@@ -34,17 +33,15 @@ import { toast } from "./toast";
 
 export function ContextKindIcon({ kind, className }: { kind: ContextKind; className?: string }) {
   const Icon =
-    kind === "project"
-      ? FolderIcon
-      : kind === "quote"
-        ? TextQuoteIcon
-        : kind === "draft"
-          ? FilePenLineIcon
-          : kind === "sent"
-            ? SendIcon
-            : kind === "mixed"
-              ? LayersIcon
-              : MailIcon;
+    kind === "quote"
+      ? TextQuoteIcon
+      : kind === "draft"
+        ? FilePenLineIcon
+        : kind === "sent"
+          ? SendIcon
+          : kind === "mixed"
+            ? LayersIcon
+            : MailIcon;
   return <Icon className={className} />;
 }
 

@@ -2,7 +2,7 @@ import { useLatest } from "../use-latest";
 import { useEffect, useState, type ReactNode } from "react";
 import {
   CircleUserRoundIcon,
-  FolderClosedIcon,
+  MousePointer2Icon,
   LayersIcon,
   LogInIcon,
   MessageSquareIcon,
@@ -31,7 +31,7 @@ import { useOtterAccount } from "../otter-account";
 import { OtterAvatar } from "../settings/otter-account-pane";
 import { requestProblemReport } from "../support/report-problem";
 import { setSyncedPreference } from "../synced-preferences";
-import { PROJECTS_SPACE } from "./spaces";
+import { CHATS_SPACE } from "./spaces";
 import { ViewMark } from "./view-icon";
 import { shortcutText } from "../keybindings/keys";
 
@@ -64,11 +64,11 @@ export function useRailUnreadDots(): [boolean, (on: boolean) => void] {
 
 /**
  * The rail down the window's left edge (ChatGPT's): the spaces (spaces.ts).
- * Each mailbox, then each view with the + that makes one, then Projects; who
- * you are at the bottom, with the app's menu. With the setting on, a dot
- * marks a mailbox whose Inbox (or a view whose list) has unread mail. It stays
- * when the sidebar hides; then hovering a mailbox or Projects peeks at its
- * sidebar (`onHoverSpace`).
+ * Each mailbox, then each view with the + that makes one, then Chats (the AI
+ * workspace); who you are at the bottom, with the app's menu. With the
+ * setting on, a dot marks a mailbox whose Inbox (or a view whose list) has
+ * unread mail. It stays when the sidebar hides; then hovering a mailbox or
+ * Chats peeks at its sidebar (`onHoverSpace`).
  */
 export function SpaceRail({
   accounts,
@@ -224,14 +224,15 @@ export function SpaceRail({
             <PlusIcon className="size-4.5" />
           </button>
         </HintTooltip>
-        {/* Projects span every mailbox: a space of their own, after them. */}
+        {/* The AI workspace spans every mailbox: a space of its own, after them. */}
         <span aria-hidden className="my-1 h-px w-5 bg-border" />
         {spaceButton({
-          id: PROJECTS_SPACE,
-          name: "Projects",
-          mark: <FolderClosedIcon className="size-5" />,
+          id: CHATS_SPACE,
+          name: "Chats",
+          mark: <MousePointer2Icon className="size-5" />,
           peek: true,
-          tour: "projects",
+          shortcut: shortcutText("mod+shift+f"),
+          tour: "chats",
         })}
       </div>
       <span className="flex-1" />

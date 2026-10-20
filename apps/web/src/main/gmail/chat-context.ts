@@ -1,4 +1,6 @@
-import type { ChatChange, ProviderKind } from "./api";
+import type { ChatContextKind, ChatContextMeta } from "@otter-mail/contracts/chats";
+
+import type { ProviderKind } from "./api";
 import { clampTitle } from "./chat-store";
 import { useAccounts, useMessage } from "./hooks";
 import type { GmailMessageSummary } from "./types";
@@ -19,8 +21,6 @@ export type AgentContext = {
     /** Present when the item is a highlighted excerpt, not the whole thread. */
     quote?: string;
   }[];
-  /** The project on screen, if any. */
-  project?: { id: string; name: string };
 };
 
 /** A text excerpt selected from a message, plus its thread pointer. */
@@ -72,9 +72,6 @@ export function buildHandoffText(
   provider: ProviderKind,
 ): string {
   const lines: string[] = [question.trim(), "", "— context from Otter Mail —"];
-  if (context.project) {
-    lines.push(`• Project “${context.project.name}” (projectId ${context.project.id})`);
-  }
   for (const c of context.conversations) {
     if (c.quote) {
       lines.push(
@@ -94,16 +91,8 @@ export function buildHandoffText(
   return lines.join("\n");
 }
 
-/** What the attached context items are, so the chip shows a fitting icon. */
-export type ContextKind = "draft" | "sent" | "mail" | "mixed" | "quote" | "project";
-
-/** The context sent with a message, as its chip recaps it. */
-export type ContextMeta = {
-  subjects: string[];
-  count: number;
-  kind: ContextKind;
-  items?: { title: string; target: ChatChange["target"] }[];
-};
+export type ContextKind = ChatContextKind;
+export type ContextMeta = ChatContextMeta;
 
 /** Classify one message from its labels. */
 function kindOf(labelIds: string[]): ContextKind {
@@ -140,21 +129,18 @@ export type MailChatContext = {
 /**
  * The context the mail on screen gives a chat: a highlighted excerpt wins,
  * then the multi-selection, then the open conversation (cache hit — the
- * reader fetched it), with the project on screen. All pointer-only; the
- * agent reads the bodies itself.
+ * reader fetched it). All pointer-only; the agent reads the bodies itself.
  */
 export function useMailChatContext({
   accountId,
   messageId,
   selectedRows,
   quote,
-  project,
 }: {
   accountId: string | null;
   messageId: string | null;
   selectedRows?: GmailMessageSummary[];
   quote?: QuoteContext | null;
-  project?: { id: string; name: string } | null;
 }): MailChatContext {
   const accountsQuery = useAccounts();
   const accountEmailById = (id: string | undefined) =>
@@ -178,32 +164,24 @@ export function useMailChatContext({
             ],
           }
         : null;
-  const context: AgentContext | null = project
-    ? { conversations: [], ...mailContext, project }
-    : mailContext;
-  /** Only the project is attached (no conversation). */
-  const projectOnly = Boolean(project) && !mailContext;
+  const context = mailContext;
   // Draft / sent / mail / quote kind of what's attached, for the chip's icon.
   const kind: ContextKind = quote
     ? "quote"
-    : projectOnly
-      ? "project"
-      : contextKind(
-          multiSelected
-            ? selectedRows.map((r) => r.labelIds)
-            : openMessage.data
-              ? [openMessage.data.labelIds]
-              : [],
-        );
+    : contextKind(
+        multiSelected
+          ? selectedRows.map((r) => r.labelIds)
+          : openMessage.data
+            ? [openMessage.data.labelIds]
+            : [],
+      );
   const headline = quote
     ? "What should we do with this excerpt?"
-    : projectOnly && project
-      ? `What should we do for “${clampTitle(project.name)}”?`
-      : multiSelected
-        ? `What should we do with these ${selectedRows.length} conversations?`
-        : openMessage.data
-          ? `What should we do with “${clampTitle(openMessage.data.subject || "this conversation")}”?`
-          : "What should we do in your inbox?";
+    : multiSelected
+      ? `What should we do with these ${selectedRows.length} conversations?`
+      : openMessage.data
+        ? `What should we do with “${clampTitle(openMessage.data.subject || "this conversation")}”?`
+        : "What should we do in your inbox?";
   if (!context) return { attached: null, quote: quote ?? null, headline };
   const conversations = context.conversations;
   return {
@@ -212,49 +190,31 @@ export function useMailChatContext({
       kind,
       name: quote
         ? `“${quote.text}”`
-        : projectOnly && project
-          ? project.name
-          : conversations.length > 1
-            ? `${conversations.length} conversations`
-            : conversations[0].subject || "(no subject)",
+        : conversations.length > 1
+          ? `${conversations.length} conversations`
+          : conversations[0].subject || "(no subject)",
       detail: quote
         ? "Quote"
-        : projectOnly
-          ? "Project"
-          : conversations.length > 1
-            ? conversations
-                .slice(0, 3)
-                .map((c) => c.subject || "(no subject)")
-                .join(" · ")
-            : conversations[0].from,
+        : conversations.length > 1
+          ? conversations
+              .slice(0, 3)
+              .map((c) => c.subject || "(no subject)")
+              .join(" · ")
+          : conversations[0].from,
       meta: {
         count: conversations.length || 1,
-        subjects: quote
-          ? [quote.text]
-          : projectOnly && context.project
-            ? [context.project.name]
-            : conversations.map((x) => x.subject),
+        subjects: quote ? [quote.text] : conversations.map((x) => x.subject),
         kind,
-        items: [
-          ...(context.project
-            ? [
-                {
-                  title: context.project.name,
-                  target: { kind: "project" as const, id: context.project.id },
-                },
-              ]
-            : []),
-          ...conversations.map((conversation) => ({
-            title: conversation.subject,
-            target: {
-              kind: "thread" as const,
-              id: conversation.threadId,
-              accountId:
-                accountsQuery.data?.find((a) => a.email === conversation.account)?.id ??
-                conversation.account,
-            },
-          })),
-        ],
+        items: conversations.map((conversation) => ({
+          title: conversation.subject,
+          target: {
+            kind: "thread" as const,
+            id: conversation.threadId,
+            accountId:
+              accountsQuery.data?.find((a) => a.email === conversation.account)?.id ??
+              conversation.account,
+          },
+        })),
       },
     },
     quote: quote ?? null,

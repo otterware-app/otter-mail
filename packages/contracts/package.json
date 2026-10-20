@@ -7,10 +7,9 @@
     ".": "./src/index.ts",
     "./relay": "./src/relay.ts",
     "./agent-tokens": "./src/agent-tokens.ts",
+    "./chats": "./src/chats.ts",
     "./demo": "./src/demo.ts",
     "./mail": "./src/mail.ts",
-    "./projects": "./src/projects.ts",
-    "./project-tools": "./src/project-tools.ts",
     "./todoist": "./src/todoist.ts",
     "./openrouter": "./src/openrouter.ts"
   },
