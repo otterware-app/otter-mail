@@ -151,3 +151,10 @@ The App Store app is "Otter Mail: Calm Email" (ID 6817249947); on the phone it's
 Release builds sign in to Google with their own "iOS" OAuth client (for `dev.otterware.mail`);
 development builds use the one for `dev.otterware.mail.dev`. The relay accepts both
 (`GOOGLE_IOS_CLIENT_ID`). The demo mailbox shows only in development and TestFlight builds.
+
+## Monorepo migration bridge
+
+The agreed final desktop release follows `otterware-app/otterware`'s `channel-mail` generic
+feed. It accepts the signed profile prereleases without allowing downgrades. iPhone and the
+existing hosted web app keep their own release paths. Wait for the developer's go and the
+first all-profile monorepo release before merging or releasing this bridge.

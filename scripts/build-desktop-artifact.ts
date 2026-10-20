@@ -154,20 +154,10 @@ export function resolvePublishConfig(version: string, env: NodeJS.ProcessEnv) {
   // served over http) instead of GitHub Releases.
   const url = env.OTTER_MAIL_UPDATE_URL?.trim();
   if (url) return { provider: "generic", url, channel: nightly ? "nightly" : "latest" };
-  const repository =
-    env.OTTER_MAIL_UPDATE_REPOSITORY?.trim() ||
-    env.GITHUB_REPOSITORY?.trim() ||
-    DEFAULT_UPDATE_REPOSITORY;
-  const [owner, repo, ...rest] = repository.split("/");
-  if (!owner || !repo || rest.length > 0) {
-    throw new Error(`Update repository must look like owner/repo; received "${repository}".`);
-  }
   return {
-    provider: "github",
-    owner,
-    repo,
-    releaseType: nightly ? "prerelease" : "release",
-    channel: nightly ? "nightly" : "latest",
+    provider: "generic",
+    url: "https://github.com/otterware-app/otterware/releases/download/channel-mail/",
+    channel: "latest",
   };
 }
 
