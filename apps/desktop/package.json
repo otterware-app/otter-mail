@@ -1,6 +1,6 @@
 {
   "name": "@otter-mail/desktop",
-  "version": "0.13.11",
+  "version": "0.13.12",
   "private": true,
   "description": "Gmail, calm and fast.",
   "type": "module",
