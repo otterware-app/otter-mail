@@ -19,14 +19,11 @@ import { closeTab, hostOf, newTab, panelTabs, reorderTabs, selectTab, useBrowser
 export function BrowserPanel({
   closeTabRef,
   onClosePanel,
-  onNewChat,
 }: {
   /** ⌘W: closes the page showing, including the last. */
   closeTabRef: MutableRefObject<(() => boolean) | null>;
   /** Closing the last tab closes the panel. */
   onClosePanel: () => void;
-  /** The start page's New chat. */
-  onNewChat: () => void;
 }) {
   const allTabs = useBrowser((s) => s.tabs);
   const activeId = useBrowser((s) => s.activeId);
@@ -122,12 +119,7 @@ export function BrowserPanel({
         {/* The pinned panel toggle (home view) sits here. */}
         <PanelControlSlot />
       </div>
-      <BrowserPages
-        tabs={tabs}
-        activeId={activeId}
-        onNewChat={onNewChat}
-        className="rounded-t-xl"
-      />
+      <BrowserPages tabs={tabs} activeId={activeId} className="rounded-t-xl" />
     </div>
   );
 }

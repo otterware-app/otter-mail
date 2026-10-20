@@ -329,7 +329,6 @@ export function ChatWorkspace({
                 <BrowserPages
                   tabs={pageTabs}
                   activeId={shown?.ref.kind === "page" ? chatPageId(chatId, shown.id) : null}
-                  onNewChat={() => onSelectChat(newChat(selectedKind))}
                   className={shown?.ref.kind === "page" ? undefined : "absolute! inset-0"}
                 />
               ) : null}

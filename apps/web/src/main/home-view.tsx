@@ -131,6 +131,8 @@ import {
 
 /** Narrowest the reader gets when the browser panel is dragged wider. */
 const READER_MIN_WIDTH = 360;
+/** How wide the browser panel opens, when there's the room. */
+const BROWSER_OPEN_WIDTH = 720;
 /** The mailbox rail's width (styles.css's --workspace-rail-width). */
 const RAIL_WIDTH = 52;
 
@@ -303,7 +305,13 @@ function useStoredWidth(
     handle.setPointerCapture(pointerId);
   };
 
-  return { width, start, paneRef, frameRef };
+  /** At least `to` (within min and max), for now: what was dragged stays stored. */
+  const widen = useCallback(
+    (to: number) => setWidth((w) => Math.max(w, Math.min(max, Math.max(min, to)))),
+    [min, max],
+  );
+
+  return { width, start, widen, paneRef, frameRef };
 }
 
 function PaneResizer({ onPointerDown }: { onPointerDown: (e: ReactPointerEvent) => void }) {
@@ -559,24 +567,19 @@ function MailHome() {
     paneRef: listPaneRef,
   } = useStoredWidth("gmail:pane:list", 340, 280, 640);
   // The browser can grow wide, as long as the reader keeps READER_MIN_WIDTH.
+  const browserRoom = () =>
+    window.innerWidth -
+    RAIL_WIDTH -
+    (sidebarOpen ? sidebarWidth : 0) -
+    (wideInbox ? 0 : listWidth) -
+    READER_MIN_WIDTH;
   const {
     width: browserWidth,
     start: browserStart,
+    widen: widenBrowser,
     paneRef: browserPaneRef,
     frameRef: browserFrameRef,
-  } = useStoredWidth(
-    "gmail:pane:browser",
-    340,
-    280,
-    1200,
-    -1,
-    () =>
-      window.innerWidth -
-      RAIL_WIDTH -
-      (sidebarOpen ? sidebarWidth : 0) -
-      (wideInbox ? 0 : listWidth) -
-      READER_MIN_WIDTH,
-  );
+  } = useStoredWidth("gmail:pane:browser", 340, 280, 1200, -1, browserRoom);
   // The browser panel (the Mac app's), and the agent's small window over the mail.
   const [browserOpen, setBrowserOpen] = useState(
     () => features.browser && localStorage.getItem("gmail:browser-open") === "1",
@@ -609,6 +612,11 @@ function MailHome() {
     panelAnimationsActive,
     panelAnimationDurationMs,
   );
+  // Pages need room: the panel opens wide, as far as the reader allows (narrower by hand).
+  const browserRoomRef = useLatest(browserRoom);
+  useEffect(() => {
+    if (browserVisible) widenBrowser(Math.min(BROWSER_OPEN_WIDTH, browserRoomRef.current()));
+  }, [browserVisible, widenBrowser, browserRoomRef]);
   const toggleSidebar = () => {
     const [key, setOpen] = settingsRoute
       ? ["gmail:settings-sidebar-open", setSettingsSidebarOpen]
@@ -1801,11 +1809,7 @@ function MailHome() {
                     style={{ width: browserWidth }}
                     className={cn(PANE_BROWSER, "shrink-0")}
                   >
-                    <BrowserPanel
-                      closeTabRef={closeBrowserTabRef}
-                      onClosePanel={closeBrowser}
-                      onNewChat={startNewChat}
-                    />
+                    <BrowserPanel closeTabRef={closeBrowserTabRef} onClosePanel={closeBrowser} />
                   </div>
                 </div>
               </>
