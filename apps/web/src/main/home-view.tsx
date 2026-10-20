@@ -26,6 +26,7 @@ import { MessageReader } from "./gmail/message-reader";
 import { NewMessageView } from "./gmail/new-message-view";
 import { CommandPalette } from "./gmail/command-palette";
 import { AgentChatPanel } from "./gmail/agent-chat";
+import { useChatEvents } from "./gmail/chat-store";
 import { SEARCH_MAILBOX } from "./gmail/gmail-query";
 import { searchTabId, searchTitle, type SearchTab } from "./gmail/search-tabs";
 import {
@@ -537,6 +538,7 @@ function MailHome() {
   useSignInAlerts();
   useExternalMailChanges();
   useBrowserEvents();
+  useChatEvents();
 
   const {
     width: sidebarWidth,
