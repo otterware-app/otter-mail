@@ -362,6 +362,16 @@ final class Agent {
     private(set) var turns: [Turn] = []
     private(set) var session: String?
     private(set) var running = false
+    /** The account's chats (contracts' chats.ts), newest first: AgentChats.swift. */
+    var synced: [SyncedChat] = []
+    /** The synced chat this one is (a new chat gets one with its first reply). */
+    @ObservationIgnored var chatID: String?
+    /** That chat as the relay had it, written back with this iPhone's turns after its own. */
+    @ObservationIgnored var chatBase: [String: Any]?
+    /** How many of `turns` came from it. */
+    @ObservationIgnored var baseTurns = 0
+    /** Why this chat can only be read here (it ran in Claude on a Mac, or needs another agent). */
+    var readOnly: String?
     @ObservationIgnored private var run: String?
     @ObservationIgnored private var streaming: Task<Void, Never>?
     @ObservationIgnored private var openRouterRunClient: OpenRouter?
@@ -390,6 +400,10 @@ final class Agent {
         turns = []
         session = nil
         allowedTools = []
+        chatID = nil
+        chatBase = nil
+        baseTurns = 0
+        readOnly = nil
     }
 
     /** Asks, with the conversations as pointers (the desktop's handoff block). */
@@ -430,6 +444,7 @@ final class Agent {
             running = false
             run = nil
             await loadHistory()
+            await saveChat()
         }
     }
 
@@ -482,6 +497,7 @@ final class Agent {
             run = nil
             openRouterRunClient = nil
             await loadHistory()
+            await saveChat()
         }
     }
 
@@ -577,6 +593,7 @@ final class Agent {
         let provider = selected
         let token = relay?.token
         session = chat.id
+        chatID = synced.first { $0.provider == provider && $0.sessionId == chat.id }?.id
         let messages: [Hermes.Message]
         if selected == "openrouter", let client = routerClient { messages = (try? await client.messages(of: chat.id)) ?? [] }
         else if selected == "openclaw", let gateway = openClawClient {
@@ -604,6 +621,74 @@ final class Agent {
             }
         }
         self.turns = turns
+    }
+
+    // ── The account's chats (AgentChats.swift) ───────────────────────────────
+
+    func loadSynced() async {
+        guard let relay, relay.token != nil, let objects = try? await relay.chats() else { return }
+        synced = objects.compactMap(SyncedChat.init).sorted { $0.updatedAt > $1.updatedAt }
+    }
+
+    /** A chat from the account: its transcript, continued here when this iPhone's agent can. */
+    func open(synced chat: SyncedChat) async {
+        newChat()
+        let generation = self.generation
+        guard let relay, let object = try? await relay.chat(chat.id), self.generation == generation else { return }
+        let shown = ChatJSON.turns(object["turns"] as? [[String: Any]] ?? [])
+        turns = shown
+        chatID = chat.id
+        chatBase = object
+        baseTurns = shown.count
+        if chat.isLocalToMac {
+            readOnly = "This chat ran in \(chat.providerName) on \(chat.device ?? "a Mac"). Continue it there."
+        } else if chat.provider != selected {
+            readOnly = "This is a \(chat.providerName) chat. Pick \(chat.providerName) in Settings › Agents to continue it."
+        } else {
+            session = chat.sessionId
+        }
+    }
+
+    func delete(synced chat: SyncedChat) async {
+        try? await relay?.deleteChat(chat.id)
+        if chatID == chat.id { newChat() }
+        synced.removeAll { $0.id == chat.id }
+    }
+
+    /** After a turn, this chat in the account's: the turns it came with, then this iPhone's. */
+    func saveChat() async {
+        guard let relay, relay.token != nil, readOnly == nil, turns.contains(where: { $0.role == .user }) else { return }
+        // A provider's session that's one of the account's chats: added to, not replaced.
+        if chatBase == nil, let chatID, let object = try? await relay.chat(chatID) {
+            chatBase = object
+            baseTurns = turns.count - 2
+        }
+        let id = chatID ?? UUID().uuidString.lowercased()
+        var chat = chatBase ?? [:]
+        chat["id"] = id
+        if chat["title"] == nil {
+            chat["title"] = String((turns.first { $0.role == .user }?.text ?? "New chat").prefix(56))
+        }
+        chat["provider"] = selected
+        chat["sessionId"] = session ?? NSNull()
+        if chat["sessionOwned"] == nil { chat["sessionOwned"] = true }
+        if chat["lastResponseId"] == nil { chat["lastResponseId"] = NSNull() }
+        if chat["device"] == nil { chat["device"] = NSNull() }
+        if chat["createdAt"] == nil { chat["createdAt"] = ChatJSON.now }
+        if chat["tabs"] == nil { chat["tabs"] = [Any]() }
+        chat["updatedAt"] = ChatJSON.now
+        chat.removeValue(forKey: "deletedAt")
+        let before = chatBase?["turns"] as? [[String: Any]] ?? []
+        chat["turns"] = Array((before + ChatJSON.objects(Array(turns.dropFirst(max(0, baseTurns))))).suffix(80))
+        do {
+            try await relay.putChat(chat)
+            chatID = id
+            chatBase = chat
+            baseTurns = turns.count
+            await loadSynced()
+        } catch {
+            // The next turn tries again, with these turns too.
+        }
     }
 
     func delete(_ chat: Hermes.Session) async {
@@ -810,6 +895,7 @@ extension Agent {
             self.run = nil
             updateLast { $0.approval = nil; $0.question = nil }
             await loadHistory()
+            await saveChat()
         }
     }
 

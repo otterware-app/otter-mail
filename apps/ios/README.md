@@ -68,7 +68,10 @@ add limited server grants (or an encrypted IMAP password), while mail content st
   code from `openclaw qr`, then `openclaw devices approve`); its gateway and tokens stay here. A
   run is sent with the turn's id as its idempotency key, so one the app left in the background
   (or quit during) is picked up again from the gateway's transcript. The Mac's local Codex and
-  Claude providers are omitted.
+  Claude providers are omitted. `AgentChats.swift` reads the account's chats (the relay's
+  `/v1/chats`, every device's and agent's): one this iPhone's agent can run continues here,
+  the others are read, and each finished turn is written back after the chat's other turns,
+  keeping what other devices wrote (it stays the relay's JSON).
 - `Mail/`: the model and `MailStore`, which screens render from. `DemoMail.swift` loads the demo.
 - `Home/`, `Reader/`, `Compose/`, `Settings/`: the screens.
 
