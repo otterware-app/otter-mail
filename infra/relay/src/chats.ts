@@ -101,7 +101,16 @@ export async function put(db: Db, userId: string, chat: Chat): Promise<Refusal |
 export async function remove(db: Db, userId: string, id: string): Promise<boolean> {
   const removed = await db
     .update(chats)
-    .set({ tabs: [], turns: "[]", title: "", deletedAt: new Date() })
+    // A tombstone keeps only its id and time: what the chat said, opened and ran on goes.
+    .set({
+      title: "",
+      sessionId: null,
+      lastResponseId: null,
+      device: null,
+      tabs: [],
+      turns: "[]",
+      deletedAt: new Date(),
+    })
     .where(and(row(userId, id), isNull(chats.deletedAt)))
     .returning({ id: chats.id });
   return removed.length > 0;

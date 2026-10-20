@@ -1315,7 +1315,14 @@ describe("chats", () => {
 
     expect((await call("DELETE", "/v1/chats/c_1", token)).status).toBe(204);
     const [deleted] = await chats(token);
-    expect(deleted).toMatchObject({ id: "c_1", title: "", tabs: [] });
+    expect(deleted).toMatchObject({
+      id: "c_1",
+      title: "",
+      sessionId: null,
+      lastResponseId: null,
+      device: null,
+      tabs: [],
+    });
     expect(deleted.deletedAt).toBeGreaterThan(0);
     expect((await call("GET", "/v1/chats/c_1", token)).status).toBe(404);
     // A device that hadn't heard can't bring it back.
