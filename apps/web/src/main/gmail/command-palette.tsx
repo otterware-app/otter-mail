@@ -64,7 +64,7 @@ import { shortcutLabelFor, useKeybindingsState } from "../keybindings/store";
 import { requestTour, startSetup } from "../onboarding/onboarding";
 import { updateNow, useUpdateState } from "../updates";
 import { requestProblemReport } from "../support/report-problem";
-import { useChats } from "./chat-store";
+import { isBlank, useChats } from "./chat-store";
 import { ViewMark } from "./view-icon";
 import { features } from "../features";
 import { shortcutText } from "../keybindings/keys";
@@ -479,7 +479,7 @@ export function CommandPalette({
     ];
 
     const chatItems: PaletteItem[] = conversations
-      .filter((c) => c.turns.length > 0 || c.updatedAt > c.createdAt)
+      .filter((c) => !isBlank(c))
       .toSorted((a, b) => b.updatedAt - a.updatedAt)
       .slice(0, 12)
       .map((chat) => ({

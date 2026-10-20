@@ -454,13 +454,15 @@ function MailHome() {
   }, [openSettingsRef]);
 
   // ⌘W (File ▸ Close): close the browser panel's page (the last closes the
-  // panel), else the agent's small window; close the window when neither shows.
+  // panel), the workspace's tab, or the agent's small window; else the window.
   const closeBrowserTabRef = useRef<(() => boolean) | null>(null);
+  const closeWorkspaceTabRef = useRef<(() => boolean) | null>(null);
   const closeChatWindowRef = useRef<() => boolean>(() => false);
   useEffect(
     () =>
       window.desktopBridge.on("window:closeRequest", () => {
         if (closeBrowserTabRef.current?.()) return;
+        if (closeWorkspaceTabRef.current?.()) return;
         if (closeChatWindowRef.current()) return;
         void gmailApi.closeMainWindow();
       }),
@@ -1761,6 +1763,7 @@ function MailHome() {
                           titleLeading={sidebarOpen ? null : titlebarInset}
                           titleTrailing={titleTrailing}
                           inputRef={chatInputRef}
+                          closeTabRef={closeWorkspaceTabRef}
                           onNavigate={openChatChange}
                           onSelectChat={(id) => go({ label: id }, true)}
                         />

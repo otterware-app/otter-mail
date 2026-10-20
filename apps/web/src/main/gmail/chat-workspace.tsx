@@ -7,7 +7,14 @@
  * message's context, as the open conversation is in the mail.
  */
 
-import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type MutableRefObject,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import { useQuery } from "@tanstack/react-query";
 import { FileIcon, FilePenLineIcon, GlobeIcon, MailIcon, TriangleAlertIcon } from "lucide-react";
 import { chatTabId, type ChatTabRef } from "@otter-mail/contracts/chats";
@@ -105,9 +112,12 @@ export function ChatWorkspace({
   titleLeading,
   titleTrailing,
   inputRef,
+  closeTabRef,
   onNavigate,
   onSelectChat,
 }: {
+  /** ⌘W: closes the tab showing, if there is one. */
+  closeTabRef: MutableRefObject<(() => boolean) | null>;
   chatId: string;
   /** Start of the chat's title band (room for the window's controls, the sidebar hidden). */
   titleLeading?: ReactNode;
@@ -168,6 +178,16 @@ export function ChatWorkspace({
     if (tab.ref.kind === "page") closeChatPage(chatId, tab.id);
     closeChatTab(chatId, tab.id);
   };
+  useEffect(() => {
+    closeTabRef.current = () => {
+      if (!shown) return false;
+      close(shown);
+      return true;
+    };
+    return () => {
+      closeTabRef.current = null;
+    };
+  });
 
   // Ctrl+Tab: the tab shown before, within the workspace.
   const recentRef = useRef<string[]>([]);
