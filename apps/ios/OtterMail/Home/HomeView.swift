@@ -31,6 +31,7 @@ struct HomeView: View {
     @State private var settingsOpen = false
     @State private var query = ""
     @State private var searchPath: [String] = []
+    @State private var chatsOpen = false
 
     /** An agent here, or the account's chats to read (Claude and Codex ones too). */
     private var showsAgent: Bool { session.agent.isOn || session.user != nil }
@@ -39,9 +40,15 @@ struct HomeView: View {
         TabView(selection: $tab) {
             SwiftUI.Tab("Mail", systemImage: "envelope", value: Tab.mail) { mail }
             SwiftUI.Tab("Agent", image: "OtterAgent", value: Tab.agent) {
-                NavigationStack {
-                    AgentView(onSettings: { settingsOpen = true })
+                // ChatGPT's: the chats in a drawer under the chat, a swipe from the left edge.
+                Drawer(isOpen: $chatsOpen, canOpen: true) {
+                    ChatHistory(shown: chatsOpen, onClose: { setChats(open: false) })
+                } content: {
+                    NavigationStack {
+                        AgentView(onSettings: { settingsOpen = true }, onHistory: { setChats(open: true) })
+                    }
                 }
+                .toolbarVisibility(chatsOpen ? .hidden : .automatic, for: .tabBar)
             }
             .hidden(!showsAgent)
             SwiftUI.Tab(value: Tab.search, role: .search) { search }
@@ -77,7 +84,7 @@ struct HomeView: View {
 
     /** The mail: the list (and the reader), the sidebar's drawer under it. */
     private var mail: some View {
-        MailDrawer(isOpen: $drawerOpen, canOpen: path.isEmpty) {
+        Drawer(isOpen: $drawerOpen, canOpen: path.isEmpty) {
             SidebarView(
                 place: $place,
                 onSelect: { select($0) },
@@ -184,10 +191,18 @@ struct HomeView: View {
     private func setDrawer(open: Bool) {
         withAnimation(reduceMotion ? nil : .smooth(duration: 0.2)) { drawerOpen = open }
     }
+
+    private func setChats(open: Bool) {
+        withAnimation(reduceMotion ? nil : .smooth(duration: 0.2)) { chatsOpen = open }
+    }
 }
 
-/** Drag updates move these already-built views instead of rebuilding the mail screen per gesture event. */
-private struct MailDrawer<Sidebar: View, Content: View>: View {
+/**
+ * A sidebar under the screen, which slides aside to show it: the mail's
+ * mailboxes, the agent's chats. Drag updates move these already-built views
+ * instead of rebuilding the screen per gesture event.
+ */
+struct Drawer<Sidebar: View, Content: View>: View {
     @Environment(\.palette) private var palette
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
