@@ -97,6 +97,8 @@ struct ThreadView: View {
         .safeAreaBar(edge: .bottom) {
             replyBar(thread, mailbox)
         }
+        // Its own bar (archive, trash, reply) stands in for the tabs.
+        .toolbarVisibility(.hidden, for: .tabBar)
         .sheet(isPresented: Binding(get: { asking != nil }, set: { if !$0 { asking = nil } })) {
             NavigationStack {
                 AgentView(context: asking ?? [], sheet: true)

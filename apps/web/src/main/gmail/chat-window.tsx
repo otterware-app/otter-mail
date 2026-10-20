@@ -32,6 +32,7 @@ import {
   watchChat,
 } from "./chat-store";
 import { ChatView } from "./chat-view";
+import { isOverlayOpen } from "./keyboard";
 import { HintTooltip, IconBtn, cn } from "./ui";
 
 export function ChatWindow({
@@ -81,10 +82,24 @@ export function ChatWindow({
   };
 
   return (
+    // Not a dialog: it sits beside the mail, whose shortcuts (and ⌘I to close it) keep working.
     <div
-      role="dialog"
+      role="region"
       aria-label="Agent"
       data-tour="agent"
+      onKeyDown={(e) => {
+        if (e.key === "Escape") {
+          // Escape in here closes it, unless something in it (a menu, the skills list) took it.
+          if (!e.defaultPrevented && !isOverlayOpen()) {
+            e.preventDefault();
+            onClose();
+          }
+          e.stopPropagation();
+          return;
+        }
+        // The mail's one-key shortcuts don't act from in here; ⌘ and Ctrl ones do.
+        if (!e.metaKey && !e.ctrlKey && !e.altKey) e.stopPropagation();
+      }}
       className="absolute bottom-4 right-4 web:bottom-3 web:right-3 z-30 flex h-[min(38rem,calc(100%-4.5rem))] w-[min(27rem,calc(100%-1.5rem))] flex-col overflow-hidden rounded-2xl border border-foreground/10 bg-canvas shadow-[0_24px_60px_-20px_rgb(0_0_0/45%)] dark:shadow-[0_24px_60px_-20px_rgb(0_0_0/80%)]"
     >
       <div className="relative flex h-11 shrink-0 items-center gap-1 border-b border-border/60 ps-3.5 pe-1.5">

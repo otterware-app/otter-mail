@@ -8,7 +8,6 @@ import {
   GlobeIcon,
   LoaderCircleIcon,
   LockIcon,
-  MessageSquareIcon,
   MoreHorizontalIcon,
   PuzzleIcon,
   RotateCwIcon,
@@ -101,12 +100,10 @@ export function BrowserTabIcon({ tab }: { tab: BrowserTab }) {
 export function BrowserPages({
   tabs,
   activeId,
-  onNewChat,
   className,
 }: {
   tabs: BrowserTab[];
   activeId: string | null;
-  onNewChat: () => void;
   className?: string;
 }) {
   const [shown, setShown] = useState<ReadonlySet<string>>(() => new Set());
@@ -123,7 +120,7 @@ export function BrowserPages({
             className="absolute inset-0 flex flex-col"
             style={tab.id === activeId ? undefined : OFFSCREEN}
           >
-            <BrowserPage tab={tab} active={tab.id === activeId} onNewChat={onNewChat} />
+            <BrowserPage tab={tab} active={tab.id === activeId} />
           </div>
         ) : null,
       )}
@@ -131,15 +128,7 @@ export function BrowserPages({
   );
 }
 
-function BrowserPage({
-  tab,
-  active,
-  onNewChat,
-}: {
-  tab: BrowserTab;
-  active: boolean;
-  onNewChat: () => void;
-}) {
+function BrowserPage({ tab, active }: { tab: BrowserTab; active: boolean }) {
   const [view, setView] = useState<Webview | null>(null);
   // The page's webContents id once it's attached: its tab id, to extensions.
   const [pageId, setPageId] = useState<number | null>(null);
@@ -304,14 +293,7 @@ function BrowserPage({
             className="flex min-h-0 flex-1 bg-white"
           />
         ) : (
-          <StartPage
-            onNavigate={navigate}
-            // The chat takes the start page's place, as a site would.
-            onNewChat={() => {
-              closeTab(tab.id);
-              onNewChat();
-            }}
-          />
+          <StartPage onNavigate={navigate} />
         )}
         {failure || crashed ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-canvas p-6 text-center">
@@ -505,13 +487,7 @@ function PageMenu({ url, onDevTools }: { url: string; onDevTools?: () => void })
 }
 
 /** A new tab's page (ChatGPT's): the panel's other tools, then places to start. */
-function StartPage({
-  onNavigate,
-  onNewChat,
-}: {
-  onNavigate: (url: string) => void;
-  onNewChat: () => void;
-}) {
+function StartPage({ onNavigate }: { onNavigate: (url: string) => void }) {
   const tile =
     "flex cursor-pointer items-center gap-2.5 rounded-xl bg-foreground/[0.04] px-4 py-3 text-left text-sm text-foreground outline-none hover:bg-foreground/[0.07] focus-visible:ring-2 focus-visible:ring-focus-ring [&>svg]:size-4 [&>svg]:shrink-0 [&>svg]:text-muted-foreground";
   return (
@@ -519,10 +495,6 @@ function StartPage({
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-3 px-6 py-8">
         <h2 className="text-sm font-medium text-foreground">Tools</h2>
         <div className="grid grid-cols-[repeat(auto-fill,minmax(12rem,1fr))] gap-3">
-          <button type="button" className={tile} onClick={onNewChat}>
-            <MessageSquareIcon />
-            New chat
-          </button>
           <button
             type="button"
             className={tile}

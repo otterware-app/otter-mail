@@ -40,25 +40,26 @@ from GitHub Releases. Everything in the Mac column works the same, except:
 
 ## Mailboxes & accounts
 
-| Feature                                                   | Mac                | Web                                 | iPhone                  |
-| --------------------------------------------------------- | ------------------ | ----------------------------------- | ----------------------- |
-| Add a Gmail mailbox (Google sign-in)                      | ✓ (loopback OAuth) | ✓ (popup; tokens kept by the relay) | ✓ (PKCE)                |
-| Add an IMAP mailbox, servers discovered                   | ✓                  | ✓ (no domain autoconfig file: CORS) | ✓                       |
-| Add an Outlook mailbox (Microsoft sign-in)                | ✓ (loopback OAuth) | ✓ (popup; tokens kept by the relay) | ✓ (PKCE)                |
-| Provider icons in mailbox settings (Gmail, Outlook, IMAP) | ✓                  | ✓                                   | ✓                       |
-| IMAP through the relay tunnel                             | — (direct)         | ✓ (TLS 1.3 servers only)            | — (direct)              |
-| Several mailboxes: on/off, reorder                        | ✓                  | ✓                                   | ✓                       |
-| Rail: switch, unread dots (a setting)                     | ✓                  | ✓                                   | — (drawer)              |
-| Rail of spaces: mailboxes, views, Chats                   | ✓                  | ✓                                   | —                       |
-| Sidebar collapsed: hover a space to peek                  | ✓                  | ✓                                   | —                       |
-| Combined mailbox (all accounts)                           | ✓                  | ✓                                   | ✓ ("All")               |
-| Rename and color a mailbox (synced)                       | ✓                  | ✓                                   | ✓                       |
-| Google profile picture per mailbox                        | ✓ (kept current)   | ✓ (kept current)                    | —                       |
-| Remove a mailbox (unlinks it everywhere)                  | ✓                  | ✓                                   | ✓                       |
-| Mailbox linked elsewhere shows "signed out"               | ✓                  | ✓                                   | ✓                       |
-| Sync health at the foot of the sidebar, Sync now          | ✓                  | ✓                                   | ✓ (tap to sync)         |
-| Refused sign-in: toast and card to sign in again          | ✓                  | ✓                                   | ✓ (banner on the list)  |
-| Demo mailbox                                              | —                  | `pnpm dev:fake` only                | TestFlight / Xcode only |
+| Feature                                                       | Mac                | Web                                 | iPhone                  |
+| ------------------------------------------------------------- | ------------------ | ----------------------------------- | ----------------------- |
+| Add a Gmail mailbox (Google sign-in)                          | ✓ (loopback OAuth) | ✓ (popup; tokens kept by the relay) | ✓ (PKCE)                |
+| Add an IMAP mailbox, servers discovered                       | ✓                  | ✓ (no domain autoconfig file: CORS) | ✓                       |
+| Add an Outlook mailbox (Microsoft sign-in)                    | ✓ (loopback OAuth) | ✓ (popup; tokens kept by the relay) | ✓ (PKCE)                |
+| Provider icons in mailbox settings (Gmail, Outlook, IMAP)     | ✓                  | ✓                                   | ✓                       |
+| IMAP through the relay tunnel                                 | — (direct)         | ✓ (TLS 1.3 servers only)            | — (direct)              |
+| Several mailboxes: on/off, reorder                            | ✓                  | ✓                                   | ✓                       |
+| Rail: switch, unread dots (a setting)                         | ✓                  | ✓                                   | — (drawer)              |
+| Rail of spaces: mailboxes, views, Chats                       | ✓                  | ✓                                   | —                       |
+| Rail's … menu: spaces out of the rail, Customize (tick, drag) | ✓                  | ✓                                   | —                       |
+| Sidebar collapsed: hover a space to peek                      | ✓                  | ✓                                   | —                       |
+| Combined mailbox (all accounts)                               | ✓                  | ✓                                   | ✓ ("All")               |
+| Rename and color a mailbox (synced)                           | ✓                  | ✓                                   | ✓                       |
+| Google profile picture per mailbox                            | ✓ (kept current)   | ✓ (kept current)                    | —                       |
+| Remove a mailbox (unlinks it everywhere)                      | ✓                  | ✓                                   | ✓                       |
+| Mailbox linked elsewhere shows "signed out"                   | ✓                  | ✓                                   | ✓                       |
+| Sync health at the foot of the sidebar, Sync now              | ✓                  | ✓                                   | ✓ (tap to sync)         |
+| Refused sign-in: toast and card to sign in again              | ✓                  | ✓                                   | ✓ (banner on the list)  |
+| Demo mailbox                                                  | —                  | `pnpm dev:fake` only                | TestFlight / Xcode only |
 
 ## Reading
 
@@ -142,20 +143,20 @@ them, transcripts included (step outputs clipped, image thumbnails left on the d
 them); without an Otter account they stay on the device. Claude and Codex run on one Mac: their
 chats read the same everywhere and continue on that Mac.
 
-| Feature                                                             | Mac                 | Web                  | iPhone                |
-| ------------------------------------------------------------------- | ------------------- | -------------------- | --------------------- |
-| Small window over the mail (⌘I), the mail on screen as its context  | ✓                   | ✓                    | — (a sheet)           |
-| Its launcher: working, waiting for you, finished while away         | ✓                   | ✓                    | —                     |
-| AI workspace (Chats in the rail): chats by day, the chat, its tabs  | ✓                   | ✓                    | —                     |
-| Open the small window's chat in the workspace (⌘⇧F, and back)       | ✓                   | ✓                    | —                     |
-| Tabs: conversations and drafts it was given, read or made; files    | ✓                   | ✓                    | —                     |
-| Tabs: pages it read, events it made, links clicked in it            | ✓                   | — (links: a new tab) | —                     |
-| The tab showing is the next message's context                       | ✓                   | ✓                    | —                     |
-| Tabs: reorder by dragging, Control + Tab for the last one, × closes | ✓                   | ✓                    | —                     |
-| Synced through the Otter account: chats, transcripts, tabs          | ✓ (offline: queued) | ✓                    | ✓ (no tabs)           |
-| Claude and Codex chats: read everywhere, continued on their Mac     | ✓                   | ✓ (read)             | ✓ (read)              |
-| Another agent's chat (Hermes, OpenClaw, OpenRouter): continued      | ✓                   | ✓                    | ✓ (that agent picked) |
-| ⌘K: go to a chat, new chat; Recently viewed                         | ✓                   | ✓                    | —                     |
+| Feature                                                             | Mac                 | Web                  | iPhone                                     |
+| ------------------------------------------------------------------- | ------------------- | -------------------- | ------------------------------------------ |
+| Small window over the mail (⌘I), the mail on screen as its context  | ✓                   | ✓                    | — (a sheet)                                |
+| Its launcher: working, waiting for you, finished while away         | ✓                   | ✓                    | —                                          |
+| AI workspace (Chats in the rail): chats by day, the chat, its tabs  | ✓                   | ✓                    | the Agent tab (chats: swipe from the left) |
+| Open the small window's chat in the workspace (⌘⇧F, and back)       | ✓                   | ✓                    | —                                          |
+| Tabs: conversations and drafts it was given, read or made; files    | ✓                   | ✓                    | —                                          |
+| Tabs: pages it read, events it made, links clicked in it            | ✓                   | — (links: a new tab) | —                                          |
+| The tab showing is the next message's context                       | ✓                   | ✓                    | —                                          |
+| Tabs: reorder by dragging, Control + Tab for the last one, × closes | ✓                   | ✓                    | —                                          |
+| Synced through the Otter account: chats, transcripts, tabs          | ✓ (offline: queued) | ✓                    | ✓ (no tabs)                                |
+| Claude and Codex chats: read everywhere, continued on their Mac     | ✓                   | ✓ (read)             | ✓ (read)                                   |
+| Another agent's chat (Hermes, OpenClaw, OpenRouter): continued      | ✓                   | ✓                    | ✓ (that agent picked)                      |
+| ⌘K: go to a chat, new chat; Recently viewed                         | ✓                   | ✓                    | —                                          |
 
 ## Composing & sending
 
@@ -242,7 +243,7 @@ recalled. See [behavior and setup](../apps/ios/README.md#verified-background-not
 | New mail during a long sync           | ✓                                  | ✓                      | —                                    |
 | Changes applied at once, synced after | ✓                                  | ✓                      | ✓ (no outbox)                        |
 
-On iPhone, conversations zoom from their list rows (respecting Reduce Motion), the reader's navigation bar minimizes while scrolling, and selection morphs the glass buttons into bulk actions. The mail list keeps its header in place during search and returns to a compact search button when search closes.
+On iPhone, iOS's tab bar holds Mail, the Agent (with an agent on, or an Otter account's chats to read) and, on its own at the end, Search, which searches the mailbox Mail shows. The bar minimizes while scrolling and steps aside for the reader, the sidebar and selection. Conversations zoom from their list rows (respecting Reduce Motion), the reader's navigation bar minimizes while scrolling, and selection morphs the glass buttons into bulk actions.
 
 ## Settings & customization
 

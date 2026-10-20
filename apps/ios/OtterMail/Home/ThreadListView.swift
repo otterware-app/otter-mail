@@ -2,25 +2,27 @@ import SwiftUI
 
 /**
  * A folder's threads, laid out like Otter Code's task list: who, what, and a
- * line of it. The bottom bar is iOS's own: search and the agent (when it's on).
+ * line of it. In the Search tab, what the search found in the mailbox shown.
  * Compose lives in the sidebar, a swipe from the left or a tap on the title.
  */
 struct ThreadListView: View {
     @Environment(MailStore.self) private var store
     @Environment(Preferences.self) private var preferences
-    @Environment(Session.self) private var session
     @Environment(\.palette) private var palette
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     let place: Place
     let messageTransition: Namespace.ID
+    /** The Search tab's: what it searches for, and no folder of its own. */
+    var query = ""
+    var searchTab = false
+    /** The sidebar has the screen to itself, tabs and all. */
+    var drawerOpen = false
     let onDrawer: () -> Void
-    let onAgent: () -> Void
     let onSettings: () -> Void
     let onResume: (Draft) -> Void
 
     @State private var collapsedDays: Set<Date> = []
-    @State private var query = ""
     @State private var selecting = false
     @State private var selected: Set<String> = []
     @State private var swipedThread: String?
@@ -29,10 +31,10 @@ struct ThreadListView: View {
 
     var body: some View {
         let searching = !query.trimmingCharacters(in: .whitespaces).isEmpty
-        let threads = searching ? results : listed
+        let threads = searching ? results : searchTab ? [] : listed
 
         List {
-            if !searching && !selecting && !recoveries.isEmpty {
+            if !searching && !searchTab && !selecting && !recoveries.isEmpty {
                 Section("On this iPhone") {
                     ForEach(recoveries) { recovery in
                         Button { onResume(recovery.draft) } label: {
@@ -65,7 +67,7 @@ struct ThreadListView: View {
                 rows(threads)
             }
 
-            if !searching, let sync = store.sync, sync.hasMore(place.folder, scope: place.scope) {
+            if !searching && !searchTab, let sync = store.sync, sync.hasMore(place.folder, scope: place.scope) {
                 // The folder's next page from Gmail, when the list gets here.
                 ProgressView()
                     .frame(maxWidth: .infinity)
@@ -77,7 +79,17 @@ struct ThreadListView: View {
             if store.sync?.loadingCache == true && threads.isEmpty {
                 ProgressView().frame(maxWidth: .infinity).listRowSeparator(.hidden)
             }
-            if store.sync?.loadingCache != true && threads.isEmpty && (searching || recoveries.isEmpty) && !(store.sync?.hasMore(place.folder, scope: place.scope) ?? false) {
+            if searchTab && !searching {
+                ContentUnavailableView(
+                    "Search \(scopeName)",
+                    systemImage: "magnifyingglass",
+                    description: Text("Senders, subjects and words, or from: and is:unread.")
+                )
+                .foregroundStyle(palette.muted)
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
+                .padding(.top, 80)
+            } else if store.sync?.loadingCache != true && threads.isEmpty && (searching || recoveries.isEmpty) && !(store.sync?.hasMore(place.folder, scope: place.scope) ?? false) {
                 ContentUnavailableView(
                     searching ? "No results" : "Nothing in \(place.folder.title)",
                     systemImage: searching ? "magnifyingglass" : place.folder.symbol,
@@ -101,18 +113,13 @@ struct ThreadListView: View {
         .contentMargins(.bottom, 24, for: .scrollContent)
         // A mailbox whose sign-in was ended, under the title until it's back (or closed).
         .safeAreaInset(edge: .top, spacing: 0) { SignedOutBanners() }
-        .searchable(text: $query, prompt: "Search")
-        // Keep the header in place and return to a button instead of expanding
-        // another search field while the keyboard is being dismissed.
-        .searchPresentationToolbarBehavior(.avoidHidingContent)
-        .searchToolbarBehavior(.minimize)
         .task(id: place) {
             swipedThread = nil
             collapsedDays.removeAll()
             selected.removeAll()
             selecting = false
             // Where a folder's list ends comes from its first page: fetch it now, while the list is at the top.
-            await store.sync?.open(place.folder, scope: place.scope)
+            if !searchTab { await store.sync?.open(place.folder, scope: place.scope) }
         }
         .task(id: query) {
             guard let sync = store.sync, !query.trimmingCharacters(in: .whitespaces).isEmpty else { return }
@@ -127,7 +134,7 @@ struct ThreadListView: View {
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button { swipedThread = nil; onDrawer() } label: {
-                    Header(title: searching ? "Search" : place.folder.title, scope: scopeName)
+                    Header(title: searching || searchTab ? "Search" : place.folder.title, scope: scopeName)
                 }
                 .buttonStyle(.plain)
                 .accessibilityHint("Shows the mailboxes and folders")
@@ -157,29 +164,17 @@ struct ThreadListView: View {
                     }
                 }
                 ToolbarSpacer(.flexible, placement: .bottomBar)
-            } else {
-                ToolbarSpacer(.flexible, placement: .bottomBar)
-                DefaultToolbarItem(kind: .search, placement: .bottomBar)
-                if session.agent.isOn { ToolbarSpacer(.fixed, placement: .bottomBar) }
-            }
-            if selecting || session.agent.isOn {
                 ToolbarItem(id: "secondary-action", placement: .bottomBar) {
-                    if selecting {
-                        if place.folder == .trash || place.folder == .junk {
-                            Button("Move to Inbox", systemImage: "tray.and.arrow.down") {
-                                for id in selected { store.moveToInbox(id) }
-                                endSelection()
-                            }.disabled(selected.isEmpty)
-                        } else {
-                            Button("Archive", systemImage: "archivebox") { store.archive(selected); endSelection() }
-                                .disabled(!selected.compactMap(store.thread).contains { $0.labels.contains("INBOX") })
-                        }
+                    if place.folder == .trash || place.folder == .junk {
+                        Button("Move to Inbox", systemImage: "tray.and.arrow.down") {
+                            for id in selected { store.moveToInbox(id) }
+                            endSelection()
+                        }.disabled(selected.isEmpty)
                     } else {
-                        Button(action: onAgent) { Label("Agent", image: "OtterAgent") }
+                        Button("Archive", systemImage: "archivebox") { store.archive(selected); endSelection() }
+                            .disabled(!selected.compactMap(store.thread).contains { $0.labels.contains("INBOX") })
                     }
                 }
-            }
-            if selecting {
                 ToolbarItem(id: "message-actions", placement: .bottomBar) {
                     Menu("Message actions", systemImage: "tag") {
                         Button("Mark as read", systemImage: "envelope.open") { for id in selected { store.setRead(true, id) }; endSelection() }
@@ -199,6 +194,8 @@ struct ThreadListView: View {
         }
         .onChange(of: threads.map(\.id)) { _, ids in selected.formIntersection(ids) }
         .onChange(of: query) { _, _ in selected.removeAll() }
+        // Selecting, the actions take the tab bar's place.
+        .toolbarVisibility(selecting || drawerOpen ? .hidden : .automatic, for: .tabBar)
         .toolbarTitleDisplayMode(.inline)
         // Search and scroll minimization otherwise animate the same bar's insets.
         .minimizingNavigationBar(enabled: false)

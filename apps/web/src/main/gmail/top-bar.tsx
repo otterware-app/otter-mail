@@ -318,7 +318,12 @@ export function SidebarTitle() {
   return <div className="drag-region h-(--workspace-topbar-height) shrink-0 web:hidden" />;
 }
 
-type MailboxOption = { id: string; account: GmailAccount | null; name: string; shortcut: string };
+export type MailboxOption = {
+  id: string;
+  account: GmailAccount | null;
+  name: string;
+  shortcut: string;
+};
 
 /** The mailboxes to switch between, in ⌘1… order: All mailboxes (when on), then each account. */
 export function useMailboxOptions(accounts: GmailAccount[]): MailboxOption[] {
