@@ -1,11 +1,8 @@
 /**
- * Agent tokens: how an agent Otter Mail doesn't run reaches its tools over
- * MCP, with `Authorization: Bearer <token>`. Two servers take them, each with
- * tokens of its own, made in Settings:
- *  - the relay's (relay.ts), for agents anywhere: the account's projects only.
- *  - the Mac app's, for agents on the Mac (ConnectedAgent): every tool, as
- *    much as its access allows.
- * A token is shown once; only its SHA-256 hash is kept.
+ * Agent tokens: how an agent Otter Mail doesn't run, on the Mac
+ * (ConnectedAgent), reaches its tools over the Mac app's MCP server, with
+ * `Authorization: Bearer <token>`: every tool, as much as its access allows.
+ * A token is made in Settings and shown once; only its SHA-256 hash is kept.
  */
 
 export interface AgentToken {
@@ -18,7 +15,7 @@ export interface AgentToken {
 /**
  * What an agent on the Mac may do, chosen with its token (so nothing asks
  * again): only read; "safe", anything that can be undone (archive, label,
- * trash, drafts, projects), never sending or deleting for good; or anything.
+ * trash, drafts), never sending or deleting for good; or anything.
  */
 export type AgentAccess = "read-only" | "safe" | "full-access";
 

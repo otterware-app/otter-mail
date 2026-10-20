@@ -20,16 +20,14 @@ import {
   CheckIcon,
   ChevronRightIcon,
   FileIcon,
-  FolderIcon,
-  FolderClosedIcon,
-  FolderPlusIcon,
+  MessageSquarePlusIcon,
+  PanelRightIcon,
   InboxIcon,
   LayersIcon,
   ListChecksIcon,
   MonitorIcon,
   MoonIcon,
   PaletteIcon,
-  MousePointer2Icon,
   PlusIcon,
   RotateCwIcon,
   ScrollTextIcon,
@@ -43,6 +41,7 @@ import {
   SunMoonIcon,
   Trash2Icon,
 } from "lucide-react";
+import { AgentIcon } from "./agent-icon";
 import { useDebouncedValue, useSearchMessages } from "./hooks";
 import { getAccountColor, getAccountDisplayName } from "./account-style";
 import { senderLabel } from "./address";
@@ -65,10 +64,9 @@ import { shortcutLabelFor, useKeybindingsState } from "../keybindings/store";
 import { requestTour, startSetup } from "../onboarding/onboarding";
 import { updateNow, useUpdateState } from "../updates";
 import { requestProblemReport } from "../support/report-problem";
-import { useProjects } from "./projects";
-import { PROJECTS_SPACE } from "./spaces";
+import { isBlank, useChats } from "./chat-store";
 import { ViewMark } from "./view-icon";
-import { requestNewProject } from "./project-menus";
+import { features } from "../features";
 import { shortcutText } from "../keybindings/keys";
 
 /**
@@ -90,13 +88,16 @@ type CommandPaletteProps = {
   /** Runs the typed text as a Gmail search in the Search mailbox. */
   onSearchMail: (query: string) => void;
   onGoToView: (viewId: string) => void;
-  /** A mailbox, or PROJECTS_SPACE. */
   onSelectAccount: (accountId: string) => void;
-  onOpenProject: (projectId: string) => void;
+  /** A chat in the AI workspace. */
+  onOpenChat: (chatId: string) => void;
+  onNewChat: () => void;
   onCompose: () => void;
   onOpenSettings: (pane?: SettingsPane) => void;
   onNewView: () => void;
   onToggleChat: () => void;
+  /** The browser panel (the Mac app's). */
+  onToggleBrowser: () => void;
   onToggleSidebar: () => void;
   onSync: () => void;
 };
@@ -192,11 +193,13 @@ export function CommandPalette({
   onSearchMail,
   onGoToView,
   onSelectAccount,
-  onOpenProject,
+  onOpenChat,
+  onNewChat,
   onCompose,
   onOpenSettings,
   onNewView,
   onToggleChat,
+  onToggleBrowser,
   onToggleSidebar,
   onSync,
 }: CommandPaletteProps) {
@@ -240,7 +243,7 @@ export function CommandPalette({
   const mailResults = (searchResults.data?.pages[0]?.messages ?? []).slice(0, MAX_MAIL_RESULTS);
 
   const close = () => onOpenChange(false);
-  const projects = useProjects().data;
+  const conversations = useChats((s) => s.conversations);
 
   // Shortcut labels follow the live keybindings (Settings › Keybindings).
   const { resolved: keybindings } = useKeybindingsState();
@@ -319,12 +322,32 @@ export function CommandPalette({
       { id: "sync", icon: <RotateCwIcon className={ICON} />, title: "Sync now", run: onSync },
       {
         id: "chat",
-        icon: <MousePointer2Icon className={ICON} />,
-        title: "Toggle agent panel",
+        icon: <AgentIcon className={ICON} />,
+        title: "Ask the agent",
         keywords: "chat agent assistant ai claude codex hermes openclaw",
         shortcut: sc("agent.toggle"),
         run: onToggleChat,
       },
+      {
+        id: "new-chat",
+        icon: <MessageSquarePlusIcon className={ICON} />,
+        title: "New chat",
+        keywords: "agent workspace ai",
+        shortcut: sc("agent.newChat"),
+        run: onNewChat,
+      },
+      ...(features.browser
+        ? [
+            {
+              id: "browser",
+              icon: <PanelRightIcon className={ICON} />,
+              title: "Toggle browser",
+              keywords: "web pages tabs",
+              shortcut: sc("browser.toggle"),
+              run: onToggleBrowser,
+            },
+          ]
+        : []),
       {
         id: "sidebar",
         icon: <PaneIcon side="left" open className={ICON} />,
@@ -352,12 +375,6 @@ export function CommandPalette({
         title: "New view",
         keywords: "view filter",
         run: onNewView,
-      },
-      {
-        id: "new-project",
-        icon: <FolderPlusIcon className={ICON} />,
-        title: "New project",
-        run: () => requestNewProject({ open: true }),
       },
       {
         id: "settings",
@@ -461,30 +478,23 @@ export function CommandPalette({
         : []),
     ];
 
-    const projectItems: PaletteItem[] = [
-      {
-        id: "projects",
-        icon: <FolderClosedIcon className={ICON} />,
-        title: "All projects",
-        checked: selectedAccountId === PROJECTS_SPACE,
-        run: () => onSelectAccount(PROJECTS_SPACE),
-      },
-      ...(projects ?? [])
-        .filter((p) => p.status === "active")
-        .map((project) => ({
-          id: `project:${project.id}`,
-          icon: <FolderIcon className={ICON} />,
-          title: project.name,
-          keywords: "project",
-          run: () => onOpenProject(project.id),
-        })),
-    ];
+    const chatItems: PaletteItem[] = conversations
+      .filter((c) => !isBlank(c))
+      .toSorted((a, b) => b.updatedAt - a.updatedAt)
+      .slice(0, 12)
+      .map((chat) => ({
+        id: `chat:${chat.id}`,
+        icon: <AgentIcon className={ICON} />,
+        title: chat.title,
+        keywords: "chat agent",
+        run: () => onOpenChat(chat.id),
+      }));
 
     const staticGroups = filter([
       { id: "actions", label: "Actions", items: actions },
       { id: "mailboxes", label: "Mailboxes", items: mailboxes },
       { id: "views", label: "Views", items: viewItems },
-      { id: "projects", label: "Projects", items: projectItems },
+      { id: "chats", label: "Chats", items: chatItems },
     ]);
 
     const mail: PaletteItem[] = needle
@@ -553,8 +563,10 @@ export function CommandPalette({
     onNewView,
     onOpenSettings,
     onSelectAccount,
-    onOpenProject,
-    projects,
+    onOpenChat,
+    onNewChat,
+    onToggleBrowser,
+    conversations,
     onGoToView,
     onOpenMessage,
     onSearchMail,

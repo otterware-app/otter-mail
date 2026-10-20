@@ -77,7 +77,7 @@ struct AgentSettings: View {
                                 Text(statusText).font(.subheadline).foregroundStyle(statusColor)
                             }
                         } icon: {
-                            Image("AgentCursor")
+                            Image(decorative: "OtterAgent")
                         }
                     }
                     if agent.isOn && agent.hasKey && !agent.hermes.baseUrl.isEmpty {
@@ -144,7 +144,7 @@ struct AgentSettings: View {
                         Text(statusText).font(.subheadline).foregroundStyle(statusColor)
                     }
                 } icon: {
-                    Image("AgentCursor")
+                    Image(decorative: "OtterAgent")
                 }
             }
             if agent.openclaw.enabled {

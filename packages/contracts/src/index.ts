@@ -148,7 +148,6 @@ export type ChatChange = {
     | { kind: "draft"; id: string; accountId: string }
     | { kind: "thread"; id: string; accountId: string }
     | { kind: "label"; id: string; accountId: string }
-    | { kind: "project"; id: string }
     | { kind: "view"; id: string }
     | { kind: "theme"; id: string }
     | { kind: "event"; id: string; accountId: string; url: string | null };

@@ -33,8 +33,9 @@ struct AgentView: View {
                 }
                 ToolbarItem(placement: .principal) { modelMenu }
                 ToolbarItem(placement: .topBarTrailing) {
+                    // The account's chats read without an agent connected here.
                     Button("Chats", systemImage: "clock.arrow.circlepath") { showHistory = true }
-                        .disabled(agent.status != .ready)
+                        .disabled(agent.status != .ready && session.user == nil)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("New chat", systemImage: "square.and.pencil") { agent.newChat() }
@@ -48,6 +49,16 @@ struct AgentView: View {
 
     @ViewBuilder
     private var content: some View {
+        // A chat opened from the account's reads whatever this iPhone's agent is up to.
+        if !agent.turns.isEmpty && agent.status != .ready {
+            conversation
+        } else {
+            statusContent
+        }
+    }
+
+    @ViewBuilder
+    private var statusContent: some View {
         switch agent.status {
         case .notConfigured:
             unavailable(
@@ -66,7 +77,7 @@ struct AgentView: View {
             Label {
                 Text(title)
             } icon: {
-                Image("AgentCursor").resizable().scaledToFit().frame(width: 44, height: 44)
+                Image(decorative: "OtterAgent").resizable().scaledToFit().frame(width: 44, height: 44)
             }
         } description: {
             Text(message)
@@ -107,6 +118,13 @@ struct AgentView: View {
                     ApprovalCard(approval: approval)
                 } else if let question = agent.pendingQuestion {
                     QuestionCard(question: question).id(question.id)
+                } else if let readOnly = agent.readOnly {
+                    Text(readOnly)
+                        .font(.footnote)
+                        .foregroundStyle(palette.muted)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 28)
+                        .padding(.vertical, 14)
                 } else {
                     composer
                 }
@@ -521,7 +539,10 @@ private struct ApprovalCard: View {
     }
 }
 
-/** The chats kept on Hermes (from every device and Hermes' own web UI), newest first. */
+/**
+ * The account's chats, from every device and agent, newest first; then the
+ * picked agent's own sessions that aren't one of them (Hermes' web UI, …).
+ */
 private struct ChatHistory: View {
     @Environment(Session.self) private var session
     @Environment(\.palette) private var palette
@@ -530,35 +551,68 @@ private struct ChatHistory: View {
 
     var body: some View {
         let agent = session.agent
-        let chats = agent.history.filter {
-            query.isEmpty || ($0.title ?? "").localizedCaseInsensitiveContains(query) || ($0.preview ?? "").localizedCaseInsensitiveContains(query)
-        }
+        let matches = { (text: String?) in query.isEmpty || (text ?? "").localizedCaseInsensitiveContains(query) }
+        let synced = agent.synced.filter { matches($0.title) }
+        let linked = Set(agent.synced.filter { $0.provider == agent.selected }.compactMap(\.sessionId))
+        let sessions = agent.history.filter { !linked.contains($0.id) && (matches($0.title) || matches($0.preview)) }
         NavigationStack {
             List {
-                ForEach(chats) { chat in
-                    Button {
-                        Task { await agent.open(chat) }
-                        dismiss()
-                    } label: {
-                        VStack(alignment: .leading, spacing: 3) {
-                            HStack {
-                                Text(chat.title ?? chat.preview ?? "Untitled chat")
-                                    .foregroundStyle(palette.text)
-                                    .lineLimit(1)
-                                Spacer()
-                                Text(RelativeTime.short(chat.lastActive))
+                Section {
+                    ForEach(synced) { chat in
+                        Button {
+                            Task { await agent.open(synced: chat) }
+                            dismiss()
+                        } label: {
+                            VStack(alignment: .leading, spacing: 3) {
+                                HStack {
+                                    Text(chat.title).foregroundStyle(palette.text).lineLimit(1)
+                                    Spacer()
+                                    Text(RelativeTime.short(chat.updatedAt))
+                                        .font(.subheadline)
+                                        .foregroundStyle(palette.muted)
+                                }
+                                Text(chat.device.map { "\(chat.providerName) on \($0)" } ?? chat.providerName)
                                     .font(.subheadline)
                                     .foregroundStyle(palette.muted)
+                                    .lineLimit(1)
                             }
-                            if let preview = chat.preview, chat.title != nil {
-                                Text(preview).font(.subheadline).foregroundStyle(palette.muted).lineLimit(1)
+                        }
+                        .listRowBackground(palette.canvas)
+                        .swipeActions {
+                            Button("Delete", systemImage: "trash", role: .destructive) {
+                                Task { await agent.delete(synced: chat) }
                             }
                         }
                     }
-                    .listRowBackground(palette.canvas)
-                    .swipeActions {
-                        Button("Delete", systemImage: "trash", role: .destructive) {
-                            Task { await agent.delete(chat) }
+                }
+                if !sessions.isEmpty {
+                    Section("On \(agent.providerName)") {
+                        ForEach(sessions) { chat in
+                            Button {
+                                Task { await agent.open(chat) }
+                                dismiss()
+                            } label: {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    HStack {
+                                        Text(chat.title ?? chat.preview ?? "Untitled chat")
+                                            .foregroundStyle(palette.text)
+                                            .lineLimit(1)
+                                        Spacer()
+                                        Text(RelativeTime.short(chat.lastActive))
+                                            .font(.subheadline)
+                                            .foregroundStyle(palette.muted)
+                                    }
+                                    if let preview = chat.preview, chat.title != nil {
+                                        Text(preview).font(.subheadline).foregroundStyle(palette.muted).lineLimit(1)
+                                    }
+                                }
+                            }
+                            .listRowBackground(palette.canvas)
+                            .swipeActions {
+                                Button("Delete", systemImage: "trash", role: .destructive) {
+                                    Task { await agent.delete(chat) }
+                                }
+                            }
                         }
                     }
                 }
@@ -567,7 +621,9 @@ private struct ChatHistory: View {
             .scrollContentBackground(.hidden)
             .background(palette.canvas)
             .overlay {
-                if chats.isEmpty { ContentUnavailableView("No chats", systemImage: "bubble.left.and.bubble.right") }
+                if synced.isEmpty && sessions.isEmpty {
+                    ContentUnavailableView("No chats", systemImage: "bubble.left.and.bubble.right")
+                }
             }
             .searchable(text: $query, prompt: "Search chats")
             .navigationTitle("Chats")
@@ -577,7 +633,10 @@ private struct ChatHistory: View {
                     Button("Close", systemImage: "xmark") { dismiss() }
                 }
             }
-            .task { await agent.loadHistory() }
+            .task {
+                await agent.loadSynced()
+                await agent.loadHistory()
+            }
         }
     }
 }

@@ -38,7 +38,7 @@ export function BrowserSettingsPane() {
               <SettingResetButton label="open links" onClick={() => setOpenLinksIn("app")} />
             ) : null
           }
-          description={`Links in mail and chat open in a tab in the agent panel, or in your ${osNames.computer}'s default browser. ${modKeyName}-click opens one the other way.`}
+          description={`Links in mail and chat open in a tab in the browser panel, or in your ${osNames.computer}'s default browser. ${modKeyName}-click opens one the other way.`}
           control={
             <RowSelect
               value={openLinksIn}

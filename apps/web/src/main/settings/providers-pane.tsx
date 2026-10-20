@@ -1155,13 +1155,13 @@ const AGENT_ACCESS: { value: AgentAccess; label: string; description: string }[]
   {
     value: "read-only",
     label: "Read only",
-    description: "Reads your mail, calendars and projects. Changes nothing.",
+    description: "Reads your mail and calendars. Changes nothing.",
   },
   {
     value: "safe",
     label: "Safe",
     description:
-      "Anything you can undo: archive, label, trash, drafts, projects. Never sends or deletes for good.",
+      "Anything you can undo: archive, label, trash, drafts. Never sends or deletes for good.",
   },
   {
     value: "full-access",
@@ -1213,7 +1213,7 @@ function ConnectedAgentsSection() {
   return (
     <AgentTokensSection<ConnectedAgent>
       {...searchableSetting("connected-agents")}
-      description="Claude Code, Codex, Cursor or any agent that speaks MCP can use your mail, calendars, projects and views while Otter Mail is open."
+      description="Claude Code, Codex, Cursor or any agent that speaks MCP can use your mail, calendars and views while Otter Mail is open."
       queryKey="mcp:agents"
       list={gmailApi.connectedAgents}
       create={(name) => gmailApi.addConnectedAgent(name, access)}

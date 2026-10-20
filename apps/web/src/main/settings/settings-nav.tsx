@@ -21,11 +21,11 @@ import {
   MailIcon,
   MailCheckIcon,
   MessageSquareIcon,
-  MousePointer2Icon,
   ScrollTextIcon,
   SearchIcon,
   XIcon,
 } from "lucide-react";
+import { AgentIcon } from "../gmail/agent-icon";
 import { changelogUrl } from "@otter-mail/shared/changelog";
 import { openLink } from "../browser/store";
 import { ScrollArea } from "~/components/ui/scroll-area";
@@ -54,7 +54,7 @@ const SETTINGS_SECTION_ICONS: Readonly<
   appearance: PaletteIcon,
   keybindings: KeyboardIcon,
   accounts: MailIcon,
-  agents: MousePointer2Icon,
+  agents: AgentIcon,
   browser: GlobeIcon,
   integrations: PlugIcon,
 };

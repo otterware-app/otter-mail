@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ComponentType, ReactNode } from "react";
 import { useRouter, type RouterHistory } from "@tanstack/react-router";
 import { useSyncExternalStore } from "react";
 import {
@@ -8,8 +8,6 @@ import {
   ChevronRightIcon,
   ClockIcon,
   FileIcon,
-  FolderIcon,
-  FolderClosedIcon,
   InboxIcon,
   LayersIcon,
   MailIcon,
@@ -20,6 +18,7 @@ import {
   TagIcon,
   Trash2Icon,
 } from "lucide-react";
+import { AgentIcon } from "./agent-icon";
 import { IconBtn, HintTooltip, cn } from "./ui";
 import { COMBINED_ACCOUNT_ID } from "./custom-views";
 import { getAccountDisplayName } from "./account-style";
@@ -63,7 +62,7 @@ function trackHistory(history: RouterHistory): void {
   });
 }
 
-const RECENT_ICONS: Record<RecentIcon, typeof InboxIcon> = {
+const RECENT_ICONS: Record<RecentIcon, ComponentType<{ className?: string }>> = {
   inbox: InboxIcon,
   starred: StarIcon,
   sent: SendIcon,
@@ -76,8 +75,7 @@ const RECENT_ICONS: Record<RecentIcon, typeof InboxIcon> = {
   label: TagIcon,
   conversation: MailIcon,
   settings: Settings2Icon,
-  project: FolderIcon,
-  projects: FolderClosedIcon,
+  chat: AgentIcon,
 };
 
 /** The clock: where you've been lately (recently-viewed.ts), to go back to in one click. */
@@ -164,7 +162,7 @@ export function HistoryControls() {
 }
 
 /**
- * The sidebar and agent panel toggles' icon: ChatGPT's and Linear's soft
+ * The sidebar and browser panel toggles' icon: ChatGPT's and Linear's soft
  * frame, in Lucide's strokes so it sits with the rest. The pane is filled
  * while it's open, a thin bar while it's closed.
  */
@@ -237,7 +235,7 @@ export function SidebarControl({
 }
 
 /**
- * The agent panel toggle, pinned at the window's top-right. The rightmost
+ * The browser panel toggle (the Mac app's), pinned at the window's top-right. The rightmost
  * band (list, reader, draft, or the panel's own header) keeps a
  * `PanelControlSlot` where it sits.
  */
@@ -245,15 +243,11 @@ export function PanelControl({ open, onToggle }: { open: boolean; onToggle: () =
   return (
     <div className="pointer-events-none fixed right-(--workspace-controls-right) top-0 z-40 flex h-(--workspace-topbar-height) items-center">
       <HintTooltip
-        label={open ? "Hide agent panel" : "Show agent panel"}
-        shortcut="agent.toggle"
+        label={open ? "Hide browser" : "Show browser"}
+        shortcut="browser.toggle"
         side="bottom"
       >
-        <IconBtn
-          label="Toggle agent panel"
-          className="no-drag pointer-events-auto"
-          onClick={onToggle}
-        >
+        <IconBtn label="Toggle browser" className="no-drag pointer-events-auto" onClick={onToggle}>
           <PaneIcon side="right" open={open} className="size-4" />
         </IconBtn>
       </HintTooltip>

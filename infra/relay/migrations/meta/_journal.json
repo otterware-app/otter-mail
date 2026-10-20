@@ -57,6 +57,20 @@
       "when": 1791588888765,
       "tag": "0007_brainy_sebastian_shaw",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1792490803815,
+      "tag": "0008_drop_projects",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1792490804667,
+      "tag": "0009_chats",
+      "breakpoints": true
     }
   ]
 }

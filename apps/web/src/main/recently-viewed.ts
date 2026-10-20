@@ -10,17 +10,17 @@ import { useEffect, useSyncExternalStore } from "react";
 import { getAccountDisplayName } from "./gmail/account-style";
 import { senderLabel } from "./gmail/address";
 import { COMBINED_ACCOUNT_ID } from "./gmail/custom-views";
-import { PROJECTS_SPACE, isViewSpaceId } from "./gmail/spaces";
+import { CHATS_SPACE, isViewSpaceId } from "./gmail/spaces";
 import { SEARCH_MAILBOX } from "./gmail/gmail-query";
 import { useLabels, useMessage } from "./gmail/hooks";
-import { ALL_PROJECTS, useProjects } from "./gmail/projects";
+import { isBlank, useChats } from "./gmail/chat-store";
 import { SYSTEM_LABEL_NAMES, labelDisplayName } from "./gmail/label-names";
 import type { GmailAccount, MailView, ViewKind } from "./gmail/types";
 import type { SettingsPane } from "./gmail/api";
 import { SETTINGS_SECTION_LABELS } from "./settings/settings-search";
 
-/** The icon a place shows: a view's kind, a label, a conversation, Settings, or projects. */
-export type RecentIcon = ViewKind | "label" | "conversation" | "settings" | "project" | "projects";
+/** The icon a place shows: a view's kind, a label, a conversation, Settings, or a chat. */
+export type RecentIcon = ViewKind | "label" | "conversation" | "settings" | "chat";
 
 export type RecentPlace = Readonly<{
   /** The router location that brings it back. */
@@ -89,7 +89,7 @@ const SYSTEM_LABEL_ICONS: Record<string, ViewKind> = {
 /**
  * Records where HomeView is, once it knows what to call it: a conversation
  * by its subject (from its sender), a mailbox's label or view by name (in
- * that mailbox), a Settings page by its pane, a project by its name.
+ * that mailbox), a Settings page by its pane, a chat by its title.
  * Searches aren't places.
  */
 export function useRecordRecentlyViewed({
@@ -121,7 +121,9 @@ export function useRecordRecentlyViewed({
   const ownLabels = useLabels(
     !inSettings && !messageId && mailbox && accounts.some((a) => a.id === mailbox) ? mailbox : null,
   ).data;
-  const projects = useProjects().data;
+  const chat = useChats((s) =>
+    mailbox === CHATS_SPACE ? s.conversations.find((c) => c.id === label) : undefined,
+  );
 
   let place: RecentPlace | null = null;
   if (!ready) {
@@ -142,13 +144,8 @@ export function useRecordRecentlyViewed({
         icon: "conversation",
       };
     }
-  } else if (mailbox === PROJECTS_SPACE) {
-    const project = projects?.find((p) => p.id === label);
-    if (label === ALL_PROJECTS) {
-      place = { href, context: "Projects", title: "All projects", icon: "projects" };
-    } else if (project) {
-      place = { href, context: "Projects", title: project.name, icon: "project" };
-    }
+  } else if (mailbox === CHATS_SPACE) {
+    if (chat && !isBlank(chat)) place = { href, context: "Chats", title: chat.title, icon: "chat" };
   } else if (mailbox && label !== SEARCH_MAILBOX) {
     const account = accounts.find((a) => a.id === mailbox);
     const context =

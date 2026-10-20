@@ -66,6 +66,8 @@ final class Relay {
         case mail(email: String)
         case accounts
         case preferences
+        /** Agent chats changed on another device (contracts' chats.ts). */
+        case chats
     }
 
     struct Failure: LocalizedError {
@@ -245,6 +247,33 @@ final class Relay {
         _ = try await send("PUT", "/v1/preferences", data: try JSONSerialization.data(withJSONObject: body))
     }
 
+    // ── Agent chats (contracts' chats.ts) ────────────────────────────────────
+    // Kept as JSON objects: what this iPhone writes back keeps what other devices wrote.
+
+    /** The account's chats, without their turns (deleted ones too, with `deletedAt`). */
+    func chats() async throws -> [[String: Any]] {
+        let (data, _) = try await send("GET", "/v1/chats")
+        let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        return object?["chats"] as? [[String: Any]] ?? []
+    }
+
+    /** A chat with its turns; nil once it's deleted. */
+    func chat(_ id: String) async throws -> [String: Any]? {
+        do {
+            let (data, _) = try await send("GET", "/v1/chats/" + Self.segment(id))
+            return (try JSONSerialization.jsonObject(with: data) as? [String: Any])?["chat"] as? [String: Any]
+        } catch let failure as Failure where failure.status == 404 {
+            return nil
+        }
+    }
+
+    func putChat(_ chat: [String: Any]) async throws {
+        let id = chat["id"] as? String ?? ""
+        _ = try await send("PUT", "/v1/chats/" + Self.segment(id), data: try JSONSerialization.data(withJSONObject: chat))
+    }
+
+    func deleteChat(_ id: String) async throws { _ = try await send("DELETE", "/v1/chats/" + Self.segment(id)) }
+
     // ── Events ───────────────────────────────────────────────────────────────
 
     private var socket: URLSessionWebSocketTask?
@@ -310,11 +339,17 @@ final class Relay {
         case "mail": return (object["email"] as? String).map { .mail(email: $0) }
         case "accounts": return .accounts
         case "preferences": return .preferences
+        case "chats": return .chats
         default: return nil
         }
     }
 
     // ── Requests ─────────────────────────────────────────────────────────────
+
+    /** An id as one path segment, as it is (unlike `path`, which lowercases an address). */
+    private static func segment(_ id: String) -> String {
+        id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed.subtracting(["/"])) ?? id
+    }
 
     private static func path(_ email: String) -> String {
         email.lowercased().addingPercentEncoding(withAllowedCharacters: .urlPathAllowed.subtracting(["@", "/"])) ?? email

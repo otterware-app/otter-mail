@@ -424,7 +424,7 @@ export type SettingsPane =
   | "keybindings"
   | "accounts"
   | "agents"
-  /** The agent panel's browser (Mac): links, extensions, browsing data. */
+  /** The browser (Mac): links, extensions, browsing data. */
   | "browser"
   | "integrations"
   /** The Otter account page, opened from the user button at the bottom of the nav. */

@@ -14,8 +14,6 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import {
   createLocalJWKSet,
   exportJWK,
@@ -29,11 +27,9 @@ import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
 import { unstable_startWorker } from "wrangler";
 import { derivedKey } from "./keys.ts";
 import { localConfig } from "../scripts/local-config.ts";
-import type { ListProjectsResponse, Project } from "@otter-mail/contracts/projects";
+import type { Chat, ListChatsResponse } from "@otter-mail/contracts/chats";
 import type {
-  CreateAgentTokenResponse,
   ListAccountsResponse,
-  ListAgentTokensResponse,
   MeResponse,
   PreferencesResponse,
   RelayEvent,
@@ -1270,201 +1266,103 @@ describe("preferences", () => {
   });
 });
 
-describe("projects", () => {
-  async function projects(token: string) {
-    const response = await call("GET", "/v1/projects", token);
+describe("chats", () => {
+  async function chats(token: string) {
+    const response = await call("GET", "/v1/chats", token);
     expect(response.status).toBe(200);
-    return ((await response.json()) as ListProjectsResponse).projects;
+    return ((await response.json()) as ListChatsResponse).chats;
   }
-  const fields = {
-    name: "Acme contract",
-    status: "active",
-    notes: "",
+  const chat: Chat = {
+    id: "c_1",
+    title: "Plan the offsite",
+    provider: "openrouter",
+    sessionId: "6f1c2a52-6a5b-4a62-9a8c-3d0e5f0c7b11",
+    sessionOwned: true,
+    lastResponseId: null,
+    device: null,
     createdAt: 1_000,
-    settledAt: null,
+    updatedAt: 2_000,
+    tabs: [
+      {
+        id: "thread:me@example.com:t1",
+        title: "Venues",
+        ref: { kind: "thread", accountId: "me@example.com", id: "t1" },
+        addedAt: 1_500,
+      },
+    ],
+    turns: [
+      { id: "u-1", role: "user", text: "Find a venue" },
+      {
+        id: "a-1",
+        role: "assistant",
+        text: "",
+        items: [{ kind: "text", text: "Cedar Hall is free." }],
+        finishedAt: 1_900,
+      },
+    ],
   };
 
-  it("keeps a project's fields, threads and links, and forgets them together", async () => {
-    const { token } = await signIn("projects@example.com");
-    expect(await projects(token)).toEqual([]);
+  it("keeps a chat whole, lists it without its turns, and forgets it on delete", async () => {
+    const { token } = await signIn("chats@example.com");
+    expect(await chats(token)).toEqual([]);
 
-    expect((await call("PUT", "/v1/projects/p_1", token, fields)).status).toBe(204);
-    const thread = `/v1/projects/p_1/threads/${encodeURIComponent("Me@Example.com")}/${encodeURIComponent("1a2b.root@mail.example")}`;
-    expect((await call("PUT", thread, token, { addedAt: 2_000 })).status).toBe(204);
-    // Again: it keeps when it was added first.
-    expect((await call("PUT", thread, token, { addedAt: 3_000 })).status).toBe(204);
-    const link = { url: "https://docs.example/contract", title: "Draft", addedAt: 4_000 };
-    expect((await call("PUT", "/v1/projects/p_1/links/l_1", token, link)).status).toBe(204);
-    const settled = { ...fields, status: "settled", notes: "Signed.", settledAt: 5_000 };
-    expect((await call("PUT", "/v1/projects/p_1", token, settled)).status).toBe(204);
+    expect((await call("PUT", "/v1/chats/c_1", token, chat)).status).toBe(204);
+    const [listed] = await chats(token);
+    expect(listed).toEqual({ ...chat, turns: undefined, deletedAt: null });
+    expect(listed).not.toHaveProperty("turns");
+    const response = await call("GET", "/v1/chats/c_1", token);
+    expect(((await response.json()) as { chat: Chat }).chat).toEqual(chat);
 
-    const [project] = await projects(token);
-    expect(project).toMatchObject({
-      id: "p_1",
-      name: "Acme contract",
-      status: "settled",
-      notes: "Signed.",
-      createdAt: 1_000,
-      settledAt: 5_000,
-      threads: [
-        {
-          email: "me@example.com",
-          threadId: "1a2b.root@mail.example",
-          subject: "",
-          addedAt: 2_000,
-        },
-      ],
-      links: [{ id: "l_1", ...link }],
+    expect((await call("DELETE", "/v1/chats/c_1", token)).status).toBe(204);
+    const [deleted] = await chats(token);
+    expect(deleted).toMatchObject({
+      id: "c_1",
+      title: "",
+      sessionId: null,
+      lastResponseId: null,
+      device: null,
+      tabs: [],
     });
-
-    expect((await call("DELETE", thread, token)).status).toBe(204);
-    expect((await projects(token))[0].threads).toEqual([]);
-    expect((await call("DELETE", "/v1/projects/p_1", token)).status).toBe(204);
-    expect(await projects(token)).toEqual([]);
-    // Recreated, it starts without the old links.
-    await call("PUT", "/v1/projects/p_1", token, fields);
-    expect((await projects(token))[0].links).toEqual([]);
+    expect(deleted.deletedAt).toBeGreaterThan(0);
+    expect((await call("GET", "/v1/chats/c_1", token)).status).toBe(404);
+    // A device that hadn't heard can't bring it back.
+    const later = { ...chat, updatedAt: 9_000 };
+    expect((await call("PUT", "/v1/chats/c_1", token, later)).status).toBe(409);
   });
 
-  it("refuses threads and links of a project that doesn't exist, and bad input", async () => {
-    const { token } = await signIn("projects-missing@example.com");
-    const link = { url: "https://example.com", title: "", addedAt: 1 };
-    expect((await call("PUT", "/v1/projects/nope/links/l_1", token, link)).status).toBe(404);
-    expect((await call("PUT", "/v1/projects/p_1", token, { ...fields, name: "" })).status).toBe(
-      400,
-    );
-    expect(
-      (await call("PUT", "/v1/projects/p_1", token, { ...fields, status: "done" })).status,
-    ).toBe(400);
-    expect((await call("PUT", "/v1/projects/a%20b", token, fields)).status).toBe(400);
+  it("keeps the later of two writes", async () => {
+    const { token } = await signIn("chats-later@example.com");
+    await call("PUT", "/v1/chats/c_1", token, { ...chat, title: "Newer", updatedAt: 5_000 });
+    const stale = await call("PUT", "/v1/chats/c_1", token, { ...chat, title: "Older" });
+    expect(stale.status).toBe(409);
+    expect((await chats(token))[0].title).toBe("Newer");
   });
 
-  it("shows each account only its own projects", async () => {
-    const { token } = await signIn("projects-a@example.com");
-    const { token: other } = await signIn("projects-b@example.com");
-    await call("PUT", "/v1/projects/p_1", token, fields);
-    expect(await projects(other)).toEqual([]);
-    const link = { url: "https://example.com", title: "", addedAt: 1 };
-    expect((await call("PUT", "/v1/projects/p_1/links/l_1", other, link)).status).toBe(404);
+  it("refuses bad input", async () => {
+    const { token } = await signIn("chats-bad@example.com");
+    expect((await call("PUT", "/v1/chats/c_2", token, chat)).status).toBe(400);
+    expect((await call("PUT", "/v1/chats/a%20b", token, { ...chat, id: "a b" })).status).toBe(400);
+    const odd = { ...chat, provider: "eliza" };
+    expect((await call("PUT", "/v1/chats/c_1", token, odd)).status).toBe(400);
+    const huge = { ...chat, turns: [{ id: "u-1", role: "user", text: "x".repeat(700_000) }] };
+    expect((await call("PUT", "/v1/chats/c_1", token, huge)).status).toBe(413);
   });
 
-  it("tells every device when a project changes", async () => {
-    const { token } = await signIn("projects-multi@example.com", "projects-multi-sub");
-    const other = await signIn("projects-multi@example.com", "projects-multi-sub");
+  it("shows each account only its own chats", async () => {
+    const { token } = await signIn("chats-a@example.com");
+    const { token: other } = await signIn("chats-b@example.com");
+    await call("PUT", "/v1/chats/c_1", token, chat);
+    expect(await chats(other)).toEqual([]);
+    expect((await call("GET", "/v1/chats/c_1", other)).status).toBe(404);
+  });
+
+  it("tells every device when a chat changes", async () => {
+    const { token } = await signIn("chats-multi@example.com", "chats-multi-sub");
+    const other = await signIn("chats-multi@example.com", "chats-multi-sub");
     const device = await connect(other.token);
-    await call("PUT", "/v1/projects/p_1", token, fields);
-    await until(() => device.events.length > 0, "the projects event");
-    expect(device.events).toEqual([{ type: "projects" }]);
-    device.socket.close();
-  });
-});
-
-describe("MCP for agents", () => {
-  async function agent(token: string) {
-    const client = new Client({ name: "test-agent", version: "1.0.0" });
-    await client.connect(
-      new StreamableHTTPClientTransport(new URL(`${base}/mcp`), {
-        requestInit: { headers: { authorization: `Bearer ${token}` } },
-      }),
-    );
-    return client;
-  }
-  const text = (result: Awaited<ReturnType<Client["callTool"]>>) =>
-    (result.content as { type: string; text: string }[])[0].text;
-
-  it("makes, lists and revokes agent tokens, shown once", async () => {
-    const { token } = await signIn("tokens@example.com");
-    const created = await call("POST", "/v1/agent-tokens", token, { name: "Hermes" });
-    expect(created.status).toBe(200);
-    const { token: secret, agentToken } = (await created.json()) as CreateAgentTokenResponse;
-    expect(secret).toMatch(/^otter_/);
-    const list = async () =>
-      ((await (await call("GET", "/v1/agent-tokens", token)).json()) as ListAgentTokensResponse)
-        .tokens;
-    expect(await list()).toEqual([agentToken]);
-    expect(JSON.stringify(await list())).not.toContain(secret);
-
-    await (await agent(secret)).close();
-    expect((await list())[0].lastUsedAt).not.toBeNull();
-
-    expect((await call("DELETE", `/v1/agent-tokens/${agentToken.id}`, token)).status).toBe(204);
-    expect(await list()).toEqual([]);
-    expect((await call("POST", "/mcp", secret, {})).status).toBe(401);
-  });
-
-  it("refuses requests without an agent token, and session tokens", async () => {
-    expect((await call("POST", "/mcp", undefined, {})).status).toBe(401);
-    const { token } = await signIn("mcp-session@example.com");
-    expect((await call("POST", "/mcp", token, {})).status).toBe(401);
-  });
-
-  it("manages the account's projects with the project tools", async () => {
-    const { token } = await signIn("mcp@example.com", "mcp-sub");
-    const device = await connect((await signIn("mcp@example.com", "mcp-sub")).token);
-    const { token: secret } = (await (
-      await call("POST", "/v1/agent-tokens", token, { name: "Hermes" })
-    ).json()) as CreateAgentTokenResponse;
-    const client = await agent(secret);
-
-    const { tools } = await client.listTools();
-    expect(tools.map((t) => t.name)).toEqual([
-      "list_projects",
-      "get_project",
-      "create_project",
-      "update_project",
-      "set_project_status",
-      "add_to_project",
-      "remove_from_project",
-    ]);
-    expect(tools.find((t) => t.name === "list_projects")?.annotations?.readOnlyHint).toBe(true);
-
-    const created = JSON.parse(
-      text(
-        await client.callTool({
-          name: "create_project",
-          arguments: {
-            name: "Acme contract",
-            conversations: [{ account: "Me@Example.com", threadId: "t1" }],
-            links: [{ url: "https://docs.example/contract" }],
-          },
-        }),
-      ),
-    ) as { id: string; conversations: unknown[]; links: { title: string }[] };
-    expect(created.conversations).toEqual([{ account: "me@example.com", threadId: "t1" }]);
-    expect(created.links[0].title).toBe("https://docs.example/contract");
-    await until(() => device.events.length > 0, "the projects event");
-    expect(device.events[0]).toEqual({ type: "projects" });
-
-    await client.callTool({
-      name: "set_project_status",
-      arguments: { projectId: created.id, status: "settled" },
-    });
-    const [project] = (
-      (await (await call("GET", "/v1/projects", token)).json()) as ListProjectsResponse
-    ).projects as Project[];
-    expect(project.status).toBe("settled");
-    expect(project.settledAt).toBeGreaterThan(0);
-
-    const missing = await client.callTool({
-      name: "get_project",
-      arguments: { projectId: "p_nope" },
-    });
-    expect(missing.isError).toBe(true);
-    expect(text(missing)).toContain("No project");
-
-    // Another account's token sees none of it.
-    const { token: otherSession } = await signIn("mcp-other@example.com");
-    const { token: otherSecret } = (await (
-      await call("POST", "/v1/agent-tokens", otherSession, { name: "x" })
-    ).json()) as CreateAgentTokenResponse;
-    const stranger = await agent(otherSecret);
-    expect(
-      JSON.parse(
-        text(await stranger.callTool({ name: "list_projects", arguments: { status: "all" } })),
-      ),
-    ).toEqual([]);
-    await stranger.close();
-    await client.close();
+    await call("PUT", "/v1/chats/c_1", token, chat);
+    await until(() => device.events.length > 0, "the chats event");
+    expect(device.events).toEqual([{ type: "chats", email: "" }]);
     device.socket.close();
   });
 });

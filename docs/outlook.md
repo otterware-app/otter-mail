@@ -3,7 +3,7 @@
 Outlook (Microsoft 365 work and school mailboxes, and personal outlook.com, hotmail.com and
 live.com ones) is a provider of its own, through Microsoft Graph, next to Gmail's API and IMAP
 (docs/imap.md has the layers). Everything above the provider sees mail as messages carrying
-labels, so lists, the reader, search, undo, views and projects work as they do for Gmail.
+labels, so lists, the reader, search, undo and views work as they do for Gmail.
 
 ```
 MailProvider               packages/core/src/providers/provider.ts
@@ -117,7 +117,7 @@ call is a Teams meeting where the account can have one.
 ## The iPhone app
 
 Its own Swift implementation of the same design (`apps/ios/OtterMail/Outlook/`, sign-in in
-`Account/MicrosoftAuth.swift`), with the same label ids, so views, projects and preferences agree:
+`Account/MicrosoftAuth.swift`), with the same label ids, so views and preferences agree:
 
 - Sign-in is the installed-app flow with PKCE in a browser sheet, as a public client, returning to
   `msauth.<bundle id>://auth` (an iOS redirect on the same app registration). Rotated refresh

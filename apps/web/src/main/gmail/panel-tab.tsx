@@ -4,7 +4,8 @@ import { XIcon } from "lucide-react";
 import { cn } from "./ui";
 
 /**
- * One of the agent panel's pill tabs (Codex's): a chat or a browser page.
+ * A pill tab (Codex's): a page in the browser panel, or one of a chat's tabs
+ * in the AI workspace.
  * The × closes it (always on the selected tab, on hover otherwise), and so
  * does a middle-click, as in a browser. In a strip too narrow for them all,
  * tabs give way down to a width that still names them, then the strip

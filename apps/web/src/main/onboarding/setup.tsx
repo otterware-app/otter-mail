@@ -13,10 +13,10 @@ import {
   LayersIcon,
   ListIcon,
   LoaderIcon,
-  MousePointer2Icon,
   ServerIcon,
   ZapIcon,
 } from "lucide-react";
+import { AgentIcon } from "../gmail/agent-icon";
 import { Switch } from "~/components/ui/switch";
 import {
   gmailApi,
@@ -317,7 +317,7 @@ const PILLARS: { icon: ReactNode; title: string; body: string }[] = [
     body: `Gmail's shortcuts out of the box, each one yours to remap, and ${shortcutText("mod+k")} for everything else.`,
   },
   {
-    icon: <MousePointer2Icon />,
+    icon: <AgentIcon />,
     title: "An agent beside your mail",
     body: "Ask about a conversation, have it find that one email, or let it draft the reply.",
   },

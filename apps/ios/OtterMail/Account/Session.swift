@@ -160,6 +160,7 @@ final class Session {
                     }
                 case .accounts: await self.pullAccounts()
                 case .preferences: await self.pullPreferences()
+                case .chats: await self.agent.loadSynced()
                 }
             }
         }
@@ -563,6 +564,7 @@ final class Session {
         store = MailStore(preferences: preferences)
         state = .welcome
         agent.newChat()
+        agent.synced = []
         agent.forgetKey()
         Task { try? await UNUserNotificationCenter.current().setBadgeCount(0) }
     }

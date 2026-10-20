@@ -30,7 +30,7 @@ const DRILLS: Drill[] = [
     label: "Command palette",
     caption: "Opens the command palette",
   },
-  { command: "agent.toggle", label: "Agent", caption: "Opens the agent beside your mail" },
+  { command: "agent.toggle", label: "Agent", caption: "Opens the agent over your mail" },
 ];
 
 type Row = { id: number; from: string; subject: string; starred: boolean };

@@ -1,10 +1,10 @@
 /**
  * Peeking at a space (ChatGPT's): with the sidebar collapsed, hovering a
- * mailbox or Projects in the rail shows its sidebar over the window after a
- * beat (at once while one shows), so a folder or project in another space is
+ * mailbox or Chats in the rail shows its sidebar over the window after a
+ * beat (at once while one shows), so a folder or chat in another space is
  * one click away. It stays while the pointer is in it, and goes a moment
  * after it leaves (not while a menu or dialog of it is open). A conversation
- * dragged onto the rail opens it too, to drop on a label or a project.
+ * dragged onto the rail opens it too, to drop on a label.
  */
 
 import { useEffect, useRef, useState, type ReactNode } from "react";

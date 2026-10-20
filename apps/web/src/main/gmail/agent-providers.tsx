@@ -29,6 +29,23 @@ export function useAgentProviders() {
   });
 }
 
+/**
+ * The provider a chat runs on: the one it started with, or for an empty chat
+ * the picker's (the default for new chats).
+ */
+export function useChatProvider(chat: { provider: ProviderKind; turns: unknown[] } | undefined) {
+  const state = useAgentProviders().data;
+  const selectedKind = state?.selected ?? "openrouter";
+  const kind: ProviderKind = chat && chat.turns.length > 0 ? chat.provider : selectedKind;
+  const provider = state?.providers.find((p) => p.kind === kind);
+  const name =
+    provider?.displayName ??
+    (kind === "openrouter" ? "OpenRouter" : kind === "codex" ? "Codex" : "Hermes");
+  return { state, selectedKind, kind, provider, name, usable: isProviderUsable(provider) };
+}
+
+export type ChatProvider = ReturnType<typeof useChatProvider>;
+
 /** Writes the state an update call returns, so the UI doesn't wait for the broadcast. */
 export function useSetProvidersState() {
   const qc = useQueryClient();

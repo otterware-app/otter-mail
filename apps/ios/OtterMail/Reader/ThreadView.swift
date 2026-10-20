@@ -67,7 +67,7 @@ struct ThreadView: View {
         .toolbar {
             if session.agent.isOn {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button { asking = [MailContext(thread)] } label: { Label("Ask the agent", image: "AgentCursor") }
+                    Button { asking = [MailContext(thread)] } label: { Label("Ask the agent", image: "OtterAgent") }
                 }
                 ToolbarSpacer(.fixed, placement: .topBarTrailing)
             }

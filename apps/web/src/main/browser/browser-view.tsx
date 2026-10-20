@@ -94,18 +94,26 @@ export function BrowserTabIcon({ tab }: { tab: BrowserTab }) {
 }
 
 /**
- * The browser's pages, over the chat (which stays mounted underneath, its
- * turns streaming) while one of its tabs shows. A tab's page loads the first
- * time it shows and then stays alive, waiting offscreen while another shows.
+ * Pages: the panel's, or the ones a chat opened (in the workspace). A tab's
+ * page loads the first time it shows and then stays alive, waiting offscreen
+ * while another shows.
  */
-export function BrowserPages({ onNewChat }: { onNewChat: () => void }) {
-  const tabs = useBrowser((s) => s.tabs);
-  const activeId = useBrowser((s) => s.activeId);
+export function BrowserPages({
+  tabs,
+  activeId,
+  onNewChat,
+  className,
+}: {
+  tabs: BrowserTab[];
+  activeId: string | null;
+  onNewChat: () => void;
+  className?: string;
+}) {
   const [shown, setShown] = useState<ReadonlySet<string>>(() => new Set());
   if (activeId && !shown.has(activeId)) setShown(new Set(shown).add(activeId));
   return (
     <div
-      className="absolute inset-x-0 bottom-0 top-(--workspace-topbar-height) z-10 overflow-hidden rounded-t-xl bg-canvas"
+      className={cn("relative min-h-0 flex-1 overflow-hidden bg-canvas", className)}
       style={activeId ? undefined : OFFSCREEN}
     >
       {tabs.map((tab) =>

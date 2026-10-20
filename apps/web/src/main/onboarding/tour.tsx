@@ -52,9 +52,9 @@ const STOPS: TourStop[] = [
     ],
   },
   {
-    target: "projects",
-    title: "Views and projects",
-    body: "Under your mailboxes: views, which + makes, each one list of what its filters find across them (every newsletter, receipts from any account), then Projects, which keep a piece of work's conversations, documents and notes together until it's settled. Hover one to peek at its sidebar.",
+    target: "chats",
+    title: "Views and chats",
+    body: "Under your mailboxes: views, which + makes, each one list of what its filters find across them (every newsletter, receipts from any account), then Chats, the agent's workspace: a chat beside the conversations, drafts and pages it used and made, on every device.",
   },
   {
     target: "list",
@@ -81,10 +81,10 @@ const STOPS: TourStop[] = [
   {
     target: "agent",
     title: "Your agent",
-    body: "It sees the conversation you're reading; select text to quote it. It can search, draft and sort your mail, and asks before changing anything. Pick the agent and model in its composer.",
+    body: "It opens over your mail and sees the conversation you're reading; select text to quote it. It can search, draft and sort your mail, and asks before changing anything. Open a chat in the workspace to see what it used and made beside it.",
     keys: [
       { command: "agent.toggle", label: "Show or hide" },
-      { command: "agent.newChat", label: "New chat" },
+      { command: "agent.openWorkspace", label: "Open in workspace" },
     ],
     message: true,
     agent: true,
@@ -158,7 +158,7 @@ export function Tour({ actions, onClose }: { actions: TourActions; onClose: () =
   const box = useTargetBox(stop.target);
 
   const actionsRef = useLatest(actions);
-  // The agent panel is put back as it was when the tour ends.
+  // The agent's window is put back as it was when the tour ends.
   const agentWasOpen = useRef(actions.agentOpen);
   useEffect(() => {
     const { openMessage, setAgentOpen } = actionsRef.current;

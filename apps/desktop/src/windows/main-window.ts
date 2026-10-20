@@ -70,7 +70,7 @@ export async function createMainWindow(): Promise<BrowserWindow> {
         nodeIntegration: false,
         sandbox: true,
         spellcheck: true,
-        // The agent panel's browser tabs (services/browser.ts vets each one).
+        // The browser's tabs (services/browser.ts vets each one).
         webviewTag: true,
       },
     });
