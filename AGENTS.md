@@ -76,6 +76,8 @@ when a feature lands or goes.
 - `assets/`: app icons like Otter Code's: `prod/` for stable, `nightly/` for the night sky, and `dev/`
   for the blueprint. The iPhone has stable and dev icons. Every icon is drawn from
   the one mark, `prod/otter-mail-symbol.svg`: `pnpm icons:export` regenerates them all.
+  `agent/` is Otterware's agent (the face): the app draws it with `AgentIcon`
+  (`apps/web/src/main/gmail/agent-icon.tsx`), the iPhone with its `OtterAgent` image.
 - `changelog/`: notes on Mac and web releases (`<version>.md`, images in `images/`), shown on
   otterware.app/mail/changelog (the website repository copies them hourly) and on the version's
   GitHub Release (workflows copy it there); the app only links there. A note is marketing, written only when the user asks for one (the

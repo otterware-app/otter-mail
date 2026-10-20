@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ComponentType, ReactNode } from "react";
 import { useRouter, type RouterHistory } from "@tanstack/react-router";
 import { useSyncExternalStore } from "react";
 import {
@@ -8,7 +8,6 @@ import {
   ChevronRightIcon,
   ClockIcon,
   FileIcon,
-  MousePointer2Icon,
   InboxIcon,
   LayersIcon,
   MailIcon,
@@ -19,6 +18,7 @@ import {
   TagIcon,
   Trash2Icon,
 } from "lucide-react";
+import { AgentIcon } from "./agent-icon";
 import { IconBtn, HintTooltip, cn } from "./ui";
 import { COMBINED_ACCOUNT_ID } from "./custom-views";
 import { getAccountDisplayName } from "./account-style";
@@ -62,7 +62,7 @@ function trackHistory(history: RouterHistory): void {
   });
 }
 
-const RECENT_ICONS: Record<RecentIcon, typeof InboxIcon> = {
+const RECENT_ICONS: Record<RecentIcon, ComponentType<{ className?: string }>> = {
   inbox: InboxIcon,
   starred: StarIcon,
   sent: SendIcon,
@@ -75,7 +75,7 @@ const RECENT_ICONS: Record<RecentIcon, typeof InboxIcon> = {
   label: TagIcon,
   conversation: MailIcon,
   settings: Settings2Icon,
-  chat: MousePointer2Icon,
+  chat: AgentIcon,
 };
 
 /** The clock: where you've been lately (recently-viewed.ts), to go back to in one click. */

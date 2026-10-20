@@ -175,7 +175,7 @@ struct ThreadListView: View {
                                 .disabled(!selected.compactMap(store.thread).contains { $0.labels.contains("INBOX") })
                         }
                     } else {
-                        Button(action: onAgent) { Label("Agent", image: "AgentCursor") }
+                        Button(action: onAgent) { Label("Agent", image: "OtterAgent") }
                     }
                 }
             }

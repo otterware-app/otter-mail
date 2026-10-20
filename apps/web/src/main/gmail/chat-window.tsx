@@ -14,9 +14,9 @@ import {
   LoaderCircleIcon,
   Maximize2Icon,
   MinusIcon,
-  MousePointer2Icon,
   SquarePenIcon,
 } from "lucide-react";
+import { AgentIcon } from "./agent-icon";
 
 import { useChatProvider } from "./agent-providers";
 import { gmailApi, type ChatChange, type ChatSession } from "./api";
@@ -88,7 +88,7 @@ export function ChatWindow({
       className="absolute bottom-4 right-4 web:bottom-3 web:right-3 z-30 flex h-[min(38rem,calc(100%-4.5rem))] w-[min(27rem,calc(100%-1.5rem))] flex-col overflow-hidden rounded-2xl border border-foreground/10 bg-canvas shadow-[0_24px_60px_-20px_rgb(0_0_0/45%)] dark:shadow-[0_24px_60px_-20px_rgb(0_0_0/80%)]"
     >
       <div className="relative flex h-11 shrink-0 items-center gap-1 border-b border-border/60 ps-3.5 pe-1.5">
-        <MousePointer2Icon className="size-3.5 shrink-0 text-muted-foreground" />
+        <AgentIcon className="size-3.5 shrink-0 text-muted-foreground" />
         <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
           {active && !isBlank(active) ? active.title : "New chat"}
         </span>
@@ -188,7 +188,7 @@ export function ChatLauncher({ onOpen }: { onOpen: () => void }) {
         {working && !waiting ? (
           <LoaderCircleIcon className="size-5 animate-spin text-muted-foreground" />
         ) : (
-          <MousePointer2Icon className="size-5" />
+          <AgentIcon className="size-5" />
         )}
         {waiting || finished ? (
           <span

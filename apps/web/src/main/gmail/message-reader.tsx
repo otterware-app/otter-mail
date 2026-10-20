@@ -25,7 +25,6 @@ import {
   ArchiveIcon,
   ArchiveRestoreIcon,
   ArchiveXIcon,
-  MousePointer2Icon,
   ChevronDownIcon,
   DownloadIcon,
   EllipsisIcon,
@@ -46,6 +45,7 @@ import {
   XIcon,
   ListIcon,
 } from "lucide-react";
+import { AgentIcon } from "./agent-icon";
 import { SenderHoverCard } from "./sender-hovercard";
 import { UnsubscribeLink } from "./unsubscribe-link";
 import {
@@ -2787,7 +2787,7 @@ export function MessageReader({
                 </DropdownMenuItem>
               )}
               <DropdownMenuSeparator />
-              <DropdownMenuItem icon={<MousePointer2Icon />} onSelect={() => onOpenChat?.()}>
+              <DropdownMenuItem icon={<AgentIcon />} onSelect={() => onOpenChat?.()}>
                 Chat about this with the agent
               </DropdownMenuItem>
               <DropdownMenuItem

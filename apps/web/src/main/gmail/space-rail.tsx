@@ -2,7 +2,6 @@ import { useLatest } from "../use-latest";
 import { useEffect, useState, type ReactNode } from "react";
 import {
   CircleUserRoundIcon,
-  MousePointer2Icon,
   LayersIcon,
   LogInIcon,
   MessageSquareIcon,
@@ -10,6 +9,7 @@ import {
   RotateCwIcon,
   SettingsIcon,
 } from "lucide-react";
+import { AgentIcon } from "./agent-icon";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -229,7 +229,7 @@ export function SpaceRail({
         {spaceButton({
           id: CHATS_SPACE,
           name: "Chats",
-          mark: <MousePointer2Icon className="size-5" />,
+          mark: <AgentIcon className="size-5" />,
           peek: true,
           shortcut: shortcutText("mod+shift+f"),
           tour: "chats",

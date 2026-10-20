@@ -29,7 +29,6 @@ import {
   ArchiveIcon,
   RotateCwIcon,
   ArchiveXIcon,
-  MousePointer2Icon,
   FlagIcon,
   MailIcon,
   MailOpenIcon,
@@ -45,6 +44,7 @@ import {
   ChevronDownIcon,
   PaperclipIcon,
 } from "lucide-react";
+import { AgentIcon } from "./agent-icon";
 import { IconBtn, HintTooltip, cn } from "./ui";
 import {
   useMessages,
@@ -2077,7 +2077,7 @@ export function MessageList({
             <span className="mx-1 h-5 w-px shrink-0 bg-border" aria-hidden />
             <HintTooltip label="Chat about the selection with the agent">
               <IconBtn label="Open in agent chat" className="size-7" onClick={() => onOpenChat?.()}>
-                <MousePointer2Icon className="size-3.5" />
+                <AgentIcon className="size-3.5" />
               </IconBtn>
             </HintTooltip>
             <span className="mx-1 h-5 w-px shrink-0 bg-border" aria-hidden />

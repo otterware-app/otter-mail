@@ -77,7 +77,7 @@ struct AgentView: View {
             Label {
                 Text(title)
             } icon: {
-                Image("AgentCursor").resizable().scaledToFit().frame(width: 44, height: 44)
+                Image(decorative: "OtterAgent").resizable().scaledToFit().frame(width: 44, height: 44)
             }
         } description: {
             Text(message)

@@ -4,7 +4,8 @@
  * working, waiting on you, or finished while you were away says so.
  */
 
-import { LoaderCircleIcon, MousePointer2Icon, SquarePenIcon, Trash2Icon } from "lucide-react";
+import { LoaderCircleIcon, SquarePenIcon, Trash2Icon } from "lucide-react";
+import { AgentIcon } from "./agent-icon";
 
 import { useChatProvider } from "./agent-providers";
 import { deleteConversation, isBlank, useChats, type Conversation } from "./chat-store";
@@ -58,7 +59,7 @@ export function ChatsSidebar({
               run && !waiting ? (
                 <LoaderCircleIcon className="size-4 animate-spin" />
               ) : (
-                <MousePointer2Icon className="size-4" />
+                <AgentIcon className="size-4" />
               )
             }
             title={chat.title}

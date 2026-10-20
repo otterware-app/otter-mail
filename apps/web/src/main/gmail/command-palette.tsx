@@ -28,7 +28,6 @@ import {
   MonitorIcon,
   MoonIcon,
   PaletteIcon,
-  MousePointer2Icon,
   PlusIcon,
   RotateCwIcon,
   ScrollTextIcon,
@@ -42,6 +41,7 @@ import {
   SunMoonIcon,
   Trash2Icon,
 } from "lucide-react";
+import { AgentIcon } from "./agent-icon";
 import { useDebouncedValue, useSearchMessages } from "./hooks";
 import { getAccountColor, getAccountDisplayName } from "./account-style";
 import { senderLabel } from "./address";
@@ -322,7 +322,7 @@ export function CommandPalette({
       { id: "sync", icon: <RotateCwIcon className={ICON} />, title: "Sync now", run: onSync },
       {
         id: "chat",
-        icon: <MousePointer2Icon className={ICON} />,
+        icon: <AgentIcon className={ICON} />,
         title: "Ask the agent",
         keywords: "chat agent assistant ai claude codex hermes openclaw",
         shortcut: sc("agent.toggle"),
@@ -484,7 +484,7 @@ export function CommandPalette({
       .slice(0, 12)
       .map((chat) => ({
         id: `chat:${chat.id}`,
-        icon: <MousePointer2Icon className={ICON} />,
+        icon: <AgentIcon className={ICON} />,
         title: chat.title,
         keywords: "chat agent",
         run: () => onOpenChat(chat.id),
