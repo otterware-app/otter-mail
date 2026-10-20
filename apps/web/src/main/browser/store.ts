@@ -246,14 +246,23 @@ export function setOpenLinksIn(value: OpenLinksIn): void {
   set({ openLinksIn: value });
 }
 
+/** Where in-app links go instead of the panel while the AI workspace shows: the chat's tabs. */
+let linkHandler: ((url: string) => void) | null = null;
+
+export function routeLinks(handler: ((url: string) => void) | null): void {
+  linkHandler = handler;
+}
+
 /**
- * A link from mail or chat: a tab in the browser panel (Mac), unless Settings › Browser says
- * otherwise. ⌘-click (`flip`) opens it the other way.
+ * A link from mail or chat: a tab in the browser panel (Mac), or in the AI
+ * workspace the chat's own, unless Settings › Browser says otherwise.
+ * ⌘-click (`flip`) opens it the other way.
  */
 export function openLink(url: string, { flip = false } = {}): void {
   const inApp = (get().openLinksIn === "app") !== flip;
   if (features.browser && /^https?:/i.test(url) && inApp) {
-    openTab(url);
+    if (linkHandler) linkHandler(url);
+    else openTab(url);
     return;
   }
   void window.desktopBridge.openExternal(url).catch(() => {});

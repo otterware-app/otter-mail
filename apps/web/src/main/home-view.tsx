@@ -595,7 +595,8 @@ function MailHome() {
   // Entering or leaving Settings swaps panes in place rather than animating them.
   const { active: panelAnimationsActive, durationMs: panelAnimationDurationMs } =
     usePanelAnimationSettings(settingsRoute ? "settings" : "mail");
-  const browserVisible = browserOpen && !settingsRoute;
+  // The browser panel is the mail's: the workspace opens a chat's pages beside it.
+  const browserVisible = browserOpen && !settingsRoute && !isChats;
   const sidebarPresent = usePanelPresence(
     sidebarOpen,
     panelAnimationsActive,
@@ -627,7 +628,7 @@ function MailHome() {
   };
   /** The panel shows the last page, or a new tab's start page. */
   const toggleBrowser = () => {
-    if (!features.browser) return false;
+    if (!features.browser || isChats) return false;
     if (browserVisible) {
       closeBrowser();
       return;
@@ -907,7 +908,7 @@ function MailHome() {
     "agent.newChat": () => startNewChat(),
     "browser.toggle": () => toggleBrowser(),
     "browser.newTab": () => {
-      if (!features.browser) return false;
+      if (!features.browser || isChats) return false;
       newTab();
     },
     "search.focus": () => searchFromView(),
@@ -1444,7 +1445,7 @@ function MailHome() {
   const readerOwnsBand =
     !settingsRoute && !(composeOpen && composeAccountId) && !!readerAccount && !!selectedMessageId;
   // Room for the pinned browser toggle, while the panel doesn't show (it keeps it then).
-  const browserToggleRoom = features.browser && !browserOpen && !settingsRoute;
+  const browserToggleRoom = features.browser && !browserVisible && !settingsRoute && !isChats;
   const titleTrailing = <TitleTrailing showPanelToggle={browserToggleRoom} />;
   // A view's space has no sidebar to toggle.
   const sidebarToggle = !(viewSpace && !settingsRoute);
@@ -1827,7 +1828,7 @@ function MailHome() {
       {!sidebarToggle ? null : (
         <SidebarControl sidebarOpen={sidebarOpen} onToggleSidebar={toggleSidebar} />
       )}
-      {features.browser && !settingsRoute ? (
+      {features.browser && !settingsRoute && !isChats ? (
         <PanelControl open={browserOpen} onToggle={toggleBrowser} />
       ) : null}
 

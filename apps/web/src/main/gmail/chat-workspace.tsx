@@ -7,19 +7,24 @@
  * message's context, as the open conversation is in the mail.
  */
 
-import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { FileIcon, FilePenLineIcon, GlobeIcon, MailIcon, TriangleAlertIcon } from "lucide-react";
 import { chatTabId, type ChatTabRef } from "@otter-mail/contracts/chats";
 
 import { BrowserPages } from "../browser/browser-view";
-import { chatPageId, closeChatPage, ensureChatPage, useBrowser } from "../browser/store";
+import {
+  chatPageId,
+  closeChatPage,
+  ensureChatPage,
+  routeLinks,
+  useBrowser,
+} from "../browser/store";
 import { features } from "../features";
 import { useCommandHandlers } from "../keybindings/dispatch";
 import { useLatest } from "../use-latest";
 import { gmailApi, type ChatChange } from "./api";
 import { useMailChatContext } from "./chat-context";
-import { ChatLinkOpener } from "./chat-markdown";
 import {
   closeChatTab,
   newChat,
@@ -154,14 +159,11 @@ export function ChatWorkspace({
       open({ kind: "page", url: target.url }, change.title);
     else await onNavigate(change);
   };
-  const openLink = useCallback(
-    (url: string, flip: boolean) => {
-      if (features.browser && /^https?:/i.test(url) && !flip)
-        openChatTab(chatId, { kind: "page", url }, url);
-      else void window.desktopBridge.openExternal(url).catch(() => {});
-    },
-    [chatId],
-  );
+  // Links from the chat and its conversations open as its pages (Mac).
+  useEffect(() => {
+    routeLinks((url) => openChatTab(chatId, { kind: "page", url }, url));
+    return () => routeLinks(null);
+  }, [chatId]);
   const close = (tab: ChatTab) => {
     if (tab.ref.kind === "page") closeChatPage(chatId, tab.id);
     closeChatTab(chatId, tab.id);
@@ -204,22 +206,24 @@ export function ChatWorkspace({
   const pageTabs = allPages.filter((t) => t.chatId === chatId);
 
   const chat = (
-    <ChatLinkOpener.Provider value={openLink}>
-      <ChatView
-        chatId={chatId}
-        context={context}
-        inputRef={inputRef}
-        onOpenChange={openChange}
-        onOpenFile={(href) => open({ kind: "file", href }, href.split(/[\\/]/).pop() || href)}
-      />
-    </ChatLinkOpener.Provider>
+    <ChatView
+      chatId={chatId}
+      context={context}
+      inputRef={inputRef}
+      onOpenChange={openChange}
+      onOpenFile={(href) => open({ kind: "file", href }, href.split(/[\\/]/).pop() || href)}
+    />
   );
 
   return (
     <div ref={workspaceRef} className="relative flex min-h-0 min-w-0 flex-1" data-tour="workspace">
       <div
-        style={tabs.length > 0 ? { width } : undefined}
-        className={cn("flex min-h-0 min-w-0 flex-col", tabs.length > 0 ? "shrink-0" : "flex-1")}
+        style={tabs.length > 0 ? { flexBasis: width } : undefined}
+        className={cn(
+          "flex min-h-0 flex-col",
+          // Beside its tabs, it gives way first, down to a readable column.
+          tabs.length > 0 ? "min-w-[300px] shrink" : "min-w-0 flex-1",
+        )}
       >
         <div className="drag-region flex h-(--workspace-topbar-height) shrink-0 items-center gap-2 px-4">
           {titleLeading}
@@ -240,7 +244,7 @@ export function ChatWorkspace({
               <div className="w-px bg-border/70 group-hover:bg-input" />
             </div>
           </div>
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <div className="flex min-h-0 min-w-[360px] flex-[1_1_0] flex-col">
             <div className="drag-region flex h-(--workspace-topbar-height) shrink-0 items-center gap-1 px-3">
               <div
                 role="tablist"
