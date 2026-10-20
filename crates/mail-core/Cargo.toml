@@ -1,0 +1,46 @@
+[package]
+name = "mail-core"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+rusqlite = { version = "0.40", features = ["bundled"] }
+reqwest = { version = "0.13", default-features = false, features = [
+  "rustls",
+  "json",
+  "form",
+  "query",
+  "http2",
+  "charset",
+] }
+mail-parser = "0.11"
+mail-builder = "1"
+chrono = { version = "0.4", features = ["serde"] }
+base64 = "0.22"
+sha2 = "0.10"
+rand = "0.9"
+url = "2"
+log = "0.4"
+futures = "0.3"
+parking_lot = "0.12"
+html2text = "0.17"
+dirs = "6"
+open = "5"
+keyring = { version = "3", features = ["apple-native", "sync-secret-service"] }
+async-trait = "0.1"
+uuid = { version = "1", features = ["v4"] }
+hex = "0.4"
+aes = "0.8"
+cbc = { version = "0.1", features = ["alloc"] }
+pbkdf2 = "0.12"
+sha1 = "0.10"
+hmac = "0.12"
+encoding_rs = "0.8"
+
+[dev-dependencies]
+tempfile = "3"
