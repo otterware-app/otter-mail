@@ -48,12 +48,13 @@ when a feature lands or goes.
   tab for every open tab (`backend.ts`), and the bridge that stands in for the preload. What only the desktop app has is off in `desktopBridge.features`.
   What the computer is called in copy (Mac / computer) is
   `src/main/os-names.ts`; shortcuts in copy go through `shortcutText("mod+k")` (⌘K, Ctrl+K).
-- `apps/ios`: Otter Mail for iPhone, a native SwiftUI app (iOS 27, Liquid Glass): ChatGPT's
-  layout (a drawer of mailboxes you swipe through), Otter Code's list rows. Its own Swift code,
-  not the TypeScript core: it signs in to Google itself (the "iOS" OAuth client, PKCE), talks to
-  Gmail directly, caches on disk, and follows the Otter account through the relay (mailboxes,
-  preferences under the same keys, live events). `Resources/` holds the themes and demo mailbox,
-  exported from `packages/shared` by `pnpm ios:resources`. See its README.
+- `apps/ios`: Otter Mail for iPhone, a native SwiftUI app (iOS 27, Liquid Glass): ChatGPT's layout
+  (a drawer of mailboxes you swipe through) under iOS's tabs (Mail, Agent, Search), Otter Code's
+  list rows. Its own Swift code, not the TypeScript core: it signs in to Google itself (the "iOS"
+  OAuth client, PKCE), talks to Gmail directly, caches on disk, and follows the Otter account
+  through the relay (mailboxes, preferences under the same keys, live events). `Resources/` holds
+  the themes and demo mailbox, exported from `packages/shared` by `pnpm ios:resources`. See its
+  README.
 - `packages/contracts`: types shared by both sides, including `DesktopBridge`, the
   `window.desktopBridge` API the preload exposes, and the relay's API (`src/relay.ts`).
 - `packages/shared`: what every app shows the same, the iPhone app included: the color themes

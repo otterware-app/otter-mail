@@ -8,25 +8,75 @@ struct Place: Hashable {
 }
 
 /**
- * The app's frame, ChatGPT's: the mail list, with the sidebar drawer under
- * it. A swipe in from the left edge, or a tap on the list's title, slides
- * the list aside.
+ * The app's frame: iOS's tabs, for the mail, the agent (the AI workspace:
+ * its chats, every device's) and search. The mail is ChatGPT's: the list,
+ * with the sidebar drawer under it. A swipe in from the left edge, or a tap
+ * on the list's title, slides the list aside.
  */
 struct HomeView: View {
+    enum Tab: Hashable { case mail, agent, search }
+
     @Environment(MailStore.self) private var store
     @Environment(Session.self) private var session
     @Environment(\.palette) private var palette
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Namespace private var messageTransition
+    @Namespace private var searchTransition
 
+    @State private var tab = Tab.mail
     @State private var place = Place()
     @State private var path: [String] = []
     @State private var drawerOpen = false
     @State private var draft: Draft?
     @State private var settingsOpen = false
-    @State private var agentOpen = false
+    @State private var query = ""
+    @State private var searchPath: [String] = []
+
+    /** An agent here, or the account's chats to read (Claude and Codex ones too). */
+    private var showsAgent: Bool { session.agent.isOn || session.user != nil }
 
     var body: some View {
+        TabView(selection: $tab) {
+            SwiftUI.Tab("Mail", systemImage: "envelope", value: Tab.mail) { mail }
+            SwiftUI.Tab("Agent", image: "OtterAgent", value: Tab.agent) {
+                NavigationStack {
+                    AgentView(onSettings: { settingsOpen = true })
+                }
+            }
+            .hidden(!showsAgent)
+            SwiftUI.Tab(value: Tab.search, role: .search) { search }
+        }
+        // Search on its own at the bar's end, as in Photos: choosing it starts the search.
+        .tabViewSearchActivation(.searchTabSelection)
+        .tabBarMinimizeBehavior(.onScrollDown)
+        .onChange(of: showsAgent) { _, shows in
+            if !shows && tab == .agent { tab = .mail }
+        }
+        .onChange(of: store.shownMailboxes.map(\.email)) { _, shown in
+            // The mailbox shown was turned off or removed: fall back to what's left.
+            if let scope = place.scope, !shown.contains(scope) {
+                place = Place(scope: store.offersCombined ? nil : shown.first)
+            } else if place.scope == nil, !store.offersCombined {
+                place.scope = shown.first
+            }
+        }
+        .onAppear {
+            if !store.offersCombined { place.scope = store.shownMailboxes.first?.email }
+        }
+        .onChange(of: session.opening, initial: true) { _, _ in openNotification() }
+        .onChange(of: store.sync?.loadingCache) { _, loading in
+            if loading == false { openNotification() }
+        }
+        .sheet(item: $draft) { draft in
+            ComposeView(draft: store.recover(draft))
+        }
+        .sheet(isPresented: $settingsOpen) {
+            SettingsView()
+        }
+    }
+
+    /** The mail: the list (and the reader), the sidebar's drawer under it. */
+    private var mail: some View {
         MailDrawer(isOpen: $drawerOpen, canOpen: path.isEmpty) {
             SidebarView(
                 place: $place,
@@ -39,8 +89,8 @@ struct HomeView: View {
                 ThreadListView(
                     place: place,
                     messageTransition: messageTransition,
+                    drawerOpen: drawerOpen,
                     onDrawer: { setDrawer(open: true) },
-                    onAgent: { agentOpen = true },
                     onSettings: { settingsOpen = true },
                     onResume: { draft = $0 }
                 )
@@ -70,35 +120,33 @@ struct HomeView: View {
                 }
             }
         }
-        .onChange(of: store.shownMailboxes.map(\.email)) { _, shown in
-            // The mailbox shown was turned off or removed: fall back to what's left.
-            if let scope = place.scope, !shown.contains(scope) {
-                place = Place(scope: store.offersCombined ? nil : shown.first)
-            } else if place.scope == nil, !store.offersCombined {
-                place.scope = shown.first
+    }
+
+    /** Search: what it finds in the mailbox the mail shows. */
+    private var search: some View {
+        NavigationStack(path: $searchPath) {
+            ThreadListView(
+                place: place,
+                messageTransition: searchTransition,
+                query: query,
+                searchTab: true,
+                onDrawer: {
+                    tab = .mail
+                    setDrawer(open: true)
+                },
+                onSettings: { settingsOpen = true },
+                onResume: { draft = $0 }
+            )
+            .navigationDestination(for: String.self) { id in
+                let reader = ThreadView(threadID: id, place: place, path: $searchPath, draft: $draft)
+                if reduceMotion {
+                    reader
+                } else {
+                    reader.navigationTransition(.zoom(sourceID: id, in: searchTransition))
+                }
             }
         }
-        .onAppear {
-            if !store.offersCombined { place.scope = store.shownMailboxes.first?.email }
-        }
-        .onChange(of: session.opening, initial: true) { _, _ in openNotification() }
-        .onChange(of: store.sync?.loadingCache) { _, loading in
-            if loading == false { openNotification() }
-        }
-        .sheet(item: $draft) { draft in
-            ComposeView(draft: store.recover(draft))
-        }
-        .sheet(isPresented: $agentOpen) {
-            NavigationStack {
-                AgentView(sheet: true, onSettings: {
-                    agentOpen = false
-                    settingsOpen = true
-                })
-            }
-        }
-        .sheet(isPresented: $settingsOpen) {
-            SettingsView()
-        }
+        .searchable(text: $query, prompt: "Search")
     }
 
     private func select(_ next: Place) {
@@ -125,6 +173,7 @@ struct HomeView: View {
                 place = Place(scope: mailbox.email)
             }
             setDrawer(open: false)
+            tab = .mail
             if let thread = destination.thread, let loaded = store.thread(thread),
                destination.email == nil || loaded.mailbox.lowercased() == destination.email?.lowercased() {
                 path = [thread]

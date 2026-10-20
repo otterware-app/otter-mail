@@ -146,7 +146,7 @@ chats read the same everywhere and continue on that Mac.
 | ------------------------------------------------------------------- | ------------------- | -------------------- | --------------------- |
 | Small window over the mail (⌘I), the mail on screen as its context  | ✓                   | ✓                    | — (a sheet)           |
 | Its launcher: working, waiting for you, finished while away         | ✓                   | ✓                    | —                     |
-| AI workspace (Chats in the rail): chats by day, the chat, its tabs  | ✓                   | ✓                    | —                     |
+| AI workspace (Chats in the rail): chats by day, the chat, its tabs  | ✓                   | ✓                    | the Agent tab         |
 | Open the small window's chat in the workspace (⌘⇧F, and back)       | ✓                   | ✓                    | —                     |
 | Tabs: conversations and drafts it was given, read or made; files    | ✓                   | ✓                    | —                     |
 | Tabs: pages it read, events it made, links clicked in it            | ✓                   | — (links: a new tab) | —                     |
@@ -242,7 +242,7 @@ recalled. See [behavior and setup](../apps/ios/README.md#verified-background-not
 | New mail during a long sync           | ✓                                  | ✓                      | —                                    |
 | Changes applied at once, synced after | ✓                                  | ✓                      | ✓ (no outbox)                        |
 
-On iPhone, conversations zoom from their list rows (respecting Reduce Motion), the reader's navigation bar minimizes while scrolling, and selection morphs the glass buttons into bulk actions. The mail list keeps its header in place during search and returns to a compact search button when search closes.
+On iPhone, iOS's tab bar holds Mail, the Agent (with an agent on, or an Otter account's chats to read) and, on its own at the end, Search, which searches the mailbox Mail shows. The bar minimizes while scrolling and steps aside for the reader, the sidebar and selection. Conversations zoom from their list rows (respecting Reduce Motion), the reader's navigation bar minimizes while scrolling, and selection morphs the glass buttons into bulk actions.
 
 ## Settings & customization
 
