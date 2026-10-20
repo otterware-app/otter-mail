@@ -34,6 +34,7 @@ const SYNCED_KEYS = [
   "assistant:follow-up-behavior",
   "mail:mailboxes",
   "gmail:rail-unread-dots",
+  "gmail:rail",
 ] as const;
 
 export type SyncedKey = (typeof SYNCED_KEYS)[number];
