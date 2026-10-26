@@ -756,6 +756,26 @@ function HtmlBody({
       // them. Force every link to navigate in-frame instead so that path fires.
       doc.querySelectorAll("base[target]").forEach((b) => b.removeAttribute("target"));
       doc.querySelectorAll("a[target]").forEach((a) => a.setAttribute("target", "_self"));
+      // Once a click or a selection puts focus in the body, keys go to the
+      // frame's window: pass them on to the app's shortcuts (⌘I, j/k, …),
+      // except while typing in a form the mail carries.
+      doc.addEventListener("keydown", (e) => {
+        const target = e.target as Element | null;
+        if (target?.closest?.("input, textarea, select, [contenteditable]")) return;
+        const forwarded = new KeyboardEvent("keydown", {
+          key: e.key,
+          code: e.code,
+          metaKey: e.metaKey,
+          ctrlKey: e.ctrlKey,
+          altKey: e.altKey,
+          shiftKey: e.shiftKey,
+          repeat: e.repeat,
+          isComposing: e.isComposing,
+          bubbles: true,
+          cancelable: true,
+        });
+        if (!iframe.dispatchEvent(forwarded)) e.preventDefault();
+      });
       if (quoteRef.current) {
         // WKWebView doesn't reliably deliver `mouseup` from a sandboxed iframe
         // to a parent-attached listener, but `selectionchange` on its document
