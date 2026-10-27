@@ -214,9 +214,12 @@ export function PaneIcon({
 export function SidebarControl({
   sidebarOpen,
   onToggleSidebar,
+  onHover,
 }: {
   sidebarOpen: boolean;
   onToggleSidebar: () => void;
+  /** While the sidebar's hidden: the pointer came onto the toggle (true) or left it, to peek. */
+  onHover?: (inside: boolean) => void;
 }) {
   return (
     <div className="pointer-events-none fixed left-(--workspace-controls-left) top-0 z-40 flex h-(--workspace-topbar-height) items-center gap-1">
@@ -225,6 +228,8 @@ export function SidebarControl({
           label="Toggle sidebar"
           className="no-drag pointer-events-auto"
           onClick={onToggleSidebar}
+          onMouseEnter={onHover ? () => onHover(true) : undefined}
+          onMouseLeave={onHover ? () => onHover(false) : undefined}
         >
           <PaneIcon side="left" open={sidebarOpen} className="size-4" />
         </IconBtn>
@@ -270,18 +275,16 @@ export function PanelControlSlot() {
  * what sits over it: traffic lights, toggle, arrows. A view's space has no
  * sidebar, so no toggle (`SidebarControl`): only the traffic lights.
  */
-export function TitlebarInset({ toggle = true }: { toggle?: boolean }) {
-  // The band's own px-4 already covers 1rem of it, and the rail its width.
+export function TitlebarInset() {
+  // The band's own px-4 already covers 1rem of it, and the frame its inset.
   return (
     <span
       aria-hidden
       className={cn(
         "shrink-0",
-        !toggle
-          ? "w-[max(0px,calc(var(--workspace-controls-left)-1rem-var(--workspace-rail-width)))]"
-          : features.historyButtons
-            ? "w-[max(0px,calc(var(--workspace-titlebar-content-left)+var(--workspace-history-controls-width)-1rem-var(--workspace-rail-width)))]"
-            : "w-[max(0px,calc(var(--workspace-titlebar-content-left)-1rem-var(--workspace-rail-width)))]",
+        features.historyButtons
+          ? "w-[max(0px,calc(var(--workspace-titlebar-content-left)+var(--workspace-history-controls-width)-1rem-var(--workspace-frame-inset)))]"
+          : "w-[max(0px,calc(var(--workspace-titlebar-content-left)-1rem-var(--workspace-frame-inset)))]",
       )}
     />
   );
@@ -309,10 +312,9 @@ export function WindowTitle({ className }: { className?: string }) {
 }
 
 /**
- * The sidebar's title band in the main window: the traffic lights, the
- * pinned toggle and back/forward sit over it. A browser tab has none of them
- * there (the toggle sits over the rail), so the sidebar's heading takes the
- * band instead (`SpaceHeading`).
+ * Settings' title band in the main window: the traffic lights, the pinned
+ * toggle and back/forward sit over it. A browser tab has none of them there,
+ * so Settings' heading takes the band instead.
  */
 export function SidebarTitle() {
   return <div className="drag-region h-(--workspace-topbar-height) shrink-0 web:hidden" />;

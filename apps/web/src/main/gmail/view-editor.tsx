@@ -24,7 +24,7 @@ import type { GmailAccount, GmailLabel, MailView, ViewRule } from "./types";
 /**
  * Making a view, or changing one, in a dialog over the mail (Smart
  * Mailbox-style): its mark and name, then each mailbox's "Must have" / "Must
- * not have" labels, added from a menu. A view is a space in the rail: its list alone.
+ * not have" labels, added from a menu. A view is a space in the sidebar: its list.
  */
 type ViewEditorProps = {
   /** The view being edited; null when making one. */
@@ -312,7 +312,7 @@ export function ViewEditorDialog({
         description={
           isDefault
             ? "A folder of All mailboxes."
-            : "Mail from your mailboxes, by their labels: a space in the rail, just its list."
+            : "Mail from your mailboxes, by their labels: one list, in the sidebar's Views."
         }
         confirmLabel={view ? "Save" : "Create view"}
         confirmDisabled={!canSave}
@@ -452,7 +452,9 @@ export function ViewEditorDialog({
           onClose();
         }}
       >
-        <Text variant="small">The view leaves the rail. Your mail and labels aren't touched.</Text>
+        <Text variant="small">
+          The view leaves the sidebar. Your mail and labels aren't touched.
+        </Text>
       </Dialog>
     </>
   );

@@ -84,12 +84,6 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["startup open automatically log in mac computer"],
   },
   {
-    id: "rail-unread-dots",
-    title: "Show unread dots in the rail",
-    pane: "general",
-    searchTerms: ["unread dot indicator mailboxes views sidebar rail badge"],
-  },
-  {
     id: "dock-badge",
     title: "Show unread count on Dock icon",
     pane: "general",

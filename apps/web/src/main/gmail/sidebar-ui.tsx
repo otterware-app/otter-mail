@@ -1,7 +1,6 @@
 /**
- * What every space's sidebar is built from (ChatGPT's): the heading with its
- * actions, the New row, sections of rows, and the scrolling body. The mailbox
- * sidebar, the Chats sidebar and the peek all draw with these.
+ * What the sidebar is built from (Notion's): the New row, sections of rows,
+ * and the scrolling body. Its Mail and Chats pages draw with these.
  */
 
 import {
@@ -10,11 +9,11 @@ import {
   type DragEvent as ReactDragEvent,
   type ReactNode,
 } from "react";
-import { ChevronDownIcon, PlusIcon, SearchIcon } from "lucide-react";
+import { ChevronDownIcon, PlusIcon } from "lucide-react";
 import { ScrollArea } from "~/components/ui/scroll-area";
 
 import type { KeybindingCommand } from "../keybindings/commands";
-import { HintTooltip, IconBtn, UnreadPill } from "./ui";
+import { HintTooltip, UnreadPill } from "./ui";
 
 export type RowDragProps = {
   draggable?: boolean;
@@ -154,6 +153,7 @@ export function Section({
   children,
   dropZone,
   tour,
+  depth = 0,
   defaultOpen = true,
 }: {
   title: string;
@@ -161,6 +161,8 @@ export function Section({
   children: ReactNode;
   /** Folded until opened. */
   defaultOpen?: boolean;
+  /** Nested under a row (a mailbox's labels), indented like its rows. */
+  depth?: number;
   /** Its `data-tour` part, for the tour's spotlight. */
   tour?: string;
   dropZone?: {
@@ -172,7 +174,7 @@ export function Section({
 }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <div className="mt-4" data-tour={tour}>
+    <div className={depth > 0 ? "mt-1" : "mt-4"} data-tour={tour}>
       <div
         className={[
           "group flex h-8 items-center gap-1 rounded-lg pr-1",
@@ -187,6 +189,7 @@ export function Section({
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
+          style={depth > 0 ? { paddingLeft: 10 + depth * 16 } : undefined}
           className="flex h-8 items-center gap-1 rounded-lg px-(--sidebar-row-content-inset) text-[13px] font-normal text-sidebar-muted-foreground outline-none hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-focus-ring"
           aria-label={`Toggle ${title}`}
         >
@@ -208,53 +211,14 @@ export function Section({
   );
 }
 
-/**
- * A space's heading, past the panel's rounded corner (Codex's "Codex"), with
- * its actions at the right. In a browser tab it's the sidebar's title band
- * (ChatGPT's), level with the other columns' headers, after the sidebar toggle.
- */
-export function SpaceHeading({ title, children }: { title: string; children?: ReactNode }) {
-  return (
-    <div className="shrink-0 px-(--sidebar-content-inset) pb-2 pt-(--radius-xl) web:pt-0">
-      <h2 className="flex h-9 items-center gap-1 ps-(--sidebar-heading-inset) text-lg font-semibold tracking-tight text-sidebar-foreground web:h-(--workspace-topbar-height)">
-        <span className="min-w-0 flex-1 truncate">{title}</span>
-        {children}
-      </h2>
-    </div>
-  );
-}
-
-/** Search, in a space's heading: lit while it's the place showing, a dot while one is kept. */
-export function SearchButton({
-  selected,
-  pending,
-  onClick,
-}: {
-  selected: boolean;
-  pending: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <HintTooltip label="Search" shortcut="search.focus">
-      <IconBtn label="Search" active={selected} onClick={onClick} className="relative">
-        <SearchIcon className="size-4" />
-        {pending && !selected ? (
-          <span aria-hidden className="absolute right-1 top-1 size-1.5 rounded-full bg-primary" />
-        ) : null}
-      </IconBtn>
-    </HintTooltip>
-  );
-}
+/** A section heading's action button (+). */
+const SECTION_ACTION =
+  "flex size-6 items-center justify-center rounded-md text-sidebar-muted-foreground outline-none hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-focus-ring data-[state=open]:bg-sidebar-row-hover";
 
 export function SectionAddButton({ label, onClick }: { label: string; onClick: () => void }) {
   return (
     <HintTooltip label={label}>
-      <button
-        type="button"
-        aria-label={label}
-        onClick={onClick}
-        className="flex size-6 items-center justify-center rounded-md text-sidebar-muted-foreground outline-none hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-focus-ring"
-      >
+      <button type="button" aria-label={label} onClick={onClick} className={SECTION_ACTION}>
         <PlusIcon className="size-4" />
       </button>
     </HintTooltip>

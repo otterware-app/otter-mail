@@ -1,7 +1,7 @@
 /**
- * The sidebar while Chats is picked in the rail (the AI workspace): New chat,
- * then the account's chats, newest first, by when they last changed. A chat
- * working, waiting on you, or finished while you were away says so.
+ * The sidebar's Chats tab (the AI workspace): New chat, then the account's
+ * chats, newest first, by when they last changed. A chat working, waiting on
+ * you, or finished while you were away says so.
  */
 
 import { LoaderCircleIcon, SquarePenIcon, Trash2Icon } from "lucide-react";
@@ -10,7 +10,7 @@ import { AgentIcon } from "./agent-icon";
 import { useChatProvider } from "./agent-providers";
 import { deleteConversation, isBlank, useChats, type Conversation } from "./chat-store";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "./menu";
-import { NewRow, Section, SidebarBody, SkRow, SpaceHeading } from "./sidebar-ui";
+import { NewRow, Section, SidebarBody, SkRow } from "./sidebar-ui";
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -83,8 +83,7 @@ export function ChatsSidebar({
   };
 
   return (
-    <div className="flex h-full min-w-0 flex-col">
-      <SpaceHeading title="Chats" />
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <NewRow
         icon={<SquarePenIcon />}
         label="New chat"

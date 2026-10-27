@@ -1,5 +1,5 @@
 /**
- * A view's mark in the rail (and wherever it's named): an icon or an emoji,
+ * A view's mark in the sidebar (and wherever it's named): an icon or an emoji,
  * in a color, picked in the view's dialog; its initial until one is picked.
  * Views keep the pick as `icon` (an icon's key, or the emoji itself) and
  * `color` (shared's view-marks.ts).

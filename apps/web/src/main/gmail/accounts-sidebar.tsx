@@ -1,19 +1,9 @@
-import { ScheduledMailButton } from "./mail-schedule";
-import {
-  Fragment,
-  createContext,
-  useContext,
-  useCallback,
-  useState,
-  type ComponentProps,
-  type ReactNode,
-} from "react";
+import { Fragment, createContext, useContext, useState, type ReactNode } from "react";
 import { Dialog } from "~/components/ui/dialog";
 import { Field } from "~/components/ui/field";
 import { Input } from "~/components/ui/input";
 import { Text } from "~/components/ui/text";
 import { toast } from "./toast";
-import { MailboxHealth } from "./sync-health";
 import {
   ContextMenu,
   ContextMenuTrigger,
@@ -37,11 +27,9 @@ import {
   TagIcon,
   FolderIcon,
   SearchIcon,
-  SquarePenIcon,
 } from "lucide-react";
 import {
   useLabels,
-  useAddAccount,
   useCreateLabel,
   useUpdateLabel,
   useDeleteLabel,
@@ -64,22 +52,8 @@ import { labelMoveName } from "../keybindings/commands";
 import { renameLabelKeybindings, useKeybindingsState } from "../keybindings/store";
 import { formatShortcut, parseShortcut } from "../keybindings/keys";
 import { LabelShortcutDialog } from "../settings/keybindings-pane";
-import { SidebarTitle } from "./top-bar";
-import { getAccountDisplayName } from "./account-style";
 import { useMailboxes } from "../mailboxes";
-import { UpdateCard } from "../updates";
-import {
-  NewRow,
-  SIDEBAR_ROW,
-  SearchButton,
-  Section,
-  SectionAddButton,
-  SidebarBody,
-  SkRow,
-  SpaceHeading,
-  type RowDragProps,
-} from "./sidebar-ui";
-import { AddMailboxMenu } from "./add-mailbox";
+import { Section, SectionAddButton, SkRow, type RowDragProps } from "./sidebar-ui";
 import { useCapabilities } from "./capabilities";
 
 const LABEL_DRAG_MIME = "application/x-gmail-label";
@@ -152,13 +126,14 @@ function viewIcon(view: MailView): ReactNode {
 export type SidebarSearch = { id: string; parent: string; title: string; selected: boolean };
 
 /** Renders a view's / label's open search row (if any) right below it. */
-const SearchRowsContext = createContext<(parent: string, depth: number) => ReactNode>(() => null);
+const noSearchRows = () => null;
+const SearchRowsContext = createContext<(parent: string, depth: number) => ReactNode>(noSearchRows);
 
 function SearchRows({ parent, depth = 0 }: { parent: string; depth?: number }) {
   return useContext(SearchRowsContext)(parent, depth);
 }
 
-function SearchRow({
+export function SearchRow({
   search,
   depth,
   onSelect,
@@ -191,20 +166,6 @@ function SearchRow({
         </span>
       }
     />
-  );
-}
-
-/** "+ Add …" footer row for a section. */
-function AddRow({ label, ...props }: { label: string } & ComponentProps<"button">) {
-  return (
-    <button
-      type="button"
-      {...props}
-      className={`${SIDEBAR_ROW} px-(--sidebar-row-content-inset) text-sidebar-foreground/90 hover:bg-sidebar-row-hover hover:text-sidebar-foreground`}
-    >
-      <PlusIcon className="size-4 shrink-0 text-sidebar-muted-foreground" />
-      <span className="truncate">{label}</span>
-    </button>
   );
 }
 
@@ -381,68 +342,33 @@ function LabelNode({
   );
 }
 
-type AccountsSidebarProps = {
-  selectedAccountId: string | null;
-  onSelectAccount: (accountId: string) => void;
-  selectedLabelId: string;
-  onSelectLabel: (labelId: string) => void;
-  views: MailView[];
-  onCompose: () => void;
-  /** The Search mailbox is the one showing. */
-  searchSelected: boolean;
-  /** A search is kept (typed or run) — shown as a dot on the Search row. */
-  searchPending: boolean;
-  onOpenSearch: () => void;
-  /** Searches opened from views (⌘F), nested under them. */
-  searches: SidebarSearch[];
-  onSelectSearch: (id: string) => void;
-  onCloseSearch: (id: string) => void;
-};
-
-/** The sidebar: the mailbox's page between the title and the footer. */
-export function AccountsSidebar(props: AccountsSidebarProps) {
-  const { accounts } = useMailboxes();
-  const { selectedAccountId } = props;
-  return (
-    <div className="flex h-full min-w-0 flex-col">
-      <SidebarTitle />
-      <div className="min-h-0 flex-1">
-        <MailboxSidebarPage {...props} />
-      </div>
-      <MailboxHealth
-        accountIds={
-          selectedAccountId === COMBINED_ACCOUNT_ID
-            ? accounts.map((a) => a.id)
-            : selectedAccountId
-              ? [selectedAccountId]
-              : []
-        }
-      />
-      <UpdateCard />
-    </div>
-  );
-}
-
 /**
- * One mailbox's page of the sidebar: its heading (with Search), New message,
- * its folders and labels. The rail's hover shows one on its own (a peek).
+ * One mailbox's folders and labels (All mailboxes': its built-in views), in
+ * the sidebar under its tab (app-sidebar.tsx), with what they offer: a
+ * label's menu, dropping conversations or labels on one, emptying Junk and Trash.
  */
-export function MailboxSidebarPage({
-  selectedAccountId,
-  onSelectAccount,
+export function MailboxFolders({
+  mailboxId,
   selectedLabelId,
   onSelectLabel,
   views,
-  onCompose,
-  searchSelected,
-  searchPending,
-  onOpenSearch,
-  searches,
-  onSelectSearch,
-  onCloseSearch,
-}: AccountsSidebarProps) {
-  const isCombined = selectedAccountId === COMBINED_ACCOUNT_ID;
-  const ownAccountId = isCombined ? null : selectedAccountId;
+  searchRows,
+  depth = 0,
+}: {
+  /** An account's id, or All mailboxes'. */
+  mailboxId: string;
+  /** The folder or label showing, while this mailbox is the one showing; "" otherwise. */
+  selectedLabelId: string;
+  onSelectLabel: (labelId: string) => void;
+  /** Every view: All mailboxes' folders are the built-in ones. */
+  views: MailView[];
+  /** Its open searches, under where each started (the mailbox showing has them). */
+  searchRows?: (parent: string, depth: number) => ReactNode;
+  /** How far its rows are indented. */
+  depth?: number;
+}) {
+  const isCombined = mailboxId === COMBINED_ACCOUNT_ID;
+  const ownAccountId = isCombined ? null : mailboxId;
 
   const labelsQuery = useLabels(ownAccountId);
   const capabilities = useCapabilities(ownAccountId);
@@ -452,7 +378,6 @@ export function MailboxSidebarPage({
     : capabilities.multipleLabels
       ? "Label"
       : "Folder";
-  const addAccount = useAddAccount();
   const createLabel = useCreateLabel();
 
   const [createLabelOpen, setCreateLabelOpen] = useState(false);
@@ -475,12 +400,6 @@ export function MailboxSidebarPage({
   const { rules: keybindingRules } = useKeybindingsState();
 
   const { accounts } = useMailboxes();
-  const account = accounts.find((a) => a.id === selectedAccountId);
-  const mailboxName = isCombined
-    ? "All mailboxes"
-    : account
-      ? getAccountDisplayName(account)
-      : "Mailbox";
   const labels: GmailLabel[] = labelsQuery.data ?? [];
   // The combined mailbox's folders are its built-in views.
   const folders = views.filter((v) => v.kind !== "custom");
@@ -510,24 +429,12 @@ export function MailboxSidebarPage({
       ]
     : [{ title: `${labelNoun}s`, labels: userLabels, create: true }];
 
-  const handleAddAccount = async () => {
-    console.log("[AccountsSidebar:addAccount]");
-    try {
-      const account = await addAccount.mutateAsync();
-      if (account) onSelectAccount(account.id);
-    } catch (err) {
-      toast.error("Couldn't add the account", {
-        description: err instanceof Error ? err.message : String(err),
-      });
-    }
-  };
-
   const handleCreateLabel = async () => {
     const name = newLabelName.trim();
-    if (!name || !selectedAccountId) return;
+    if (!name || !mailboxId) return;
     console.log("[AccountsSidebar:createLabel]", { name });
     try {
-      await createLabel.mutateAsync({ accountId: selectedAccountId, name });
+      await createLabel.mutateAsync({ accountId: mailboxId, name });
       toast.success(`${labelNoun} "${name}" created`);
       setCreateLabelOpen(false);
       setNewLabelName("");
@@ -537,7 +444,7 @@ export function MailboxSidebarPage({
   };
 
   const handleMoveLabel = (source: LabelDragPayload, targetParentName: string | null) => {
-    if (!selectedAccountId || source.id.startsWith("category:")) return;
+    if (!mailboxId || source.id.startsWith("category:")) return;
     if (
       targetParentName &&
       (targetParentName === source.name || targetParentName.startsWith(`${source.name}/`))
@@ -550,7 +457,7 @@ export function MailboxSidebarPage({
     if (newName === source.name) return;
     console.log("[AccountsSidebar:moveLabel]", { from: source.name, to: newName });
     updateLabel
-      .mutateAsync({ accountId: selectedAccountId, labelId: source.id, name: newName })
+      .mutateAsync({ accountId: mailboxId, labelId: source.id, name: newName })
       .then(() => renameLabelKeybindings(source.name, newName))
       .catch(() => toast.error("Could not move the label"));
   };
@@ -559,10 +466,10 @@ export function MailboxSidebarPage({
     const name = renameValue.trim();
     const target = renameTarget;
     setRenameTarget(null);
-    if (!target || !name || !selectedAccountId || name === target.name) return;
+    if (!target || !name || !mailboxId || name === target.name) return;
     console.log("[AccountsSidebar:renameLabel]", { from: target.name, to: name });
     updateLabel
-      .mutateAsync({ accountId: selectedAccountId, labelId: target.id, name })
+      .mutateAsync({ accountId: mailboxId, labelId: target.id, name })
       .then(() => renameLabelKeybindings(target.name, name))
       .catch(() => toast.error("Could not rename the label"));
   };
@@ -570,31 +477,31 @@ export function MailboxSidebarPage({
   const handlePickColor = (color: { backgroundColor: string; textColor: string }) => {
     const target = colorTarget;
     setColorTarget(null);
-    if (!target || !selectedAccountId) return;
+    if (!target || !mailboxId) return;
     console.log("[AccountsSidebar:recolorLabel]", {
       label: target.name,
       color: color.backgroundColor,
     });
     updateLabel
-      .mutateAsync({ accountId: selectedAccountId, labelId: target.id, color })
+      .mutateAsync({ accountId: mailboxId, labelId: target.id, color })
       .catch(() => toast.error("Could not change the color"));
   };
 
   const handleDeleteConfirm = () => {
     const target = deleteTarget;
     setDeleteTarget(null);
-    if (!target || !selectedAccountId) return;
+    if (!target || !mailboxId) return;
     if (selectedLabelId === target.id) onSelectLabel("INBOX");
     console.log("[AccountsSidebar:deleteLabel]", { label: target.name });
     deleteLabelMutation
-      .mutateAsync({ accountId: selectedAccountId, labelId: target.id })
+      .mutateAsync({ accountId: mailboxId, labelId: target.id })
       .catch(() => toast.error("Could not delete the label"));
   };
 
   // Labels here belong to the open account, so only its conversations can
   // take them (a search may list other accounts' mail too).
   const handleDropThreads = (payload: ThreadDragPayload, label: GmailLabel, keep: boolean) => {
-    const threads = payload.threads.filter((t) => t.accountId === selectedAccountId);
+    const threads = payload.threads.filter((t) => t.accountId === mailboxId);
     if (threads.length === 0) {
       toast.error("Those conversations belong to another account");
       return;
@@ -668,284 +575,252 @@ export function MailboxSidebarPage({
       : accounts.map((a) => a.id),
   });
 
-  const renderSearchRows = useCallback(
-    (parent: string, depth: number) =>
-      searches
-        .filter((sr) => sr.parent === parent)
-        .map((sr) => (
-          <SearchRow
-            key={sr.id}
-            search={sr}
-            depth={depth}
-            onSelect={() => onSelectSearch(sr.id)}
-            onClose={() => onCloseSearch(sr.id)}
-          />
-        )),
-    [searches, onSelectSearch, onCloseSearch],
-  );
-
   return (
-    <SearchRowsContext.Provider value={renderSearchRows}>
-      <div className="flex h-full min-w-0 flex-col">
-        {/* The mailbox's name; the rail beside it switches. */}
-        <SpaceHeading title={mailboxName}>
-          <SearchButton selected={searchSelected} pending={searchPending} onClick={onOpenSearch} />
-        </SpaceHeading>
+    <SearchRowsContext.Provider value={searchRows ?? noSearchRows}>
+      {isCombined ? (
+        <>
+          {folders.map((view) => (
+            <Fragment key={view.id}>
+              {withEmptyMenu(
+                <SkRow
+                  icon={viewIcon(view)}
+                  title={view.name}
+                  depth={depth}
+                  selected={selectedLabelId === view.id}
+                  badge={viewUnreadCounts[view.id] ?? 0}
+                  onClick={() => {
+                    console.log("[AccountsSidebar:selectView]", { viewId: view.id });
+                    onSelectLabel(view.id);
+                  }}
+                />,
+                viewFolder(view).labelId,
+                viewFolder(view).accountIds,
+              )}
+              <SearchRows parent={view.id} depth={depth} />
+            </Fragment>
+          ))}
+        </>
+      ) : (
+        <>
+          {(labels.length > 0
+            ? systemLabels.map((l) => ({
+                id: l.id,
+                unread: l.unread ?? 0,
+                total: l.total ?? 0,
+              }))
+            : Object.keys(SYSTEM_LABEL_MAP).map((id) => ({ id, unread: 0, total: 0 }))
+          ).map(({ id, unread, total }) => {
+            const meta = SYSTEM_LABEL_MAP[id];
+            if (!meta) return null;
+            // Drafts is a raw count of drafts, not an unread signal.
+            const isDrafts = id === "DRAFT";
+            return (
+              <Fragment key={id}>
+                {withEmptyMenu(
+                  <SkRow
+                    icon={meta.icon}
+                    title={meta.name}
+                    depth={depth}
+                    selected={selectedLabelId === id}
+                    badge={isDrafts ? total : unread}
+                    onClick={() => {
+                      console.log("[AccountsSidebar:selectLabel]", { labelId: id });
+                      onSelectLabel(id);
+                    }}
+                  />,
+                  id,
+                  [mailboxId],
+                )}
+                <SearchRows parent={id} depth={depth} />
+              </Fragment>
+            );
+          })}
 
-        {/* New message (Codex's "New chat"). Search, in the heading, is a
-            mailbox: it opens Gmail search in the list. */}
-        <NewRow
-          icon={<SquarePenIcon />}
-          label="New message"
-          shortcut="compose.new"
-          tour="compose"
-          onClick={onCompose}
-        />
-
-        <ScheduledMailButton />
-        <SidebarBody>
-          {isCombined ? (
-            <>
-              {folders.map((view) => (
-                <Fragment key={view.id}>
-                  {withEmptyMenu(
-                    <SkRow
-                      icon={viewIcon(view)}
-                      title={view.name}
-                      selected={selectedLabelId === view.id}
-                      badge={viewUnreadCounts[view.id] ?? 0}
-                      onClick={() => {
-                        console.log("[AccountsSidebar:selectView]", { viewId: view.id });
-                        onSelectLabel(view.id);
-                      }}
-                    />,
-                    viewFolder(view).labelId,
-                    viewFolder(view).accountIds,
-                  )}
-                  <SearchRows parent={view.id} />
-                </Fragment>
-              ))}
-            </>
-          ) : (
-            <>
-              {(labels.length > 0
-                ? systemLabels.map((l) => ({
-                    id: l.id,
-                    unread: l.unread ?? 0,
-                    total: l.total ?? 0,
-                  }))
-                : Object.keys(SYSTEM_LABEL_MAP).map((id) => ({ id, unread: 0, total: 0 }))
-              ).map(({ id, unread, total }) => {
-                const meta = SYSTEM_LABEL_MAP[id];
-                if (!meta) return null;
-                // Drafts is a raw count of drafts, not an unread signal.
-                const isDrafts = id === "DRAFT";
-                return (
-                  <Fragment key={id}>
-                    {withEmptyMenu(
-                      <SkRow
-                        icon={meta.icon}
-                        title={meta.name}
-                        selected={selectedLabelId === id}
-                        badge={isDrafts ? total : unread}
-                        onClick={() => {
-                          console.log("[AccountsSidebar:selectLabel]", { labelId: id });
-                          onSelectLabel(id);
-                        }}
-                      />,
-                      id,
-                      selectedAccountId ? [selectedAccountId] : [],
-                    )}
-                    <SearchRows parent={id} />
-                  </Fragment>
-                );
-              })}
-
-              {selectedAccountId
-                ? labelSections.map((section) => (
-                    <Section
-                      key={section.title}
-                      title={section.title}
-                      action={
-                        section.create ? (
-                          <SectionAddButton
-                            label={`Add ${labelNoun.toLowerCase()}`}
-                            onClick={() => setCreateLabelOpen(true)}
-                          />
-                        ) : undefined
+          {labelSections.map((section) =>
+            section.labels.length === 0 ? (
+              // None yet: a row to make the first, rather than an empty heading.
+              section.create ? (
+                <SkRow
+                  key={section.title}
+                  icon={<PlusIcon className="size-4" />}
+                  title={`New ${labelNoun.toLowerCase()}`}
+                  depth={depth}
+                  onClick={() => setCreateLabelOpen(true)}
+                />
+              ) : null
+            ) : (
+              <Section
+                key={section.title}
+                title={section.title}
+                depth={depth}
+                action={
+                  section.create ? (
+                    <SectionAddButton
+                      label={`Add ${labelNoun.toLowerCase()}`}
+                      onClick={() => setCreateLabelOpen(true)}
+                    />
+                  ) : undefined
+                }
+                dropZone={
+                  section.title === "Categories"
+                    ? undefined
+                    : {
+                        active: rootDropActive,
+                        onDragOver: (e) => {
+                          if (!e.dataTransfer.types.includes(LABEL_DRAG_MIME)) return;
+                          e.preventDefault();
+                          e.dataTransfer.dropEffect = "move";
+                          setRootDropActive(true);
+                        },
+                        onDragLeave: () => setRootDropActive(false),
+                        onDrop: (e) => {
+                          setRootDropActive(false);
+                          const raw = e.dataTransfer.getData(LABEL_DRAG_MIME);
+                          if (!raw) return;
+                          e.preventDefault();
+                          handleMoveLabel(JSON.parse(raw) as LabelDragPayload, null);
+                        },
                       }
-                      dropZone={
-                        section.title === "Categories"
-                          ? undefined
-                          : {
-                              active: rootDropActive,
-                              onDragOver: (e) => {
-                                if (!e.dataTransfer.types.includes(LABEL_DRAG_MIME)) return;
-                                e.preventDefault();
-                                e.dataTransfer.dropEffect = "move";
-                                setRootDropActive(true);
-                              },
-                              onDragLeave: () => setRootDropActive(false),
-                              onDrop: (e) => {
-                                setRootDropActive(false);
-                                const raw = e.dataTransfer.getData(LABEL_DRAG_MIME);
-                                if (!raw) return;
-                                e.preventDefault();
-                                handleMoveLabel(JSON.parse(raw) as LabelDragPayload, null);
-                              },
-                            }
-                      }
-                    >
-                      {(section.title === "Categories"
-                        ? section.labels
-                            .toSorted((a, b) => a.name.localeCompare(b.name))
-                            .map((label) => ({
-                              key: label.id,
-                              segment: label.name,
-                              label,
-                              children: [],
-                            }))
-                        : buildLabelTree(section.labels)
-                      ).map((node) => (
-                        <LabelNode
-                          key={node.key}
-                          node={node}
-                          depth={0}
-                          selectedLabelId={selectedLabelId}
-                          onSelectLabel={onSelectLabel}
-                          actions={labelActions}
-                        />
-                      ))}
-                    </Section>
-                  ))
-                : null}
-
-              {accounts.length === 0 ? (
-                <AddMailboxMenu
-                  onGmail={() => void handleAddAccount()}
-                  onAdded={(account) => onSelectAccount(account.id)}
-                >
-                  <AddRow label="Add mailbox" />
-                </AddMailboxMenu>
-              ) : null}
-            </>
+                }
+              >
+                {(section.title === "Categories"
+                  ? section.labels
+                      .toSorted((a, b) => a.name.localeCompare(b.name))
+                      .map((label) => ({
+                        key: label.id,
+                        segment: label.name,
+                        label,
+                        children: [],
+                      }))
+                  : buildLabelTree(section.labels)
+                ).map((node) => (
+                  <LabelNode
+                    key={node.key}
+                    node={node}
+                    depth={depth}
+                    selectedLabelId={selectedLabelId}
+                    onSelectLabel={onSelectLabel}
+                    actions={labelActions}
+                  />
+                ))}
+              </Section>
+            ),
           )}
-        </SidebarBody>
+        </>
+      )}
 
-        <Dialog
-          open={createLabelOpen}
-          onOpenChange={setCreateLabelOpen}
-          title={`New ${labelNoun}`}
-          confirmLabel="Create"
-          confirmVariant="accent"
-          confirmDisabled={!newLabelName.trim() || createLabel.isPending}
-          onConfirm={handleCreateLabel}
-        >
-          <Field label="Name" orientation="vertical">
-            <Input
-              value={newLabelName}
-              onChange={(e) => setNewLabelName(e.target.value)}
-              placeholder="e.g. 04 Follow-up"
-              autoFocus
+      <Dialog
+        open={createLabelOpen}
+        onOpenChange={setCreateLabelOpen}
+        title={`New ${labelNoun}`}
+        confirmLabel="Create"
+        confirmVariant="accent"
+        confirmDisabled={!newLabelName.trim() || createLabel.isPending}
+        onConfirm={handleCreateLabel}
+      >
+        <Field label="Name" orientation="vertical">
+          <Input
+            value={newLabelName}
+            onChange={(e) => setNewLabelName(e.target.value)}
+            placeholder="e.g. 04 Follow-up"
+            autoFocus
+          />
+        </Field>
+      </Dialog>
+
+      <Dialog
+        open={renameTarget != null}
+        onOpenChange={(o) => {
+          if (!o) setRenameTarget(null);
+        }}
+        title={`Rename ${renameTarget?.id.startsWith("folder:") ? "Folder" : labelNoun}`}
+        confirmLabel="Rename"
+        confirmVariant="accent"
+        confirmDisabled={!renameValue.trim()}
+        onConfirm={handleRenameConfirm}
+      >
+        <Field label="Name" orientation="vertical">
+          <Input
+            value={renameValue}
+            onChange={(e) => setRenameValue(e.target.value)}
+            placeholder="e.g. 90 Ops/alerts"
+            autoFocus
+          />
+        </Field>
+        <Text variant="mini" color="tertiary">
+          Use / to nest, e.g. "90 Ops/alerts". Nested labels move along.
+        </Text>
+      </Dialog>
+
+      <Dialog
+        open={colorTarget != null}
+        onOpenChange={(o) => {
+          if (!o) setColorTarget(null);
+        }}
+        title={colorTarget ? `Color for "${colorTarget.name.split("/").pop()}"` : "Label Color"}
+      >
+        <div className="grid grid-cols-8 gap-2 py-1">
+          {GMAIL_LABEL_COLORS.map((color) => (
+            <button
+              key={color.backgroundColor}
+              type="button"
+              aria-label={`Use ${color.backgroundColor}`}
+              onClick={() => handlePickColor(color)}
+              className={[
+                "size-6 rounded-full",
+                colorTarget?.color?.backgroundColor === color.backgroundColor
+                  ? "ring-2 ring-accent ring-offset-1"
+                  : "hover:ring-2 hover:ring-input",
+              ].join(" ")}
+              style={{ backgroundColor: color.backgroundColor }}
             />
-          </Field>
-        </Dialog>
+          ))}
+        </div>
+      </Dialog>
 
-        <Dialog
-          open={renameTarget != null}
-          onOpenChange={(o) => {
-            if (!o) setRenameTarget(null);
-          }}
-          title={`Rename ${renameTarget?.id.startsWith("folder:") ? "Folder" : labelNoun}`}
-          confirmLabel="Rename"
-          confirmVariant="accent"
-          confirmDisabled={!renameValue.trim()}
-          onConfirm={handleRenameConfirm}
-        >
-          <Field label="Name" orientation="vertical">
-            <Input
-              value={renameValue}
-              onChange={(e) => setRenameValue(e.target.value)}
-              placeholder="e.g. 90 Ops/alerts"
-              autoFocus
-            />
-          </Field>
-          <Text variant="mini" color="tertiary">
-            Use / to nest, e.g. "90 Ops/alerts". Nested labels move along.
-          </Text>
-        </Dialog>
+      <Dialog
+        open={deleteTarget != null}
+        onOpenChange={(o) => {
+          if (!o) setDeleteTarget(null);
+        }}
+        title={`Delete ${deleteTarget?.id.startsWith("folder:") ? "Folder" : labelNoun}`}
+        confirmLabel="Delete"
+        confirmVariant="accent"
+        onConfirm={handleDeleteConfirm}
+      >
+        <Text variant="small">
+          {deleteTarget?.id.startsWith("folder:")
+            ? `Delete "${deleteTarget.name}"? The folder and the mail inside it move to Deleted Items.`
+            : capabilities.multipleLabels
+              ? `Delete "${deleteTarget?.name}"? It is removed from every message; the messages themselves and any nested labels are kept.`
+              : `Delete "${deleteTarget?.name}"? Its mail moves to Archive.`}
+        </Text>
+      </Dialog>
 
-        <Dialog
-          open={colorTarget != null}
-          onOpenChange={(o) => {
-            if (!o) setColorTarget(null);
-          }}
-          title={colorTarget ? `Color for "${colorTarget.name.split("/").pop()}"` : "Label Color"}
-        >
-          <div className="grid grid-cols-8 gap-2 py-1">
-            {GMAIL_LABEL_COLORS.map((color) => (
-              <button
-                key={color.backgroundColor}
-                type="button"
-                aria-label={`Use ${color.backgroundColor}`}
-                onClick={() => handlePickColor(color)}
-                className={[
-                  "size-6 rounded-full",
-                  colorTarget?.color?.backgroundColor === color.backgroundColor
-                    ? "ring-2 ring-accent ring-offset-1"
-                    : "hover:ring-2 hover:ring-input",
-                ].join(" ")}
-                style={{ backgroundColor: color.backgroundColor }}
-              />
-            ))}
-          </div>
-        </Dialog>
+      <LabelShortcutDialog labelName={shortcutTarget} onClose={() => setShortcutTarget(null)} />
 
-        <Dialog
-          open={deleteTarget != null}
-          onOpenChange={(o) => {
-            if (!o) setDeleteTarget(null);
-          }}
-          title={`Delete ${deleteTarget?.id.startsWith("folder:") ? "Folder" : labelNoun}`}
-          confirmLabel="Delete"
-          confirmVariant="accent"
-          onConfirm={handleDeleteConfirm}
-        >
-          <Text variant="small">
-            {deleteTarget?.id.startsWith("folder:")
-              ? `Delete "${deleteTarget.name}"? The folder and the mail inside it move to Deleted Items.`
-              : capabilities.multipleLabels
-                ? `Delete "${deleteTarget?.name}"? It is removed from every message; the messages themselves and any nested labels are kept.`
-                : `Delete "${deleteTarget?.name}"? Its mail moves to Archive.`}
-          </Text>
-        </Dialog>
-
-        <LabelShortcutDialog labelName={shortcutTarget} onClose={() => setShortcutTarget(null)} />
-
-        <Dialog
-          open={emptyTarget != null}
-          onOpenChange={(o) => {
-            if (!o) setEmptyTarget(null);
-          }}
-          title={emptyTarget?.labelId === "TRASH" ? "Empty Trash" : "Empty Junk"}
-          confirmLabel={emptyTarget?.labelId === "TRASH" ? "Empty Trash" : "Empty Junk"}
-          confirmVariant="destructive"
-          onConfirm={() => {
-            const target = emptyTarget;
-            setEmptyTarget(null);
-            if (target) emptyFolder.mutate(target);
-          }}
-        >
-          <Text variant="small">
-            Permanently delete every message in{" "}
-            {emptyTarget?.labelId === "TRASH" ? "Trash" : "Junk"}
-            {emptyTarget && emptyTarget.accountIds.length > 1
-              ? ` for all ${emptyTarget.accountIds.length} accounts`
-              : ""}
-            ? This can't be undone.
-          </Text>
-        </Dialog>
-      </div>
+      <Dialog
+        open={emptyTarget != null}
+        onOpenChange={(o) => {
+          if (!o) setEmptyTarget(null);
+        }}
+        title={emptyTarget?.labelId === "TRASH" ? "Empty Trash" : "Empty Junk"}
+        confirmLabel={emptyTarget?.labelId === "TRASH" ? "Empty Trash" : "Empty Junk"}
+        confirmVariant="destructive"
+        onConfirm={() => {
+          const target = emptyTarget;
+          setEmptyTarget(null);
+          if (target) emptyFolder.mutate(target);
+        }}
+      >
+        <Text variant="small">
+          Permanently delete every message in {emptyTarget?.labelId === "TRASH" ? "Trash" : "Junk"}
+          {emptyTarget && emptyTarget.accountIds.length > 1
+            ? ` for all ${emptyTarget.accountIds.length} accounts`
+            : ""}
+          ? This can't be undone.
+        </Text>
+      </Dialog>
     </SearchRowsContext.Provider>
   );
 }
