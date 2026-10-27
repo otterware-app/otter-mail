@@ -18,9 +18,8 @@ import { EmptyState } from "~/components/ui/empty-state";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast, type ToastId } from "./gmail/toast";
 import { setDraftOpener } from "./gmail/undo-send";
-import { AccountsSidebar, MailboxSidebarPage } from "./gmail/accounts-sidebar";
-import { SpacePeekCard, useSpacePeek } from "./gmail/space-peek";
-import { SpaceRail } from "./gmail/space-rail";
+import { AppSidebar } from "./gmail/app-sidebar";
+import { SidebarPeekCard, useSidebarPeek } from "./gmail/sidebar-peek";
 import { ViewEditorDialog } from "./gmail/view-editor";
 import { MessageList } from "./gmail/message-list";
 import { MessageReader } from "./gmail/message-reader";
@@ -29,7 +28,6 @@ import { CommandPalette } from "./gmail/command-palette";
 import { BrowserPanel } from "./browser/browser-panel";
 import { ChatLauncher, ChatWindow } from "./gmail/chat-window";
 import { ChatWorkspace } from "./gmail/chat-workspace";
-import { ChatsSidebar } from "./gmail/chats-sidebar";
 import { newChat, showChat, useChatEvents, useChats } from "./gmail/chat-store";
 import { useMailChatContext } from "./gmail/chat-context";
 import { useChatProvider } from "./gmail/agent-providers";
@@ -108,7 +106,6 @@ import {
   spaceOf,
   spansMailboxes as spanning,
 } from "./gmail/spaces";
-import { UpdateCard } from "./updates";
 import { useSignInAlerts } from "./gmail/sync-health";
 import { useRecordRecentlyViewed } from "./recently-viewed";
 import { SetupFlow } from "./onboarding/setup";
@@ -134,8 +131,8 @@ import {
 const READER_MIN_WIDTH = 360;
 /** How wide the browser panel opens, when there's the room. */
 const BROWSER_OPEN_WIDTH = 720;
-/** The mailbox rail's width (styles.css's --workspace-rail-width). */
-const RAIL_WIDTH = 52;
+/** The frame's margin left of the first column (styles.css's --workspace-frame-inset). */
+const FRAME_INSET = 4;
 
 /** A place in the mail, as the route names it (router.tsx). */
 type MailLoc = {
@@ -343,8 +340,8 @@ function PaneResizer({ onPointerDown }: { onPointerDown: (e: ReactPointerEvent) 
 
 /**
  * Outlook-style window chrome: the window wears the sidebar's surface (and
- * grain), so the rail and the title bands read as one frame, and each column
- * after the rail (the sidebar, the list, the reader, the browser) is its own
+ * grain), so the sidebar and the title bands read as one frame (Notion's), and
+ * each column of mail after it (the list, the reader, the browser) is its own
  * card on it, from under its title band down: rounded and edged. One width of
  * frame runs everywhere (4px): between the cards, and round them to the
  * window's edges. Each card keeps that gap on its right.
@@ -353,9 +350,8 @@ const PANE = "min-h-0 overflow-hidden";
 /** The card behind a pane's body, and its edge over it (above sticky day
     headers and full-width rows). Its surface comes with the pane. */
 const CARD = `${PANE} relative pr-1 before:pointer-events-none before:absolute before:left-0 before:right-1 before:bottom-0 before:top-(--workspace-topbar-height) before:-z-10 before:rounded-xl after:pointer-events-none after:absolute after:left-0 after:right-1 after:bottom-0 after:top-(--workspace-topbar-height) after:z-30 after:rounded-xl after:border after:border-(--panel-edge)`;
-/** The sidebar's card is a step quieter than the mail's: between the frame's
-    tone and the canvas. */
-const PANE_SIDEBAR = `${CARD} text-sidebar-foreground before:bg-(--sidebar-panel-surface)`;
+/** The sidebar is the window's left edge, on the frame: the only column that isn't a card. */
+const PANE_SIDEBAR = `${PANE} relative text-sidebar-foreground`;
 const PANE_LIST = `${CARD} before:bg-canvas`;
 const PANE_MAIN = PANE_LIST;
 const PANE_BROWSER = PANE_LIST;
@@ -406,7 +402,6 @@ function MailHome() {
   // mailboxes are known, it's always one of theirs (effects below catch the
   // route up), so nothing shows a place only to leave it at once.
   const placed = routeLoc ?? lastMail;
-  const viewSpaces = views.filter((v) => v.kind === "custom");
   const mailLoc = ready
     ? placeFor(placed ?? savedLoc(), accounts, mailboxes.combined, viewsLoaded ? views : null)
     : placed;
@@ -555,7 +550,7 @@ function MailHome() {
   const floatingLayout = mailLayout === "floating" && !isChats;
   const wideInbox = fullInbox || floatingLayout;
   const [mailWorkspace, setMailWorkspace] = useState<HTMLDivElement | null>(null);
-  // A view's space: its list, with no sidebar.
+  // A view's space: its list, across the mailboxes.
   const viewSpace = space?.kind === "view" ? space.view : null;
   const spansMailboxes = spanning(space);
 
@@ -571,7 +566,7 @@ function MailHome() {
     start: sidebarStart,
     paneRef: sidebarPaneRef,
     frameRef: sidebarFrameRef,
-  } = useStoredWidth("gmail:pane:sidebar", 200, 180, 400);
+  } = useStoredWidth("gmail:pane:sidebar", 240, 180, 400);
   const {
     width: listWidth,
     start: listStart,
@@ -592,12 +587,11 @@ function MailHome() {
   const [settingsSidebarOpen, setSettingsSidebarOpen] = useState(
     () => localStorage.getItem("gmail:settings-sidebar-open") !== "0",
   );
-  // A view's space has no sidebar: only its list.
-  const sidebarOpen = settingsRoute ? settingsSidebarOpen : mailSidebarOpen && !viewSpace;
+  const sidebarOpen = settingsRoute ? settingsSidebarOpen : mailSidebarOpen;
   // The browser can grow wide, as long as the reader keeps READER_MIN_WIDTH.
   const browserRoom = () =>
     window.innerWidth -
-    RAIL_WIDTH -
+    FRAME_INSET -
     (sidebarOpen ? sidebarWidth : 0) -
     (wideInbox ? 0 : listWidth) -
     READER_MIN_WIDTH;
@@ -1146,19 +1140,13 @@ function MailHome() {
     goForAccountEffect.current({}, true);
   }, [misplaced, goForAccountEffect]);
 
-  const handleSelectLabel = (labelId: string) => {
-    console.log("[HomeView:selectLabel]", { labelId });
-    setComposeOpen(false);
-    go({ label: labelId, messageId: null });
-  };
-
-  // Peeking at another space's sidebar from the rail (space-peek.tsx): only
-  // while the sidebar is collapsed (or a view's space has none).
-  const spacePeek = useSpacePeek();
-  const peekSpace = spacePeek.peek && !sidebarOpen ? spacePeek.peek : null;
+  // Peeking at the sidebar from the window's edge (sidebar-peek.tsx): only
+  // while it's hidden, and not in Settings.
+  const sidebarPeek = useSidebarPeek();
+  const peeking = sidebarPeek.open && !sidebarOpen && !settingsRoute;
   /** Goes to a space (at its first place, or `label`), closing the peek. */
   const goToSpace = (spaceId: string, label?: string) => {
-    spacePeek.close();
+    sidebarPeek.close();
     if (label === undefined) handleSelectAccount(spaceId);
     else {
       setComposeOpen(false);
@@ -1169,7 +1157,7 @@ function MailHome() {
   /** The view editor ("new", or a view's id). */
   const openViewEditor = (viewId: string) => {
     console.log("[HomeView:openViewEditor]", { isNew: viewId === "new" });
-    spacePeek.close();
+    sidebarPeek.close();
     setViewEditor(viewId);
   };
 
@@ -1468,9 +1456,7 @@ function MailHome() {
   // Room for the pinned browser toggle, while the panel doesn't show (it keeps it then).
   const browserToggleRoom = features.browser && !browserVisible && !settingsRoute && !isChats;
   const titleTrailing = <TitleTrailing showPanelToggle={browserToggleRoom} />;
-  // A view's space has no sidebar to toggle.
-  const sidebarToggle = !(viewSpace && !settingsRoute);
-  const titlebarInset = <TitlebarInset toggle={sidebarToggle} />;
+  const titlebarInset = <TitlebarInset />;
   const readerLeading = fullInbox ? (
     <>
       {sidebarOpen ? null : titlebarInset}
@@ -1507,9 +1493,9 @@ function MailHome() {
       onSearchSender={(email) => handleSearchChange(`from:${email}`)}
     />
   );
-  // With the sidebar hidden and no list pane, this band is the first after the
-  // rail: it needs the traffic-light clearance and the toggle to bring the
-  // sidebar (and Settings' Back button) back.
+  // With the sidebar hidden and no list pane, this band is the window's first:
+  // it needs the traffic-light clearance and the toggle to bring the sidebar
+  // (and Settings' Back button) back.
   const mainIsLeftmost = !sidebarOpen && !listVisible;
   const titleControls = (
     <TitleControls
@@ -1521,6 +1507,44 @@ function MailHome() {
       showPanelToggle={browserToggleRoom}
     />
   );
+  // Docked, or peeking from the window's edge.
+  const sidebar = (
+    <AppSidebar
+      accounts={accounts}
+      views={views}
+      spaceId={effectiveAccountId}
+      labelId={selectedLabelId}
+      settingsOpen={settingsRoute !== null}
+      onGo={goToSpace}
+      onCompose={() => {
+        sidebarPeek.close();
+        setComposeOpen(true);
+      }}
+      onNewChat={() => goToSpace(CHATS_SPACE, NEW_CHAT)}
+      onNewView={() => openViewEditor("new")}
+      onEditView={openViewEditor}
+      onOpenPalette={() => {
+        sidebarPeek.close();
+        setPaletteOpen(true);
+      }}
+      onOpenSettings={(pane = lastPaneRef.current) => openSettings({ pane })}
+      onSync={syncNow}
+      syncing={globalSync.syncing || manualSyncing}
+      searches={searchTabs
+        .filter((t) => t.mailbox === searchMailbox && t.parent)
+        .map((t) => ({
+          id: t.id,
+          parent: t.parent!,
+          title: searchTitle(t),
+          selected: activeSearch?.id === t.id,
+        }))}
+      onSelectSearch={(id) => {
+        showSearch(id);
+        focusSearchEnd();
+      }}
+      onCloseSearch={closeSearch}
+    />
+  );
   return (
     <>
       <div
@@ -1530,62 +1554,29 @@ function MailHome() {
         style={{ "--panel-animation-duration": `${panelAnimationDurationMs}ms` } as CSSProperties}
       >
         <div className="contents">
-          {/* The spaces and the app's menu (ChatGPT's rail): they stay when
-              the sidebar hides. */}
-          <SpaceRail
-            accounts={accounts}
-            views={viewSpaces}
-            onNewView={() => openViewEditor("new")}
-            onEditView={openViewEditor}
-            onHoverSpace={sidebarOpen ? undefined : spacePeek.hover}
-            selectedSpaceId={effectiveAccountId}
-            onSelectSpace={handleSelectAccount}
-            settingsOpen={settingsRoute !== null}
-            onOpenSettings={(pane = lastPaneRef.current) => openSettings({ pane })}
-            onSync={syncNow}
-            syncing={globalSync.syncing || manualSyncing}
-          />
-          {/* The frame's width under the cards too (the right edge is the
-              last card's own gap), so they float with every corner rounded. */}
-          <div className="relative isolate flex min-w-0 flex-1 pb-1">
+          {/* The frame's width round the cards (the right edge is the last
+              card's own gap), so they float with every corner rounded. */}
+          <div className="relative isolate flex min-w-0 flex-1 pb-1 pl-1">
             <div
               ref={setMailWorkspace}
               data-mail-workspace=""
               className="relative flex min-h-0 min-w-0 flex-1"
             >
-              {peekSpace ? (
-                <SpacePeekCard
-                  key={peekSpace}
-                  width={sidebarWidth}
-                  onHover={(inside) => spacePeek.hover(inside ? peekSpace : null)}
-                >
-                  {peekSpace === CHATS_SPACE ? (
-                    <ChatsSidebar
-                      selectedId={isChats ? selectedLabelId : null}
-                      onSelect={(id) => goToSpace(CHATS_SPACE, id)}
-                      onNewChat={() => goToSpace(CHATS_SPACE, NEW_CHAT)}
-                    />
-                  ) : (
-                    <MailboxSidebarPage
-                      selectedAccountId={peekSpace}
-                      onSelectAccount={(id) => goToSpace(id)}
-                      selectedLabelId={peekSpace === effectiveAccountId ? selectedLabelId : ""}
-                      onSelectLabel={(label) => goToSpace(peekSpace, label)}
-                      views={views}
-                      onCompose={() => {
-                        spacePeek.close();
-                        setComposeOpen(true);
-                      }}
-                      searchSelected={false}
-                      searchPending={false}
-                      onOpenSearch={() => goToSpace(peekSpace)}
-                      searches={[]}
-                      onSelectSearch={() => {}}
-                      onCloseSearch={() => {}}
-                    />
-                  )}
-                </SpacePeekCard>
+              {peeking ? (
+                <SidebarPeekCard width={sidebarWidth} onHover={sidebarPeek.hover}>
+                  {sidebar}
+                </SidebarPeekCard>
               ) : null}
+              {/* Hidden, the sidebar peeks from the window's left edge. */}
+              {sidebarOpen || settingsRoute ? null : (
+                <div
+                  aria-hidden
+                  onMouseEnter={() => sidebarPeek.hover(true)}
+                  onMouseLeave={() => sidebarPeek.hover(false)}
+                  onDragEnter={() => sidebarPeek.hover(true)}
+                  className="absolute inset-y-0 -left-1 z-30 w-3"
+                />
+              )}
               {sidebarPresent ? (
                 <>
                   <div
@@ -1614,43 +1605,12 @@ function MailHome() {
                             onBack={leaveSettings}
                           />
                         </>
-                      ) : isChats ? (
+                      ) : (
                         <>
-                          <SidebarTitle />
-                          <ChatsSidebar
-                            selectedId={selectedLabelId}
-                            onSelect={handleSelectLabel}
-                            onNewChat={startNewChat}
-                          />
-                          <UpdateCard />
+                          {/* The traffic lights and the pinned toggle sit over its band. */}
+                          <div className="drag-region h-(--workspace-topbar-height) shrink-0" />
+                          {sidebar}
                         </>
-                      ) : viewSpace ? null : (
-                        <AccountsSidebar
-                          selectedAccountId={effectiveAccountId}
-                          onSelectAccount={handleSelectAccount}
-                          selectedLabelId={selectedLabelId}
-                          onSelectLabel={handleSelectLabel}
-                          views={views}
-                          onCompose={() => setComposeOpen(true)}
-                          searchSelected={activeSearch?.id === topSearchId}
-                          searchPending={Boolean(
-                            searchTabs.find((t) => t.id === topSearchId)?.draft.trim(),
-                          )}
-                          searches={searchTabs
-                            .filter((t) => t.mailbox === searchMailbox && t.parent)
-                            .map((t) => ({
-                              id: t.id,
-                              parent: t.parent!,
-                              title: searchTitle(t),
-                              selected: activeSearch?.id === t.id,
-                            }))}
-                          onSelectSearch={(id) => {
-                            showSearch(id);
-                            focusSearchEnd();
-                          }}
-                          onCloseSearch={closeSearch}
-                          onOpenSearch={() => openSearch()}
-                        />
                       )}
                     </div>
                   </div>
@@ -1825,9 +1785,11 @@ function MailHome() {
       </div>
 
       {/* Pinned titlebar toggles (Otter Code): same window spot whatever the panes do. */}
-      {!sidebarToggle ? null : (
-        <SidebarControl sidebarOpen={sidebarOpen} onToggleSidebar={toggleSidebar} />
-      )}
+      <SidebarControl
+        sidebarOpen={sidebarOpen}
+        onToggleSidebar={toggleSidebar}
+        onHover={sidebarOpen || settingsRoute ? undefined : sidebarPeek.hover}
+      />
       {features.browser && !settingsRoute && !isChats ? (
         <PanelControl open={browserOpen} onToggle={toggleBrowser} />
       ) : null}

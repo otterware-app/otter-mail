@@ -32,7 +32,6 @@ import { osNames } from "../os-names";
 import { Btn } from "../gmail/ui";
 import { requestTour, startSetup } from "../onboarding/onboarding";
 import { requestProblemReport } from "../support/report-problem";
-import { useRailUnreadDots } from "../gmail/space-rail";
 
 /** Where the settings page is. */
 export type SettingsRoute = {
@@ -74,7 +73,6 @@ function GeneralPane() {
     getAdvanceDirection(),
   );
   const [launchAtLogin, setLaunchAtLogin] = useState(DEFAULT_SETTINGS.launchAtLogin);
-  const [railDots, setRailDots] = useRailUnreadDots();
   const [dockBadge, setDockBadge] = useState(DEFAULT_SETTINGS.dockBadgeEnabled);
   const [mailApps, setMailApps] = useState<MailApp[] | null>(null);
   const [defaultMailAppId, setDefaultMailAppId] = useState<string | null>(null);
@@ -187,20 +185,6 @@ function GeneralPane() {
     void loadMailApps();
   };
 
-  // The rail's unread dots, next to the Dock badge in the Mac app; in Mail elsewhere.
-  const railDotsRow = (
-    <SettingsRow
-      {...searchableSetting("rail-unread-dots")}
-      resetAction={
-        railDots ? (
-          <SettingResetButton label="mailbox unread dots" onClick={() => setRailDots(false)} />
-        ) : null
-      }
-      description="A dot on each mailbox in the rail whose Inbox has unread mail, and each view with unread mail."
-      control={<Switch id="railUnreadDots" checked={railDots} onCheckedChange={setRailDots} />}
-    />
-  );
-
   return (
     <SettingsPageContainer title="General">
       {/* What only the desktop app has isn't shown elsewhere. */}
@@ -248,12 +232,10 @@ function GeneralPane() {
               }
             />
           ) : null}
-          {features.dockBadge ? railDotsRow : null}
         </SettingsSection>
       ) : null}
 
       <SettingsSection title="Mail">
-        {features.dockBadge ? null : railDotsRow}
         <SettingsRow
           {...searchableSetting("sync-interval")}
           resetAction={

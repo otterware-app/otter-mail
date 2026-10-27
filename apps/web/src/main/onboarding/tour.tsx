@@ -39,7 +39,7 @@ const STOPS: TourStop[] = [
   {
     target: "mailbox",
     title: "Your mailboxes",
-    body: "Your mailboxes, down the left edge: click one, or hover it to peek at its sidebar. With two or more, All mailboxes reads them as one. You and Settings are at the bottom.",
+    body: "Your mailboxes, in the sidebar: each opens to its folders and labels. With two or more, All mailboxes reads them as one. You and Settings are at the bottom; hide the sidebar and it peeks from the window's edge.",
     keys: [{ command: "mailbox.jump.1", label: "Jump to mailbox 1…9" }],
   },
   {
@@ -54,7 +54,7 @@ const STOPS: TourStop[] = [
   {
     target: "chats",
     title: "Views and chats",
-    body: "Under your mailboxes: views, which + makes, each one list of what its filters find across them (every newsletter, receipts from any account), then Chats, the agent's workspace: a chat beside the conversations, drafts and pages it used and made, on every device.",
+    body: "Under your mailboxes: views, which + makes, each one list of what its filters find across them (every newsletter, receipts from any account). Chats, the tab beside Mail, is the agent's workspace: a chat beside the conversations, drafts and pages it used and made, on every device.",
   },
   {
     target: "list",

@@ -130,14 +130,17 @@ export function HintTooltip({
   hint: fixedHint,
   shortcut,
   side = "top",
+  disabled = false,
   children,
 }: {
   label: string;
   hint?: string;
   /** Shows this command's live keybinding as the hint. */
   shortcut?: KeybindingCommand;
-  /** "right" for a control in the rail down the window's edge. */
+  /** "right" for a control down the window's edge. */
   side?: TooltipSide;
+  /** Says nothing for now (the trigger already shows its label), keeping the trigger as it is. */
+  disabled?: boolean;
   children: ReactNode;
 }) {
   const liveHint = useShortcutLabel(shortcut);
@@ -152,7 +155,7 @@ export function HintTooltip({
     timer.current = null;
   };
   const open = (target: Element | null) => {
-    if (!target) return;
+    if (!target || disabled) return;
     clearTimer();
     const reveal = () => setAnchor(target.getBoundingClientRect());
     if (Date.now() - lastTooltipClosedAt < TOOLTIP_GRACE_MS) reveal();

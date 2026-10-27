@@ -50,9 +50,8 @@
     var(--workspace-controls-left) + var(--workspace-titlebar-control-size) +
       var(--workspace-titlebar-control-gap)
   );
-  /* The rail of spaces down the window's left edge (space-rail.tsx),
-     under the title band; the panes start after it. */
-  --workspace-rail-width: 52px;
+  /* The frame's margin left of the first column (home-view.tsx's cards). */
+  --workspace-frame-inset: 0.25rem;
   /* Height of the fade under borderless top bars (Otter Code). */
   --workspace-titlebar-scroll-fade-height: 1.5rem;
   --app-scrollbar-thumb: color-mix(in srgb, var(--foreground) 18%, transparent);
@@ -70,7 +69,7 @@
   /* How wide the reader's thread grows (Settings › Appearance, Reading width). */
   --reading-width: none;
 
-  /* Otter Mail's own palette, in three layers: the window's frame (the rail,
+  /* Otter Mail's own palette, in three layers: the window's frame (its edges,
      the title bands), the sidebar a step in, and the mail (list and reader)
      on the brightest surface. Text in three tiers: who and what in full,
      metadata muted, previews fainter still. */
@@ -130,10 +129,6 @@
     var(--sidebar-muted-foreground) 60%,
     var(--sidebar-surface)
   );
-  /* The sidebar's body in the panel (home-view.tsx): halfway from the
-     frame's surface to the canvas (ChatGPT's), so the rail stands apart.
-     Resolved here, from the window's palette, not the sidebar's own scope. */
-  --sidebar-panel-surface: color-mix(in srgb, var(--sidebar-surface) 50%, var(--canvas));
   /* A card's edge against the frame: the frame's surface a little of the
      way to the text (a darker rim in light; .dark lifts the card's own), so
      it shows in every theme, whatever its border role is. */
@@ -149,26 +144,23 @@
 /* Linux's minimize, maximize and close sit at the top bar's right end: what
    pins there (the agent panel toggle) moves left of them. The title bar area
    is the window controls overlay's (os/linux main window). With no traffic
-   lights to clear, the sidebar toggle sits over the rail. */
+   lights to clear, the sidebar toggle sits at the window's start, in line
+   with the sidebar's icons. */
 html[data-window-controls="right"] {
   --workspace-window-controls-width: calc(
     100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw)
   );
   --workspace-controls-right: calc(var(--workspace-window-controls-width) + 0.5rem);
-  --workspace-controls-left: calc(
-    (var(--workspace-rail-width) - var(--workspace-titlebar-control-size)) / 2
-  );
+  --workspace-controls-left: calc(var(--workspace-frame-inset) + 0.75rem);
 }
-/* A browser tab has no title bar (ChatGPT's web app): the rail's spaces start
-   at the top, as far from it as from the rail's sides (the columns' headers
-   are as tall as that takes), and the sidebar toggle pins at the panel's
-   start instead, in line with the sidebar's icons. The sidebar's heading
-   leaves it room. */
+/* A browser tab has no title bar (ChatGPT's web app): the sidebar toggle pins
+   at the window's start, in line with the sidebar's icons, and Settings'
+   heading leaves it room. */
 html[data-window-controls="none"] {
   --workspace-topbar-height: 52px;
-  --workspace-controls-left: calc(var(--workspace-rail-width) + 0.75rem);
+  --workspace-controls-left: calc(var(--workspace-frame-inset) + 0.75rem);
   --sidebar-heading-inset: calc(
-    var(--workspace-titlebar-content-left) - var(--workspace-rail-width) -
+    var(--workspace-titlebar-content-left) - var(--workspace-frame-inset) -
       var(--sidebar-content-inset)
   );
 }
