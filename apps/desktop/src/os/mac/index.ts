@@ -1,9 +1,9 @@
 /**
- * macOS (HostOS): a frosted-glass window with traffic lights, the app menu,
- * the Dock, and LaunchServices for mail and terminal apps.
+ * macOS (HostOS): a window with traffic lights, the app menu, the Dock, and
+ * LaunchServices for mail and terminal apps.
  */
 
-import { app } from "electron";
+import { app, nativeTheme } from "electron";
 
 import type { HostOS } from "../types.js";
 import { listMailApps, setDefaultMailApp } from "./mail-apps.js";
@@ -14,6 +14,9 @@ import { nativeMessagingDirectories } from "./native-messaging.js";
 const TOPBAR_HEIGHT = 42;
 const WINDOW_BUTTON_RADIUS = 7;
 
+/** The frame's surface (styles.css, --sidebar-surface), shown until the page paints. */
+const background = () => (nativeTheme.shouldUseDarkColors ? "#0c0c0e" : "#ededf0");
+
 export const macOS: HostOS = {
   nativeMessagingDirectories,
   modifierKey: "metaKey",
@@ -21,12 +24,8 @@ export const macOS: HostOS = {
   mainWindowOptions: () => ({
     titleBarStyle: "hiddenInset",
     trafficLightPosition: { x: 14, y: TOPBAR_HEIGHT / 2 - WINDOW_BUTTON_RADIUS },
-    // Native glass: the renderer keeps its base layers transparent and
-    // paints a translucent frame over the vibrancy material.
-    transparent: true,
-    backgroundColor: "#00000000",
-    vibrancy: "sidebar",
-    visualEffectState: "followWindow",
+    // Solid, like the frame the renderer paints over it.
+    backgroundColor: background(),
     webPreferences: {
       // macOS rubber-banding, off in Electron by default: scrollers (the
       // mailbox pages' swipe included) stretch past their ends, harder
@@ -34,8 +33,13 @@ export const macOS: HostOS = {
       scrollBounce: true,
     },
   }),
-  // The traffic lights follow the system's appearance on their own.
-  windowFollowsTheme: () => {},
+  // The traffic lights follow the system's appearance on their own; the
+  // background follows the app's.
+  windowFollowsTheme(win) {
+    const update = () => win.setBackgroundColor(background());
+    nativeTheme.on("updated", update);
+    win.once("closed", () => nativeTheme.off("updated", update));
+  },
 
   applicationMenu: (items) => [
     {

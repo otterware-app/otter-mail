@@ -328,7 +328,6 @@ export const webBridge: DesktopBridge = {
   platform: "web",
   features: {
     windowControls: null,
-    vibrancy: false,
     historyButtons: false,
     launchAtLogin: false,
     dockBadge: false,

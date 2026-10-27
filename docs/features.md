@@ -20,7 +20,7 @@ from GitHub Releases. Everything in the Mac column works the same, except:
 
 | Feature                    | Linux                                                                                       |
 | -------------------------- | ------------------------------------------------------------------------------------------- |
-| Window                     | frameless; minimize, maximize and close over the top bar's right end; no glass              |
+| Window                     | frameless; minimize, maximize and close over the top bar's right end                        |
 | Shortcuts                  | Ctrl where the Mac uses ⌘, in shortcuts and clicks (shown so everywhere)                    |
 | Closing the window         | quits (no Dock to bring it back); launching it again opens it                               |
 | Open at login              | ✓ (an XDG autostart entry)                                                                  |
@@ -264,7 +264,6 @@ On iPhone, iOS's tab bar holds Mail, the Agent (with an agent on, or an Otter ac
 | Configurable delay before keyboard previews are marked read (2 seconds by default); clicks mark read immediately | ✓   | ✓   | —                                                                          |
 | Mail layouts: Split view, Full inbox, Floating                                                                   | ✓   | ✓   | —                                                                          |
 | Floating reader: move, snap, resize, minimize, expand                                                            | ✓   | ✓   | —                                                                          |
-| Frosted window frame (title bar and rail, by glass opacity)                                                      | ✓   | —   | —                                                                          |
 | Keyboard shortcuts, rebindable (incl. move to label)                                                             | ✓   | ✓   | —                                                                          |
 | Command palette (⌘K)                                                                                             | ✓   | ✓   | —                                                                          |
 | Recently viewed, back and forward (Mac: title bar; web: browser's)                                               | ✓   | ✓   | —                                                                          |

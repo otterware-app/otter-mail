@@ -65,6 +65,7 @@ import {
   useAccounts,
 } from "./hooks";
 import { LabelChip, InboxChip, ImportantMarker } from "./label-chip";
+import { SenderAvatar } from "./sender-avatar";
 import { SignedOutMailbox } from "./signed-out-mailbox";
 import { LabelOverlay, type LabelOverlayMode } from "./label-overlay";
 import { useCapabilities } from "./capabilities";
@@ -101,9 +102,6 @@ type MessageListProps = {
   renderFloatingReader?: (navigation: ReactNode, title: string) => ReactNode;
   /** Rendered at the start of the title band (window title when the sidebar is hidden). */
   headerLeading?: ReactNode;
-  /** Clip the list to the shared panel's corners where it meets the frame. */
-  roundedLeft?: boolean;
-  roundedRight?: boolean;
   /** Active account — used for account-mode queries and as a fallback owner id. */
   accountId: string;
   labelId: string;
@@ -321,7 +319,7 @@ type MessageRowProps = {
   /** Fallback owner id when a summary has no accountId (e.g. live search results). */
   accountId: string;
   resolveLabel: ResolveLabel;
-  /** Mailbox + account line shown next to the date, only in Combined view. */
+  /** Whose mailbox it is, a badge on the face, only in Combined view. */
   combinedMeta: CombinedMeta | null;
   /** Mark rows still in the inbox (shown when browsing non-inbox views). */
   showInboxChip: boolean;
@@ -473,15 +471,15 @@ function MessageRow({
   // The thread's latest message is an unsent draft: flag it like Gmail does,
   // and name who it's going to instead of yourself.
   const isDraft = message.labelIds.includes("DRAFT");
-  const draftTo = isDraft
-    ? splitAddressList(message.to)
-        .map((entry) => {
-          const { name, email } = parseAddressEntry(entry);
-          return name || email.split("@")[0];
-        })
-        .filter(Boolean)
-        .join(", ")
-    : "";
+  const draftRecipients = isDraft ? splitAddressList(message.to).map(parseAddressEntry) : [];
+  const draftTo = draftRecipients
+    .map(({ name, email }) => name || email.split("@")[0])
+    .filter(Boolean)
+    .join(", ");
+  // Who the row is about: the sender, or a draft's first recipient.
+  const person = draftRecipients[0]?.email
+    ? draftRecipients[0]
+    : { name: message.fromName, email: message.fromEmail };
 
   return (
     <div className="relative">
@@ -506,7 +504,7 @@ function MessageRow({
               if (e.shiftKey) e.preventDefault();
             }}
             className={[
-              "message-list-row group relative flex w-full cursor-pointer select-none items-start gap-2.5 overflow-hidden px-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-focus-ring",
+              "message-list-row group relative flex w-full cursor-pointer select-none items-start gap-3 overflow-hidden pl-4 pr-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-focus-ring",
               selected
                 ? "bg-sidebar-row-active"
                 : checked
@@ -516,12 +514,39 @@ function MessageRow({
               checked ? "ring-1 ring-inset ring-primary/70" : "",
             ].join(" ")}
           >
+            {/* Who it's from, at a glance (Outlook's column of faces); new
+                mail's dot sits in the gutter before it, so names stay aligned. */}
+            <span className="message-list-avatar relative mt-0.5 flex shrink-0">
+              {unread && !selected ? (
+                <span
+                  className="absolute -left-[11px] top-1/2 size-1.5 -translate-y-1/2 rounded-full bg-primary"
+                  aria-hidden
+                />
+              ) : null}
+              <SenderAvatar
+                name={person.name}
+                email={person.email}
+                accountId={ownerAccountId}
+                className="message-list-face"
+              />
+              {/* Across mailboxes, whose it is: a badge on the face, apart
+                  from the unread dot. */}
+              {combinedMeta ? (
+                <span
+                  className="absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full ring-2 ring-canvas"
+                  style={{ backgroundColor: combinedMeta.accountColor }}
+                  title={
+                    combinedMeta.mailbox
+                      ? `${combinedMeta.accountName} · ${combinedMeta.mailbox}`
+                      : combinedMeta.accountName
+                  }
+                  aria-label={combinedMeta.accountName}
+                />
+              ) : null}
+            </span>
             <div className="message-list-row-content flex min-w-0 flex-1 flex-col">
               <div className="message-list-row-header flex items-center justify-between gap-2">
                 <span className="message-list-sender flex min-w-0 flex-1 items-center gap-1.5">
-                  {unread && !selected ? (
-                    <span className="size-1.5 shrink-0 rounded-full bg-primary" aria-hidden />
-                  ) : null}
                   {labelIds.includes("IMPORTANT") ? <ImportantMarker muted /> : null}
                   {isDraft ? (
                     <span className="shrink-0 text-sm font-medium leading-snug text-destructive-foreground">
@@ -534,7 +559,7 @@ function MessageRow({
                       isDraft
                         ? "text-muted-foreground"
                         : unread
-                          ? "font-medium text-foreground"
+                          ? "font-semibold text-foreground"
                           : "font-normal text-foreground",
                     ].join(" ")}
                   >
@@ -567,25 +592,23 @@ function MessageRow({
                       />
                     </span>
                   ) : null}
-                  {combinedMeta ? (
-                    <span
-                      className="size-2 shrink-0 rounded-full"
-                      style={{ backgroundColor: combinedMeta.accountColor }}
-                      title={
-                        combinedMeta.mailbox
-                          ? `${combinedMeta.accountName} · ${combinedMeta.mailbox}`
-                          : combinedMeta.accountName
-                      }
-                      aria-label={combinedMeta.accountName}
-                    />
-                  ) : null}
-                  <span className="text-xs tabular-nums text-muted-foreground">
+                  <span
+                    className={cn(
+                      "text-xs tabular-nums",
+                      unread ? "font-medium text-primary" : "text-muted-foreground",
+                    )}
+                  >
                     {formatRelativeDate(message.date)}
                   </span>
                 </div>
               </div>
               <div className="message-list-preview flex min-w-0 flex-col gap-0.5">
-                <span className="message-list-subject truncate text-[13px] leading-snug text-foreground/90">
+                <span
+                  className={cn(
+                    "message-list-subject truncate text-[13px] leading-snug",
+                    unread ? "font-medium text-foreground" : "text-foreground/75",
+                  )}
+                >
                   {message.subject || "(no subject)"}
                 </span>
                 <span className="message-list-snippet truncate text-[13px] leading-snug text-muted-foreground/75">
@@ -730,7 +753,7 @@ function ThreadMessageRow({
       data-read={!message.unread || undefined}
       data-selected={selected || undefined}
       className={cn(
-        "message-list-thread-row group flex w-full cursor-pointer select-none flex-col gap-0.5 rounded-lg py-2 pr-3 pl-6 text-left outline-none focus-visible:ring-2 focus-visible:ring-focus-ring",
+        "message-list-thread-row group flex w-full cursor-pointer select-none flex-col gap-0.5 rounded-lg py-2 pr-3 pl-14 text-left outline-none focus-visible:ring-2 focus-visible:ring-focus-ring",
         selected ? "bg-sidebar-row-active" : "hover:bg-sidebar-row-hover",
       )}
     >
@@ -812,8 +835,6 @@ function formatMailboxSummary(total: number, unread: number): string {
 export function MessageList({
   headerLeading,
   headerTrailing,
-  roundedLeft,
-  roundedRight,
   renderFloatingReader,
   accountId,
   labelId,
@@ -1900,15 +1921,8 @@ export function MessageList({
         data-group-messages-by-day={groupByDay || undefined}
         data-dim-read-messages={dimReadMessages || undefined}
         onScroll={maybeLoadMore}
-        className={cn(
-          "flex-1",
-          roundedLeft && "rounded-bl-xl",
-          roundedRight && "rounded-br-xl",
-          !search && roundedLeft && "rounded-tl-xl",
-          !search && roundedRight && "rounded-tr-xl",
-          // In a browser tab the panel's corners are above the header, and it's square on the right.
-          "web:rounded-t-none web:rounded-r-none",
-        )}
+        // Clipped to its card's corners (home-view.tsx), sticky day headers too.
+        className="flex-1 rounded-xl"
         contentClassName={filteredMessages.length === 0 ? "h-full" : undefined}
         viewportClassName={[
           "message-list-scroll pb-1 pt-[9px]",
@@ -1921,7 +1935,8 @@ export function MessageList({
           <div className="flex flex-col gap-0">
             {["row-1", "row-2", "row-3", "row-4", "row-5", "row-6", "row-7", "row-8"].map((key) => (
               <div key={key} className="message-list-group">
-                <div className="message-list-row px-3">
+                <div className="message-list-row flex gap-3 pl-4 pr-3">
+                  <div className="message-list-avatar size-9 shrink-0 animate-skeleton rounded-lg bg-secondary" />
                   <div className="message-list-skeleton flex min-w-0 flex-1 flex-col gap-2">
                     <div className="h-3.5 w-32 animate-skeleton rounded-full bg-secondary" />
                     <div className="h-3 w-48 animate-skeleton rounded-full bg-accent-surface" />

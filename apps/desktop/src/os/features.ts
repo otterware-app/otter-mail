@@ -19,7 +19,6 @@ const everywhere = {
 const mac: BridgeFeatures = {
   ...everywhere,
   windowControls: "left",
-  vibrancy: true,
   dockBadge: true,
   // Apple's Translation, through native/translator.
   translation: true,
@@ -28,7 +27,6 @@ const mac: BridgeFeatures = {
 const linux: BridgeFeatures = {
   ...everywhere,
   windowControls: "right",
-  vibrancy: false,
   dockBadge: false,
   translation: false,
 };

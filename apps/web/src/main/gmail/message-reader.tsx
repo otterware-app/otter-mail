@@ -1475,7 +1475,7 @@ export function ExpandedRow({
                 onCompose={onComposeTo}
                 onSearch={onSearchSender}
               >
-                <span className="select-text truncate text-sm font-medium leading-snug text-foreground">
+                <span className="select-text truncate text-sm font-semibold leading-snug text-foreground">
                   {senderLabel(summary.fromName, summary.fromEmail, accountId)}
                 </span>
               </SenderHoverCard>
@@ -2112,9 +2112,9 @@ export function MessageReader({
   const forwardShortcut = useShortcutLabel("message.forward");
   const flagShortcut = useShortcutLabel("message.star");
   const translateShortcut = useShortcutLabel("message.translate");
-  // The band adapts to the reader's width (panels open → narrow): the subject
-  // moves to its own row below 44rem, secondary actions fold into "…" below
-  // 36rem. Measured in JS because the "…" menu renders outside this element.
+  // The band adapts to the reader's width (panels open → narrow): secondary
+  // actions fold into "…" below 36rem. Measured in JS because the "…" menu
+  // renders outside this element.
   const [readerWidth, setReaderWidth] = useState(Infinity);
   const readerObserver = useRef<ResizeObserver | null>(null);
   const readerRef = useCallback((el: HTMLDivElement | null) => {
@@ -2125,7 +2125,6 @@ export function MessageReader({
     ro.observe(el);
     readerObserver.current = ro;
   }, []);
-  const compactTitle = readerWidth < 44 * 16;
   const compactActions = readerWidth < 36 * 16;
   // The summary (Codex's pinned card): in the top-right corner, the
   // conversation re-centering in the room left of it, when the 48rem column
@@ -2527,7 +2526,7 @@ export function MessageReader({
 
   const groupDivider = <span className="mx-1 h-5 w-px shrink-0 bg-border" aria-hidden />;
 
-  /** Subject + label chips: one truncated line in the band, or a wrapping heading. */
+  /** Subject + label chips, the conversation's heading. */
   const summary = (
     <ConversationSummary
       accountId={accountId}
@@ -2539,28 +2538,18 @@ export function MessageReader({
     />
   );
 
-  const renderTitle = (wrap: boolean) => (
+  const title = (
     <>
-      <span
-        className={
-          wrap
-            ? "select-text text-xl font-medium leading-snug tracking-[-0.01em] text-foreground"
-            : "select-text truncate text-sm font-medium text-foreground"
-        }
+      <h1
+        className="select-text text-xl font-semibold leading-snug tracking-[-0.01em] text-foreground"
         title={isThread ? `${rows.length} messages` : formatFullDate(message.date)}
       >
         {message.subject || "(no subject)"}
-      </span>
+      </h1>
       {conversationLabelIds.includes("INBOX") ||
       (categories && conversationLabelIds.some(isCategoryLabelId)) ||
       messageLabels.length > 0 ? (
-        <span
-          className={
-            wrap
-              ? "flex flex-wrap items-center gap-1"
-              : "flex min-w-0 shrink items-center gap-1 overflow-hidden"
-          }
-        >
+        <span className="flex flex-wrap items-center gap-1">
           {conversationLabelIds.includes("INBOX") ? <InboxChip onRemove={handleArchive} /> : null}
           {(categories ? conversationLabelIds.filter(isCategoryLabelId) : []).map((id) => (
             <CategoryChip
@@ -2602,20 +2591,14 @@ export function MessageReader({
   return (
     <ConversationTranslationContext.Provider value={conversationTranslation}>
       <div ref={readerRef} className="relative flex h-full min-h-0 min-w-0 flex-col">
-        {/* Conversation header = the title band: subject + labels, the
-            everyday actions, a "more" menu, then the window's panel toggle. */}
+        {/* The title band: the everyday actions, a "more" menu, then the
+            window's panel toggle. The subject heads the conversation below. */}
         <div
           data-toolbar=""
           className="drag-region flex h-(--workspace-topbar-height) shrink-0 items-center gap-1 px-4"
         >
           {titleLeading}
-          {/* Wide: subject + labels live in the band. Narrow: they move to a
-              heading under it (see below) so the actions keep their room. */}
-          {compactTitle ? (
-            <span className="min-w-0 flex-1" />
-          ) : (
-            <div className="flex min-w-0 flex-1 items-center gap-2">{renderTitle(false)}</div>
-          )}
+          <span className="min-w-0 flex-1" />
 
           {/* Priority + overflow: Reply, Archive, Trash and "…" always show;
               as the pane narrows the rest folds into "…". */}
@@ -2873,12 +2856,10 @@ export function MessageReader({
           ) : null}
         </div>
 
-        {/* Narrow reader: the subject + labels as a wrapping heading. */}
-        {compactTitle ? (
-          <div className="mx-auto flex w-full max-w-(--reading-width) shrink-0 flex-wrap items-center gap-x-2 gap-y-1.5 px-6 pb-2 pt-3">
-            {renderTitle(true)}
-          </div>
-        ) : null}
+        {/* The subject + labels: what this is, before who said what. */}
+        <div className="mx-auto flex w-full max-w-(--reading-width) shrink-0 flex-wrap items-center gap-x-2 gap-y-1.5 px-6 pb-2 pt-3">
+          {title}
+        </div>
 
         {single && threadMessages.length > 1 ? (
           <div className="mx-auto flex w-full max-w-(--reading-width) shrink-0 items-center gap-2 px-6 py-1.5">

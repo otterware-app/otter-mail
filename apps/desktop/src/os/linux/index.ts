@@ -17,8 +17,8 @@ import { nativeMessagingDirectories } from "./native-messaging.js";
 /** The renderer's --workspace-topbar-height: the window controls fill it. */
 const TOPBAR_HEIGHT = 42;
 
-/** The sidebar's surface (styles.css), shown until the page paints. */
-const background = () => (nativeTheme.shouldUseDarkColors ? "#000000" : "#fafafa");
+/** The frame's surface (styles.css, --sidebar-surface), shown until the page paints. */
+const background = () => (nativeTheme.shouldUseDarkColors ? "#0c0c0e" : "#ededf0");
 /** The window controls' glyphs: the renderer's muted foreground. */
 const symbolColor = () => (nativeTheme.shouldUseDarkColors ? "#d4d4d4" : "#525252");
 

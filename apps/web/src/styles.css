@@ -59,9 +59,6 @@
   --app-scrollbar-thumb-hover: color-mix(in srgb, var(--foreground) 28%, transparent);
   --glass-blur: 12px;
   --glass-opacity: 80%;
-  /* The Mac window's frame over its glass (home-view.tsx): thinner than
-     Glass opacity (80% → 70%), and still solid at 100%. */
-  --frame-opacity: max(0%, calc(var(--glass-opacity) * 1.5 - 50%));
   --glass-saturation: 1.14;
   /* Contrast (Settings › Appearance; interface-settings.ts sets the first
      three): text fades toward its surface below 100% and goes toward
@@ -73,27 +70,31 @@
   /* How wide the reader's thread grows (Settings › Appearance, Reading width). */
   --reading-width: none;
 
-  --canvas: #fcfcfc; /* zinc-25 */
+  /* Otter Mail's own palette, in three layers: the window's frame (the rail,
+     the title bands), the sidebar a step in, and the mail (list and reader)
+     on the brightest surface. Text in three tiers: who and what in full,
+     metadata muted, previews fainter still. */
+  --canvas: #ffffff;
   --app-chrome-background: var(--canvas);
-  --foreground: #27272a; /* zinc-800 */
+  --foreground: #1d1d20;
   --card: #ffffff;
-  --card-foreground: #27272a;
+  --card-foreground: #1d1d20;
   --popover: #ffffff;
-  --popover-foreground: #27272a;
+  --popover-foreground: #1d1d20;
   --surface-raised: color-mix(in srgb, var(--card) 20%, transparent);
-  --primary: oklch(0.488 0.217 264);
+  --primary: oklch(0.52 0.2 260);
   --primary-foreground: #ffffff;
   --accent: var(--primary);
   --accent-contrast: var(--primary-foreground);
-  --secondary: #fafafa; /* zinc-50 */
-  --secondary-foreground: #27272a;
-  --muted: #fafafa;
-  --muted-foreground: #71717a; /* zinc-500 */
+  --secondary: #f7f7f8;
+  --secondary-foreground: #1d1d20;
+  --muted: #f7f7f8;
+  --muted-foreground: #6c6c75;
   --placeholder: var(--muted-foreground);
   --secondary-label: var(--muted-foreground);
   --icon-muted: var(--muted-foreground);
-  --accent-surface: #f4f4f5; /* zinc-100 */
-  --accent-surface-foreground: #18181b; /* zinc-900 */
+  --accent-surface: #f3f3f5;
+  --accent-surface-foreground: #18181b;
   --message-surface: var(--accent-surface);
   --message-foreground: var(--foreground);
   --error: #ef4444;
@@ -101,8 +102,11 @@
   --error-surface: color-mix(in srgb, var(--error) 8%, transparent);
   --destructive: var(--error);
   --destructive-foreground: var(--error-foreground);
-  --border: #e4e4e7; /* zinc-200 */
-  --input: #d4d4d8; /* zinc-300 */
+  /* Flags (Outlook's red) and the trash in the selection bar: the palette's
+     red, so a theme's own red carries over. */
+  --red: var(--error);
+  --border: #e3e3e7;
+  --input: #d4d4da;
   --ring: var(--primary);
   --info: #3b82f6;
   --info-foreground: #1d4ed8;
@@ -111,13 +115,15 @@
   --warning: #f59e0b;
   --warning-foreground: #b45309;
   --warning-surface: color-mix(in srgb, var(--warning) 8%, transparent);
-  --sidebar-surface: #fafafa;
+  --sidebar-surface: #ededf0;
   --sidebar-foreground: var(--foreground);
   --sidebar-muted-foreground: var(--muted-foreground);
-  --sidebar-control-surface: #f4f4f5;
-  --sidebar-row-hover: #fcfcfc;
-  --sidebar-row-active: #ffffff;
-  --sidebar-row-selected: #ffffff;
+  --sidebar-control-surface: #f3f3f5;
+  /* Rows are tinted with the text color, so they show on any surface: the
+     sidebar's, the list's, a menu's. */
+  --sidebar-row-hover: color-mix(in srgb, var(--foreground) 4%, transparent);
+  --sidebar-row-active: color-mix(in srgb, var(--foreground) 8%, transparent);
+  --sidebar-row-selected: color-mix(in srgb, var(--foreground) 6%, transparent);
   --sidebar-line: var(--border);
   --sidebar-icon-color: color-mix(
     in srgb,
@@ -128,9 +134,9 @@
      frame's surface to the canvas (ChatGPT's), so the rail stands apart.
      Resolved here, from the window's palette, not the sidebar's own scope. */
   --sidebar-panel-surface: color-mix(in srgb, var(--sidebar-surface) 50%, var(--canvas));
-  /* The panel's edge against the frame: the frame's surface a little of the
-     way to the text (ChatGPT's lighter rim in dark, a darker one in light),
-     so it shows in every theme, whatever its border role is. */
+  /* A card's edge against the frame: the frame's surface a little of the
+     way to the text (a darker rim in light; .dark lifts the card's own), so
+     it shows in every theme, whatever its border role is. */
   --panel-edge: color-mix(in srgb, var(--foreground) 5%, var(--sidebar-surface));
   --code-background: color-mix(in srgb, var(--card) 90%, var(--canvas));
   --code-foreground: var(--foreground);
@@ -171,36 +177,39 @@ html[data-window-controls="none"] {
   --glass-saturation: 1.08;
   --appearance-contrast-target: white;
 
-  --canvas: #0a0a0a; /* neutral-950 */
-  --surface-raised: color-mix(in srgb, var(--canvas) 97%, #ffffff);
-  --foreground: #f5f5f5; /* neutral-100 */
-  --card: color-mix(in srgb, var(--canvas) 97%, #ffffff);
-  --card-foreground: #f5f5f5;
-  --popover: color-mix(in srgb, var(--canvas) 97%, #ffffff);
-  --popover-foreground: #f5f5f5;
-  --primary: oklch(0.571 0.21 264);
-  --secondary: rgb(255 255 255 / 3%);
-  --secondary-foreground: #f5f5f5;
-  --muted: rgb(255 255 255 / 3%);
-  --muted-foreground: color-mix(in srgb, #737373 90%, #ffffff);
-  --accent-surface: rgb(255 255 255 / 4%);
-  --accent-surface-foreground: #f5f5f5;
+  --canvas: #17171a;
+  --surface-raised: color-mix(in srgb, var(--canvas) 96%, #ffffff);
+  --foreground: #f2f2f4;
+  --card: color-mix(in srgb, var(--canvas) 96%, #ffffff);
+  --card-foreground: #f2f2f4;
+  --popover: color-mix(in srgb, var(--canvas) 96%, #ffffff);
+  --popover-foreground: #f2f2f4;
+  --primary: oklch(0.62 0.19 260);
+  --secondary: rgb(255 255 255 / 4%);
+  --secondary-foreground: #f2f2f4;
+  --muted: rgb(255 255 255 / 4%);
+  --muted-foreground: #8e8e98;
+  --accent-surface: rgb(255 255 255 / 5%);
+  --accent-surface-foreground: #f2f2f4;
   --error: color-mix(in srgb, #ef4444 90%, #ffffff);
   --error-foreground: #f87171;
   --error-surface: color-mix(in srgb, var(--error) 16%, transparent);
-  --border: rgb(255 255 255 / 6%);
-  --input: rgb(255 255 255 / 8%);
+  --border: rgb(255 255 255 / 8%);
+  --input: rgb(255 255 255 / 11%);
   --info-foreground: #60a5fa;
   --success-foreground: #34d399;
   --warning-foreground: #fbbf24;
   --warning-surface: color-mix(in srgb, var(--warning) 16%, transparent);
-  /* The sidebar's black (its [data-app-sidebar] scope), so the window frame
-     around the content panel is one color. */
-  --sidebar-surface: #000;
+  /* The frame: the sidebar's (its [data-app-sidebar] scope), so the window
+     around the content panel is one color, below the mail. */
+  --sidebar-surface: #0c0c0e;
   --sidebar-control-surface: var(--muted);
-  --sidebar-row-hover: var(--accent-surface);
-  --sidebar-row-active: var(--accent-surface);
-  --sidebar-row-selected: var(--muted);
+  --sidebar-row-hover: color-mix(in srgb, var(--foreground) 5%, transparent);
+  --sidebar-row-active: color-mix(in srgb, var(--foreground) 9%, transparent);
+  --sidebar-row-selected: color-mix(in srgb, var(--foreground) 7%, transparent);
+  /* In the dark the cards are the lighter surface: their edge is a lift of
+     their own tone, so it shows against the frame and the Mac's glass alike. */
+  --panel-edge: color-mix(in srgb, var(--foreground) 8%, var(--canvas));
   --chat-composer-surface: var(--surface-raised);
   --chat-composer-outline: rgb(255 255 255 / 5%);
   --chat-composer-highlight: rgb(255 255 255 / 3%);
@@ -208,34 +217,34 @@ html[data-window-controls="none"] {
 
 /* The app sidebar keeps its own quiet hierarchy (T3 Code's [data-app-sidebar]). */
 [data-app-sidebar] {
-  --canvas: #fcfcfc;
-  --foreground: #27272a;
+  --canvas: #ffffff;
+  --foreground: #1d1d20;
   --card: #ffffff;
-  --card-foreground: #27272a;
-  --accent-surface: #f4f4f5;
+  --card-foreground: #1d1d20;
+  --accent-surface: #f3f3f5;
   --accent-surface-foreground: #18181b;
-  --muted: #fafafa;
-  --muted-foreground: #71717a;
-  --border: #e4e4e7;
-  --input: #d4d4d8;
-  --sidebar-surface: #fafafa;
-  --sidebar-foreground: #27272a;
-  --sidebar-muted-foreground: #71717a;
-  --sidebar-control-surface: #f4f4f5;
-  --sidebar-row-hover: #fcfcfc;
-  --sidebar-row-active: #ffffff;
-  --sidebar-row-selected: #ffffff;
-  --sidebar-line: #e4e4e7;
+  --muted: #f7f7f8;
+  --muted-foreground: #6c6c75;
+  --border: #e3e3e7;
+  --input: #d4d4da;
+  --sidebar-surface: #ededf0;
+  --sidebar-foreground: #1d1d20;
+  --sidebar-muted-foreground: #6c6c75;
+  --sidebar-control-surface: #f3f3f5;
+  --sidebar-row-hover: color-mix(in srgb, var(--foreground) 5%, transparent);
+  --sidebar-row-active: color-mix(in srgb, var(--foreground) 9%, transparent);
+  --sidebar-row-selected: color-mix(in srgb, var(--foreground) 7%, transparent);
+  --sidebar-line: #e3e3e7;
 }
 .dark [data-app-sidebar] {
-  --canvas: #000;
-  --foreground: #f1f3f7;
-  --card: #000;
+  --canvas: #0c0c0e;
+  --foreground: #f2f2f4;
+  --card: #0c0c0e;
   --card-foreground: var(--foreground);
-  --accent-surface: #191a1d;
+  --accent-surface: #1c1c20;
   --accent-surface-foreground: #f7f9ff;
-  --muted: #0a0a0a;
-  --muted-foreground: #a3a3a3;
+  --muted: #121215;
+  --muted-foreground: #a0a0a8;
   --border: rgb(255 255 255 / 8%);
   --input: rgb(255 255 255 / 18%);
   --sidebar-surface: var(--card);
@@ -500,8 +509,14 @@ html[data-window-controls="none"] {
   scroll-margin-top: 2rem;
 }
 
+/* Read mail recedes and new mail stays on the bright surface: a shade toward
+   the text in light, toward black in dark (lighter would read as raised). */
 [data-dim-read-messages="true"] [data-read]:not([data-selected], [data-checked], :hover) {
   background-color: color-mix(in srgb, var(--canvas) 96%, var(--foreground));
+}
+
+.dark [data-dim-read-messages="true"] [data-read]:not([data-selected], [data-checked], :hover) {
+  background-color: color-mix(in srgb, var(--canvas) 70%, black);
 }
 
 /* The wide layouts use the extra width for a denser row. A narrow workspace
@@ -513,6 +528,19 @@ html[data-window-controls="none"] {
     align-items: center;
     padding-block: 0.75rem;
     padding-inline-end: 2.5rem;
+  }
+
+  /* One line per row: a smaller face, centered on that line (chips under it
+     don't pull it down). */
+  :is([data-mail-layout="full"], [data-mail-layout="floating"]) .message-list-avatar {
+    align-self: flex-start;
+    margin-top: -0.3rem;
+  }
+
+  :is([data-mail-layout="full"], [data-mail-layout="floating"]) .message-list-face {
+    width: 1.75rem;
+    height: 1.75rem;
+    font-size: 0.75rem;
   }
 
   :is([data-mail-layout="full"], [data-mail-layout="floating"]) .message-list-flag {
@@ -617,8 +645,10 @@ html[data-window-controls="none"] {
   color: var(--contrast-muted-foreground);
 }
 
+/* The conversation's messages hang from the face above them, their text in
+   line with the row's. */
 [data-message-list-style="dividers"] .message-list-thread-messages {
-  margin-inline: 0.75rem;
+  margin-inline: 2.125rem 0.75rem;
   padding: 0 0 0.375rem 0.5rem;
   border-inline-start: 1px solid var(--contrast-sidebar-line);
   gap: 0.125rem;
@@ -626,7 +656,7 @@ html[data-window-controls="none"] {
 
 [data-message-list-style="dividers"] .message-list-thread-row {
   border-radius: 0;
-  padding-inline-start: 0.75rem;
+  padding-inline-start: 1.3125rem;
 }
 
 /* Frosted surfaces (popovers, menus, floating bars, dialogs). */
@@ -784,7 +814,8 @@ html[data-theme-switching] *::after {
 @layer base {
   /* A native-feeling window: 13px system text, no page scroll, no stray text
      selection (fields and message bodies opt back in), and a transparent
-     page so the window's vibrancy shows through. */
+     page over the window's own background (the frame's, apps/desktop/src/os)
+     until the app paints its frame. */
   html,
   body,
   #root {

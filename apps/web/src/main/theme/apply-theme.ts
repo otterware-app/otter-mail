@@ -22,8 +22,9 @@ import { getCustomThemes, subscribeToCustomThemes } from "./themePalette";
  */
 
 export const DEFAULT_THEME_ID = OTTER_THEME.id;
-/** What a fresh install wears (both appearances) until the user picks a theme. */
-export const INITIAL_THEME_ID = "codex";
+/** What a fresh install wears (both appearances) until the user picks a theme:
+    Otter Mail's own palette, the one styles.css paints in full. */
+export const INITIAL_THEME_ID = DEFAULT_THEME_ID;
 
 const STORAGE_KEY: Record<ThemeAppearance, "otter:theme:light" | "otter:theme:dark"> = {
   light: "otter:theme:light",
