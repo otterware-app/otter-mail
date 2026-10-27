@@ -132,7 +132,7 @@ export function SkRow({
         <span className="relative ml-auto flex h-5 min-w-5 shrink-0 items-center justify-end">
           {badge != null && badge > 0 ? (
             <span className="group-hover:invisible group-focus-within:invisible">
-              <UnreadPill count={badge} selected={selected} />
+              <UnreadPill count={badge} />
             </span>
           ) : null}
           <span className="absolute inset-y-0 right-0 flex items-center opacity-0 group-hover:opacity-100 group-focus-within:opacity-100">
@@ -140,7 +140,7 @@ export function SkRow({
           </span>
         </span>
       ) : badge != null ? (
-        <UnreadPill count={badge} selected={selected} />
+        <UnreadPill count={badge} />
       ) : dot ? (
         <span aria-hidden className="ml-auto size-1.5 shrink-0 rounded-full bg-primary" />
       ) : null}

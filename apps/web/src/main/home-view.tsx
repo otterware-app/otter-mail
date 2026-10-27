@@ -326,15 +326,14 @@ function useStoredWidth(
 }
 
 function PaneResizer({ onPointerDown }: { onPointerDown: (e: ReactPointerEvent) => void }) {
-  // Zero-width in the layout: panes meet on a tone change (or their own faint
-  // divider), and the grab area is an invisible strip centered on the seam
-  // that shows a hairline on hover (no-drag, so it resizes instead of moving
-  // the window inside the title band).
+  // Zero-width in the layout, after a card's gap: the grab area is that gap,
+  // an invisible strip that shows a hairline on hover (no-drag, so it resizes
+  // instead of moving the window inside the title band).
   return (
     <div className="relative z-20 w-0 shrink-0" aria-hidden>
       <div
         onPointerDown={onPointerDown}
-        className="no-drag group absolute inset-y-0 -left-[3px] flex w-1.5 cursor-col-resize justify-center"
+        className="no-drag group absolute inset-y-0 -left-1 flex w-1 cursor-col-resize justify-center"
       >
         <div className="w-px group-hover:bg-input" />
       </div>
@@ -343,22 +342,23 @@ function PaneResizer({ onPointerDown }: { onPointerDown: (e: ReactPointerEvent) 
 }
 
 /**
- * ChatGPT-style window chrome: the window wears the sidebar's surface (and
- * grain), so the rail and the title band read as one frame, and the columns
- * after the rail share one inset panel (canvas) that starts under the title
- * band, with rounded corners and a faint edge. The panes themselves are
- * transparent: their title bands sit on the frame, their bodies on the panel.
+ * Outlook-style window chrome: the window wears the sidebar's surface (and
+ * grain), so the rail and the title bands read as one frame, and each column
+ * after the rail (the sidebar, the list, the reader, the browser) is its own
+ * card on it, from under its title band down: rounded and edged. One width of
+ * frame runs everywhere (4px): between the cards, and round them to the
+ * window's edges. Each card keeps that gap on its right.
  */
 const PANE = "min-h-0 overflow-hidden";
-/** The sidebar's body sits in the panel (in a browser tab, its heading too),
-    between the frame's tone and the canvas, with a faint full-height divider
-    before the list. */
-const PANE_SIDEBAR = `${PANE} relative text-sidebar-foreground before:pointer-events-none before:absolute before:bottom-px before:left-px before:right-0 before:top-[calc(var(--workspace-topbar-height)+1px)] web:before:inset-y-0 before:-z-10 before:rounded-l-[calc(var(--radius-xl)-1px)] before:bg-(--sidebar-panel-surface) after:pointer-events-none after:absolute after:bottom-0 after:right-0 after:top-0 after:z-20 after:w-px after:bg-border/70`;
-/** Faint full-height dividers, through the title band (ChatGPT): on the
-    list's right, the chat's left. */
-const PANE_LIST = `${PANE} relative after:pointer-events-none after:absolute after:bottom-0 after:right-0 after:top-0 after:z-20 after:w-px after:bg-border/70`;
-const PANE_MAIN = PANE;
-const PANE_BROWSER = `${PANE} relative before:pointer-events-none before:absolute before:bottom-0 before:left-0 before:top-0 before:z-20 before:w-px before:bg-border/70`;
+/** The card behind a pane's body, and its edge over it (above sticky day
+    headers and full-width rows). Its surface comes with the pane. */
+const CARD = `${PANE} relative pr-1 before:pointer-events-none before:absolute before:left-0 before:right-1 before:bottom-0 before:top-(--workspace-topbar-height) before:-z-10 before:rounded-xl after:pointer-events-none after:absolute after:left-0 after:right-1 after:bottom-0 after:top-(--workspace-topbar-height) after:z-30 after:rounded-xl after:border after:border-(--panel-edge)`;
+/** The sidebar's card is a step quieter than the mail's: between the frame's
+    tone and the canvas. */
+const PANE_SIDEBAR = `${CARD} text-sidebar-foreground before:bg-(--sidebar-panel-surface)`;
+const PANE_LIST = `${CARD} before:bg-canvas`;
+const PANE_MAIN = PANE_LIST;
+const PANE_BROWSER = PANE_LIST;
 /** Clips a collapsible pane while its width animates open or closed (Otter
     Code's panel animations); the pane keeps its width so nothing reflows. */
 const PANE_FRAME =
@@ -576,7 +576,7 @@ function MailHome() {
     width: listWidth,
     start: listStart,
     paneRef: listPaneRef,
-  } = useStoredWidth("gmail:pane:list", 340, 280, 640);
+  } = useStoredWidth("gmail:pane:list", 380, 280, 640);
   // The browser panel (the Mac app's), and the agent's small window over the mail.
   const [browserOpen, setBrowserOpen] = useState(
     () => features.browser && localStorage.getItem("gmail:browser-open") === "1",
@@ -1524,12 +1524,7 @@ function MailHome() {
   return (
     <>
       <div
-        className={cn(
-          "surface-grain flex h-full text-foreground",
-          // The Mac window is frosted glass (its vibrancy): the frame lets it
-          // through, more so as Glass opacity goes down.
-          features.vibrancy ? "bg-sidebar-surface/(--frame-opacity)" : "bg-sidebar-surface",
-        )}
+        className="surface-grain flex h-full bg-sidebar-surface text-foreground"
         data-panel-animations={panelAnimationsActive ? "true" : "false"}
         data-mail-layout={isChats ? "split" : mailLayout}
         style={{ "--panel-animation-duration": `${panelAnimationDurationMs}ms` } as CSSProperties}
@@ -1550,21 +1545,9 @@ function MailHome() {
             onSync={syncNow}
             syncing={globalSync.syncing || manualSyncing}
           />
-          {/* A thin margin of frame on every free side (ChatGPT), so the panel
-              floats with all four corners rounded. A browser tab has no window
-              to frame: there the panel fills the page beside the rail, title
-              bands and all, rounded only against the rail. */}
-          <div className="relative isolate flex min-w-0 flex-1 pb-1 pr-1 web:p-0">
-            {/* The inset content panel, behind the panes and under their title bands. */}
-            <div
-              aria-hidden
-              className="pointer-events-none absolute bottom-1 left-0 right-1 top-(--workspace-topbar-height) -z-10 rounded-xl bg-canvas web:inset-y-0 web:right-0 web:rounded-r-none"
-            />
-            {/* The rim stays above sticky day headers and the panes' surfaces. */}
-            <div
-              aria-hidden
-              className="pointer-events-none absolute bottom-1 left-0 right-1 top-(--workspace-topbar-height) z-30 rounded-xl border border-(--panel-edge) web:inset-y-0 web:right-0 web:rounded-r-none web:border-y-0 web:border-r-0"
-            />
+          {/* The frame's width under the cards too (the right edge is the
+              last card's own gap), so they float with every corner rounded. */}
+          <div className="relative isolate flex min-w-0 flex-1 pb-1">
             <div
               ref={setMailWorkspace}
               data-mail-workspace=""
@@ -1683,7 +1666,7 @@ function MailHome() {
                       ref={listPaneRef}
                       style={{ width: wideInbox ? undefined : listWidth }}
                       className={cn(
-                        wideInbox ? `${PANE} min-w-0 flex-1` : `${PANE_LIST} shrink-0`,
+                        wideInbox ? `${PANE_LIST} min-w-0 flex-1` : `${PANE_LIST} shrink-0`,
                         !listVisible && "invisible absolute inset-0",
                       )}
                       inert={!listVisible}
@@ -1692,8 +1675,6 @@ function MailHome() {
                       <MessageList
                         headerLeading={sidebarOpen ? null : titlebarInset}
                         headerTrailing={wideInbox ? titleTrailing : undefined}
-                        roundedLeft={!sidebarOpen}
-                        roundedRight={wideInbox && !browserOpen}
                         renderFloatingReader={
                           floatingLayout && !composeOpen
                             ? (navigation, title) => (

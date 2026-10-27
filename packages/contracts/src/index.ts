@@ -58,8 +58,6 @@ export interface BridgeFeatures {
    * and close on Linux; null in a browser tab, whose controls are the browser's.
    */
   windowControls: "left" | "right" | null;
-  /** The window is native frosted glass (macOS vibrancy): the frame lets it through. */
-  vibrancy: boolean;
   /** Back and forward buttons in the title bar (a browser has its own). */
   historyButtons: boolean;
   launchAtLogin: boolean;

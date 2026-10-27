@@ -23,7 +23,7 @@ const WORN: Record<ThemeAppearance, string> = {
   dark: "otter:theme:dark",
 };
 /** What a fresh install wears (apply-theme.ts's INITIAL_THEME_ID). */
-const INITIAL_THEME = "codex";
+const INITIAL_THEME = "otter";
 const MODES = ["light", "dark"] as const;
 
 type Palette = Record<string, string>;

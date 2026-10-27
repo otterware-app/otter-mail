@@ -293,16 +293,11 @@ export function Kbd({ children, className }: { children: ReactNode; className?: 
   );
 }
 
-/** Unread count: a quiet tabular numeral, brightening on the selected row. */
-export function UnreadPill({ count, selected }: { count: number; selected?: boolean }) {
+/** Unread count: a tabular numeral in full text, so where new mail is shows at a glance. */
+export function UnreadPill({ count }: { count: number }) {
   if (count <= 0) return null;
   return (
-    <span
-      className={cn(
-        "ml-auto shrink-0 text-xs tabular-nums",
-        selected ? "text-sidebar-foreground" : "text-muted-foreground/70",
-      )}
-    >
+    <span className="ml-auto shrink-0 text-xs font-medium tabular-nums text-sidebar-foreground">
       {count > 999 ? "999+" : count}
     </span>
   );
