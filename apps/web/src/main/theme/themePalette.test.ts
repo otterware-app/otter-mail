@@ -76,31 +76,31 @@ function contrastRatio(first: string, second: string): number {
 }
 
 describe("theme files", () => {
-  it("keeps stock dark controls in the neutral-black surface hierarchy", () => {
+  it("keeps stock dark controls a step above the canvas", () => {
     expectThemeColors(getStandardThemeColors("dark"), {
-      canvas: "#0a0a0a",
-      surface: "#111111",
-      surfaceRaised: "#111111",
-      surfaceOverlay: "#111111",
-      toolbarControl: "#111111",
-      secondary: "#111111",
-      muted: "#111111",
-      accentSurface: "#141414",
+      canvas: "#17171a",
+      surface: "#202023",
+      surfaceRaised: "#202023",
+      surfaceOverlay: "#202023",
+      toolbarControl: "#202023",
+      secondary: "#202023",
+      muted: "#202023",
+      accentSurface: "#232325",
     });
   });
 
   it("keeps the stock sidebar and chat on distinct surfaces in both appearances", () => {
     expectThemeColors(getStandardThemeColors("light"), {
-      canvas: "#fcfcfc",
-      sidebar: "#fafafa",
-      sidebarRowActive: "#ffffff",
-      messageSurface: "#f4f4f5",
+      canvas: "#ffffff",
+      sidebar: "#ededf0",
+      sidebarRowActive: "#e2e2e5",
+      messageSurface: "#f3f3f5",
     });
     expectThemeColors(getStandardThemeColors("dark"), {
-      canvas: "#0a0a0a",
-      sidebar: "#000000",
-      sidebarRowActive: "#1a1b1b",
-      messageSurface: "#141414",
+      canvas: "#17171a",
+      sidebar: "#0c0c0e",
+      sidebarRowActive: "#2b2b2d",
+      messageSurface: "#232325",
     });
   });
 
