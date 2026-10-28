@@ -375,6 +375,7 @@ export function DraftEditor({
         )
       }
       statusTone={draft.saveState === "error" || attachLoadFailed ? "error" : "muted"}
+      accountId={accountId}
       canSend={canSend}
       onSchedule={handleSend}
       onSend={() => void handleSend()}

@@ -1,4 +1,5 @@
 import { TimePicker } from "./mail-schedule";
+import { useCapabilities } from "./capabilities";
 import { useState, type ReactNode } from "react";
 import { PaperclipIcon, Trash2Icon, TypeIcon } from "lucide-react";
 import { matchesCommand } from "../keybindings/dispatch";
@@ -314,6 +315,7 @@ export function ComposerFooter({
   onDiscard,
   status,
   statusTone = "muted",
+  accountId,
   canSend,
   onSend,
   onSchedule,
@@ -326,11 +328,14 @@ export function ComposerFooter({
   onDiscard: () => void;
   status?: ReactNode;
   statusTone?: "muted" | "error";
+  /** The mailbox it's sent from. */
+  accountId: string | null | undefined;
   canSend: boolean;
   onSend: () => void;
   onSchedule: (time: number) => Promise<unknown>;
   className?: string;
 }) {
+  const capabilities = useCapabilities(accountId);
   return (
     <div className={cn("flex items-center gap-1 px-3 py-2.5", className)}>
       <HintTooltip label="Attach files">
@@ -373,7 +378,12 @@ export function ComposerFooter({
         </span>
       ) : null}
       <span className="flex-1" />
-      <TimePicker title="Schedule send" disabled={!canSend} onChoose={onSchedule} />
+      <TimePicker
+        title="Schedule send"
+        onServer={capabilities.serverScheduledSend}
+        disabled={!canSend}
+        onChoose={onSchedule}
+      />
       <button
         type="button"
         onClick={onSend}

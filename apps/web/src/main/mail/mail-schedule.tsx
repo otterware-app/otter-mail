@@ -17,6 +17,15 @@ import { toast } from "./toast";
 const NOTE =
   "If this device sleeps or you close Otter Mail, scheduled sends and snoozed emails wait until the app resumes here. A suspended browser tab can also delay them.";
 
+const DEVICE_NOTE = (
+  <>
+    <strong className="font-medium text-foreground">
+      Keep this device awake and online with Otter Mail open.
+    </strong>{" "}
+    {NOTE}
+  </>
+);
+
 function localTime(date: Date): string {
   return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
 }
@@ -30,10 +39,13 @@ function tomorrowMorning(): number {
 
 export function TimePicker({
   title,
+  onServer,
   disabled,
   onChoose,
 }: {
   title: string;
+  /** The server sends it at that time (Outlook's scheduled sends), not this device. */
+  onServer?: boolean;
   disabled?: boolean;
   onChoose: (time: number) => Promise<unknown>;
 }) {
@@ -46,7 +58,14 @@ export function TimePicker({
         </IconBtn>
       </HintTooltip>
       {open && (
-        <TimePickerDialog title={title} onChoose={onChoose} onClose={() => setOpen(false)} />
+        <TimePickerDialog
+          title={title}
+          note={
+            onServer ? "Outlook sends it at that time, even with Otter Mail closed." : undefined
+          }
+          onChoose={onChoose}
+          onClose={() => setOpen(false)}
+        />
       )}
     </>
   );
@@ -54,10 +73,12 @@ export function TimePicker({
 
 function TimePickerDialog({
   title,
+  note,
   onChoose,
   onClose,
 }: {
   title: string;
+  note?: string;
   onChoose: (time: number) => Promise<unknown>;
   onClose: () => void;
 }) {
@@ -92,12 +113,7 @@ function TimePickerDialog({
       <DialogContent showCloseButton>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>
-            <strong className="font-medium text-foreground">
-              Keep this device awake and online with Otter Mail open.
-            </strong>{" "}
-            {NOTE}
-          </DialogDescription>
+          <DialogDescription>{note ?? DEVICE_NOTE}</DialogDescription>
         </DialogHeader>
         <div className="space-y-4 px-6 pb-6">
           <div className="flex gap-2">
@@ -210,10 +226,9 @@ export function ScheduledMailButton() {
           <DialogHeader>
             <DialogTitle>Scheduled & snoozed</DialogTitle>
             <DialogDescription>
-              <strong className="font-medium text-foreground">
-                Keep this device awake and online with Otter Mail open.
-              </strong>{" "}
-              {NOTE}
+              {entries.length > 0 && entries.every((entry) => entry.onServer)
+                ? "Outlook sends these at their time, even with Otter Mail closed."
+                : DEVICE_NOTE}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 overflow-y-auto px-6 pb-6">
@@ -228,7 +243,12 @@ export function ScheduledMailButton() {
               <div key={entry.id} className="space-y-2 rounded-xl border border-border p-3">
                 <p className="truncate text-sm font-medium">{entry.subject || "(no subject)"}</p>
                 <p className="text-xs text-muted-foreground">
-                  {entry.accountId} · {entry.kind === "send" ? "Send" : "Return to inbox"}{" "}
+                  {entry.accountId} ·{" "}
+                  {entry.kind === "snooze"
+                    ? "Return to inbox"
+                    : entry.onServer
+                      ? "Outlook sends it"
+                      : "Send"}{" "}
                   {new Date(entry.dueAt).toLocaleString()}
                 </p>
                 {entry.state === "failed" && (

@@ -310,6 +310,7 @@ export function NewMessageView({
               onDiscard={discard}
               status={draftStatus(draft)}
               statusTone={draft.saveState === "error" ? "error" : "muted"}
+              accountId={fromAccount?.id}
               canSend={canSend}
               onSchedule={handleSend}
               onSend={() => void handleSend()}

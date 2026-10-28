@@ -159,26 +159,28 @@ chats read the same everywhere and continue on that Mac.
 
 ## Composing & sending
 
-| Feature                                | Mac                                                     | Web                             | iPhone                                         |
-| -------------------------------------- | ------------------------------------------------------- | ------------------------------- | ---------------------------------------------- |
-| New, reply, reply all                  | ✓                                                       | ✓                               | ✓                                              |
-| Forward                                | ✓ (with attachments)                                    | ✓                               | last message, with attachments                 |
-| Cc / Bcc                               | ✓ / ✓                                                   | ✓                               | ✓ / ✓                                          |
-| From: pick the mailbox                 | ✓                                                       | ✓                               | ✓                                              |
-| Contact suggestions (from cached mail) | ✓                                                       | ✓                               | ✓ (recipient chips)                            |
-| Attachments (25 MB)                    | ✓                                                       | ✓                               | ✓ (Photos / Files)                             |
-| Rich text (bold, lists, links, quotes) | ✓                                                       | ✓                               | —                                              |
-| Drafts                                 | autosaved, conflict-aware                               | ✓                               | local autosave/recovery; mailbox save on close |
-| Undo send (10 s)                       | ✓                                                       | ✓                               | —                                              |
-| Send later                             | ✓ (on this device, while open)                          | ✓ (on this browser, while open) | —                                              |
-| Signatures                             | Gmail: saved in Gmail; IMAP, Outlook: synced preference | ✓                               | ✓ (same)                                       |
-| Handles mailto: links                  | ✓ (default mail app)                                    | —                               | —                                              |
+| Feature                                | Mac                                                     | Web      | iPhone                                         |
+| -------------------------------------- | ------------------------------------------------------- | -------- | ---------------------------------------------- |
+| New, reply, reply all                  | ✓                                                       | ✓        | ✓                                              |
+| Forward                                | ✓ (with attachments)                                    | ✓        | last message, with attachments                 |
+| Cc / Bcc                               | ✓ / ✓                                                   | ✓        | ✓ / ✓                                          |
+| From: pick the mailbox                 | ✓                                                       | ✓        | ✓                                              |
+| Contact suggestions (from cached mail) | ✓                                                       | ✓        | ✓ (recipient chips)                            |
+| Attachments (25 MB)                    | ✓                                                       | ✓        | ✓ (Photos / Files)                             |
+| Rich text (bold, lists, links, quotes) | ✓                                                       | ✓        | —                                              |
+| Drafts                                 | autosaved, conflict-aware                               | ✓        | local autosave/recovery; mailbox save on close |
+| Undo send (10 s)                       | ✓                                                       | ✓        | —                                              |
+| Send later                             | ✓ (on this device, while open; Outlook: by Outlook)     | ✓ (same) | —                                              |
+| Signatures                             | Gmail: saved in Gmail; IMAP, Outlook: synced preference | ✓        | ✓ (same)                                       |
+| Handles mailto: links                  | ✓ (default mail app)                                    | —        | —                                              |
 
 On iPhone, Compose lives in the sidebar. In a conversation, tap the compact Reply button to
 reply to the sender, or hold it for Reply, Reply all and Forward; Trash sits beside Archive.
 
 Scheduled sends and snoozes work with Gmail, IMAP and Outlook on Mac and web. The queue is local to
-that device/browser, survives restarts, and runs overdue actions when the app next opens.
+that device/browser, survives restarts, and runs overdue actions when the app next opens. Outlook's
+scheduled sends are the exception: Outlook holds them and sends them on time, with the app
+closed; the queue only lists them, to cancel.
 Snooze is available in the reader toolbar and a conversation's right-click menu.
 “Scheduled & snoozed” appears only when the queue is nonempty and lists every mailbox's
 pending actions: cancel a send to restore its

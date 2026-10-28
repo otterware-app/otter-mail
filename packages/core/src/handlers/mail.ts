@@ -1101,7 +1101,11 @@ export function registerMailHandlers(): void {
       };
       if (p?.scheduledAt !== undefined) {
         if (!(await getAccount(accountId))) throw new Error("Mailbox no longer exists.");
-        scheduleSend(accountId, { ...message, inReplyTo, references }, futureTime(p.scheduledAt));
+        await scheduleSend(
+          accountId,
+          { ...message, inReplyTo, references },
+          futureTime(p.scheduledAt),
+        );
         return { ok: true as const };
       }
       const provider = providerFor(accountId);

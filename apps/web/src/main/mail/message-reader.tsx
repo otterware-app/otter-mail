@@ -2064,6 +2064,7 @@ function InlineComposer({
             mode === "forward" && attachments == null ? "Loading attachments…" : draftStatus(draft)
           }
           statusTone={draft.saveState === "error" ? "error" : "muted"}
+          accountId={accountId}
           canSend={canSend}
           onSchedule={handleSend}
           onSend={() => void handleSend()}

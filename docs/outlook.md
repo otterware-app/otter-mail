@@ -64,6 +64,11 @@ MailProvider               packages/core/src/providers/provider.ts
   takes that folder away (`apps/web/src/main/mail/archive.ts`). Deleting a folder label
   deletes the folder (it goes to Deleted Items with its mail, as in Outlook); deleting a category
   takes it off every message.
+- Scheduled sends (`outlook/send.ts`): the draft gets PidTagDeferredSendTime (MAPI `0x3FEF`;
+  Graph has no field for it), moves to the Outbox and is sent. Exchange holds it there, locked
+  against edits and moves, and sends it at that time to Sent Items, keeping its id. The Outbox
+  isn't synced, so it never shows as a draft nobody can edit. Cancelling deletes it (only that
+  works); the app restores a draft from its own copy.
 - Graph allows 4 requests in flight per mailbox: requests take turns, the user's first, then
   sync, backfill and offline downloads (`outlook/graph.ts`). Reads of many messages go in
   `$batch`es of 20; a 429 makes background work stand down for Graph's Retry-After.
