@@ -26,7 +26,7 @@ const { autoUpdater } = electronUpdater;
 
 const STARTUP_DELAY_MS = 15_000;
 const POLL_INTERVAL_MS = 4 * 60 * 60_000;
-const RELEASES_URL = "https://github.com/otterware-app/otter-mail/releases";
+const RELEASES_URL = "https://github.com/otterware-app/otterware/releases";
 
 let state: UpdateState = {
   status: "idle",
@@ -216,7 +216,7 @@ export function initUpdates(): void {
       message: describeError(err),
       manualDownloadUrl:
         isSignatureError(err) && state.availableVersion
-          ? `${RELEASES_URL}/tag/v${state.availableVersion}`
+          ? `${RELEASES_URL}/tag/otterware-mail-v${state.availableVersion}`
           : state.manualDownloadUrl,
     });
   });
