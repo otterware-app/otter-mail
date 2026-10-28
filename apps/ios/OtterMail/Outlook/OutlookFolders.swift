@@ -7,8 +7,9 @@ import Foundation
  *
  * - Inbox → `INBOX`, Sent Items → `SENT`, Drafts → `DRAFT`, Deleted Items →
  *   `TRASH`, Junk Email → `SPAM` (folders inside the last two count as them),
- *   Archive → no label (archived mail just lacks `INBOX`). Outbox,
- *   Conversation History, Sync Issues and Scheduled aren't synced.
+ *   Archive → `ARCHIVE` (Gmail has no such folder; Outlook's archive moves
+ *   mail there). Outbox, Conversation History, Sync Issues and Scheduled
+ *   aren't synced.
  * - Every other folder is a user label `folder:<id>`, named by its path. A
  *   message sits in one folder: applying a folder's label moves it there.
  * - Categories are user labels `category:<name>`, several per message, in
@@ -21,7 +22,7 @@ nonisolated struct OutlookFolders: Equatable {
         /** Its path, "/" between levels. */
         var name: String
         var parentID: String?
-        /** The label its mail carries: a system label, `folder:<id>`, or none (the archive). */
+        /** The label its mail carries: a system label or `folder:<id>`. */
         var label: String?
     }
 
@@ -42,7 +43,7 @@ nonisolated struct OutlookFolders: Equatable {
 
     /** The well-known folders Otter Mail asks Graph for by name. */
     static let wellKnownNames = ["inbox", "sentitems", "drafts", "deleteditems", "junkemail", "archive", "outbox", "conversationhistory", "syncissues", "scheduled"]
-    private static let systemLabels = ["inbox": "INBOX", "sentitems": "SENT", "drafts": "DRAFT", "deleteditems": "TRASH", "junkemail": "SPAM"]
+    private static let systemLabels = ["inbox": "INBOX", "sentitems": "SENT", "drafts": "DRAFT", "deleteditems": "TRASH", "junkemail": "SPAM", "archive": "ARCHIVE"]
     /** Mail on its way out, Skype logs and sync conflicts: not mail to list. */
     private static let skipped = ["outbox", "conversationhistory", "syncissues", "scheduled"]
 
@@ -85,7 +86,7 @@ nonisolated struct OutlookFolders: Equatable {
 
     // ── Folders ──────────────────────────────────────────────────────────────
 
-    /** The label a folder's mail carries (nil: archived, or a folder that isn't synced). */
+    /** The label a folder's mail carries (nil: a folder that isn't synced). */
     func label(ofFolder id: String?) -> String? {
         guard let id else { return nil }
         if let folder = folders.first(where: { $0.id == id }) { return folder.label }
@@ -109,6 +110,9 @@ nonisolated struct OutlookFolders: Equatable {
 
     /** A well-known folder's id (Graph takes the name too: an Archive it makes on first use). */
     func id(_ name: String) -> String { wellKnown[name] ?? name }
+
+    /** The mailbox has an Archive (Outlook makes one when mail is first archived). */
+    var hasArchive: Bool { folders.contains { $0.label == "ARCHIVE" } }
 
     // ── Labels ───────────────────────────────────────────────────────────────
 

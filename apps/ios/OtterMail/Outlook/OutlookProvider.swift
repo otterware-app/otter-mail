@@ -56,6 +56,7 @@ final class OutlookProvider: MailProvider {
     }
 
     func labels() async throws -> [MailLabel] { try await mailbox().labels }
+    var hasArchive: Bool { folders?.hasArchive ?? false }
 
     /** The label a sidebar entry stands for (nil: All Mail). */
     private static func label(_ folder: Folder) -> String? {
@@ -66,6 +67,7 @@ final class OutlookProvider: MailProvider {
         case .drafts: "DRAFT"
         case .important: "IMPORTANT"
         case .allMail: nil
+        case .archive: "ARCHIVE"
         case .junk: "SPAM"
         case .trash: "TRASH"
         case .label(let id, _): id
@@ -89,12 +91,17 @@ final class OutlookProvider: MailProvider {
             changed = Set(messages.map(\.thread))
             let dates = messages.map(\.date)
             state.deltas = [:]
+            state.archiveLabeled = true
             for name in ["inbox", "sentitems", "drafts"] {
                 changed.formUnion(try await follow(box.id(name), since: dates.min(), after: dates.max(), &state))
             }
             state.paged(MailSync.key(.inbox), next: page.nextLink, oldest: dates.min())
         } else {
             changed = try await catchUp(box, &state, known: known)
+            if state.archiveLabeled != true {
+                changed.formUnion(try await archived(box, known: known))
+                state.archiveLabeled = true
+            }
         }
         let (threads, gone) = try await self.threads(changed, known: known)
         // Counts and categories moved with the mail.
@@ -140,6 +147,18 @@ final class OutlookProvider: MailProvider {
             }
         }
         return changed
+    }
+
+    /**
+     * The conversations here with mail in the Archive, read again once: it
+     * was cached without a label before the Archive carried `ARCHIVE`.
+     */
+    private func archived(_ box: OutlookFolders, known: [MailThread]) async throws -> Set<String> {
+        guard box.hasArchive, !known.isEmpty else { return [] }
+        let messages: [GraphMessage] = try await api.all(GraphAPI.path(GraphAPI.folderPath(box.id("archive")) + "/messages", [
+            ("$select", "id,conversationId"), ("$top", "500"),
+        ]))
+        return Set(messages.map(\.thread)).intersection(known.map(\.id))
     }
 
     /** Conversations read whole: the threads they are now, and those gone (or left with nothing worth showing). */

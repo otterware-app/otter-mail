@@ -242,6 +242,7 @@ final class Session {
             // Outlook's signature follows the Otter account, as IMAP's does.
             signature: existing?.signature ?? remoteSignatures[profile.email] ?? "",
             labels: existing?.labels ?? [],
+            hasArchive: existing?.hasArchive,
             outlook: true
         ))
         saveMailboxes()
@@ -280,6 +281,7 @@ final class Session {
             color: existing?.color ?? Self.defaultColor(email),
             signature: existing?.signature ?? "",
             labels: existing?.labels ?? [],
+            hasArchive: existing?.hasArchive,
             imap: settings
         ))
         saveMailboxes()
@@ -310,6 +312,7 @@ final class Session {
             color: existing?.color ?? Self.defaultColor(profile.email),
             signature: existing?.signature ?? "",
             labels: existing?.labels ?? [],
+            hasArchive: existing?.hasArchive,
             picture: profile.picture
         )
         store.upsert(mailbox: mailbox)
@@ -387,6 +390,7 @@ final class Session {
                 // New here: an IMAP or Outlook mailbox's signature as the account keeps it.
                 signature: existing?.signature ?? (imap == nil && !outlook ? "" : remoteSignatures[account.email.lowercased()] ?? ""),
                 labels: existing?.labels ?? [],
+                hasArchive: existing?.hasArchive,
                 picture: account.picture,
                 signedOut: imap != nil ? ImapProvider.password(account.email) == nil
                     : outlook ? !microsoft.isSignedIn(account.email) : !google.isSignedIn(account.email),
@@ -583,7 +587,8 @@ final class Session {
     /** Unread in the inbox, on the icon (the Dock badge on the Mac). */
     private func updateBadge() async {
         guard preferences.notifications != .off else { return }
-        try? await UNUserNotificationCenter.current().setBadgeCount(store.unreadCount(in: .inbox, scope: nil))
+        let unread = store.shownMailboxes.reduce(0) { $0 + store.unreadCount(in: .inbox, scope: $1.email) }
+        try? await UNUserNotificationCenter.current().setBadgeCount(unread)
     }
 
     /** Asks once to show notifications (when they're on in Settings). */

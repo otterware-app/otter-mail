@@ -7,10 +7,13 @@ their code.
 ## Design
 
 - **ChatGPT's frame.** The mail list is the page; a swipe from the left (or a tap on its title)
-  slides it aside to show the drawer: a page per mailbox (All first) that you swipe through, as on
-  the desktop, each with its folders and labels, then Compose and Settings. Settings is ChatGPT's grouped sheet.
-- **The desktop's rows.** Who and when, the subject, a line of the latest message; the mailbox's dot
-  in All mailboxes. Swipe for read, archive and trash; long-press for the rest.
+  slides it aside to show the drawer: a page per mailbox that you swipe through, as on the
+  desktop, each with its folders and labels, then Compose and Settings. Settings is ChatGPT's grouped sheet.
+  Gmail's folders include All Mail and Important; Outlook's and IMAP's an Archive of their own,
+  and their Starred is Flagged (a flag, not a star).
+- **The desktop's rows.** Who and when, the subject, a line of the latest message. Swipe for read,
+  archive and trash; long-press for the rest. Archive takes a conversation out of the inbox, or
+  (Outlook, IMAP) out of a folder into the Archive; in the Archive it's Move to Inbox.
 - **iOS's own bars.** The tab bar holds Mail and the Agent (the AI workspace: the account's chats, in a
   drawer a swipe from the left shows, as Mail's mailboxes are), with Search on its own at the end (it
   searches the mailbox Mail shows); Compose lives in the sidebar. The reader
@@ -48,13 +51,14 @@ add limited server grants (or an encrypted IMAP password), while mail content st
   history-based sync; `users.watch` is renewed daily so pushes reach the relay.
 - `Outlook/`: the Outlook provider (`OutlookProvider.swift`), through Microsoft Graph
   (`GraphAPI.swift`: immutable ids, 4 requests in flight, Retry-After, `$batch`). Folders and
-  categories are labels with core's ids (`OutlookFolders.swift`); threads are conversations, read
+  categories are labels with core's ids (`OutlookFolders.swift`; the Archive is `ARCHIVE`); threads are conversations, read
   whole when any of their messages changes; each followed folder has a delta (the inbox, Sent and
   Drafts, then folders once opened). Bodies and files come from the MIME source
   (`MIMEParser.swift`); writes are PATCHes and moves, replies `createReply`, drafts updated in
   place; search is Outlook's KQL (`OutlookSearch.swift`). A Graph subscription points at the
   relay, so its `mail` events sync the mailbox while the app is open.
-- `Imap/`: the IMAP provider (`ImapProvider.swift`): folders as labels, flags, UID/CONDSTORE sync,
+- `Imap/`: the IMAP provider (`ImapProvider.swift`): folders as labels (the \Archive folder, or
+  one named Archive, is `ARCHIVE`; Gmail's IMAP archives into All Mail), flags, UID/CONDSTORE sync,
   IDLE on the inbox while the app is open. Its IMAP and SMTP clients run over Network.framework
   with the system's TLS (`MailSocket.swift`; STARTTLS goes through `URLSessionStreamTask`, which
   can start TLS mid-connection). `MailDiscovery.swift` finds the servers for an address (known

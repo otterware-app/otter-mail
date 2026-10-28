@@ -40,7 +40,7 @@ struct OutlookTests {
         #expect(box.label(ofFolder: "D") == "DRAFT")
         #expect(box.label(ofFolder: "T") == "TRASH")
         #expect(box.label(ofFolder: "J") == "SPAM")
-        #expect(box.label(ofFolder: "A") == nil)
+        #expect(box.label(ofFolder: "A") == "ARCHIVE")
         // Deleted Items' folders are trash too; other folders are labels of their own.
         #expect(box.label(ofFolder: "TO") == "TRASH")
         #expect(box.label(ofFolder: "IC") == "folder:IC")

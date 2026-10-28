@@ -50,16 +50,14 @@ final class Preferences {
         var order: [String] = []
         /** Addresses of turned-off mailboxes. */
         var off: [String] = []
-        /** "All mailboxes" (the combined inbox) is offered. */
-        var combined = true
 
         init() {}
 
+        /** Older devices also wrote `combined` (an "All mailboxes" inbox, gone): it's ignored. */
         init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
             order = try container.decodeIfPresent([String].self, forKey: .order) ?? []
             off = try container.decodeIfPresent([String].self, forKey: .off) ?? []
-            combined = try container.decodeIfPresent(Bool.self, forKey: .combined) ?? true
         }
     }
 

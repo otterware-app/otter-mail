@@ -91,8 +91,8 @@ struct ThreadListView: View {
                 .padding(.top, 80)
             } else if store.sync?.loadingCache != true && threads.isEmpty && (searching || recoveries.isEmpty) && !(store.sync?.hasMore(place.folder, scope: place.scope) ?? false) {
                 ContentUnavailableView(
-                    searching ? "No results" : "Nothing in \(place.folder.title)",
-                    systemImage: searching ? "magnifyingglass" : place.folder.symbol,
+                    searching ? "No results" : "Nothing in \(place.folder.title(in: mailbox))",
+                    systemImage: searching ? "magnifyingglass" : place.folder.symbol(in: mailbox),
                     description: Text(searching ? "Try other words, or from: and is:unread." : "")
                 )
                 .foregroundStyle(palette.muted)
@@ -134,7 +134,7 @@ struct ThreadListView: View {
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button { swipedThread = nil; onDrawer() } label: {
-                    Header(title: searching || searchTab ? "Search" : place.folder.title, scope: scopeName)
+                    Header(title: searching || searchTab ? "Search" : place.folder.title(in: mailbox), scope: scopeName)
                 }
                 .buttonStyle(.plain)
                 .accessibilityHint("Shows the mailboxes and folders")
@@ -165,14 +165,14 @@ struct ThreadListView: View {
                 }
                 ToolbarSpacer(.flexible, placement: .bottomBar)
                 ToolbarItem(id: "secondary-action", placement: .bottomBar) {
-                    if place.folder == .trash || place.folder == .junk {
+                    if [.trash, .junk, .archive].contains(place.folder) {
                         Button("Move to Inbox", systemImage: "tray.and.arrow.down") {
                             for id in selected { store.moveToInbox(id) }
                             endSelection()
                         }.disabled(selected.isEmpty)
                     } else {
                         Button("Archive", systemImage: "archivebox") { store.archive(selected); endSelection() }
-                            .disabled(!selected.compactMap(store.thread).contains { $0.labels.contains("INBOX") })
+                            .disabled(!selected.compactMap(store.thread).contains(where: store.canArchive))
                     }
                 }
                 ToolbarItem(id: "message-actions", placement: .bottomBar) {
@@ -218,10 +218,7 @@ struct ThreadListView: View {
 
     private var recoveries: [RecoveredDraft] {
         guard place.folder == .drafts else { return [] }
-        let shown = Set(store.shownMailboxes.map(\.email))
-        return store.recoveredDrafts.filter { recovery in
-            place.scope.map { recovery.draft.from == $0 } ?? shown.contains(recovery.draft.from)
-        }
+        return store.recoveredDrafts.filter { $0.draft.from == place.scope }
     }
 
     private var actionAnimation: Animation? { reduceMotion ? nil : .smooth(duration: 0.18) }
@@ -251,13 +248,13 @@ struct ThreadListView: View {
         }
     }
 
-    private var scopeName: String {
-        place.scope.flatMap(store.mailbox)?.displayName ?? "All mailboxes"
-    }
+    private var mailbox: Mailbox? { store.mailbox(place.scope) }
+
+    private var scopeName: String { mailbox?.displayName ?? "" }
 
     private func rows(_ threads: [MailThread]) -> some View {
         ForEach(threads) { thread in
-            row(thread, combined: place.scope == nil, divider: thread.id != threads.first?.id)
+            row(thread, divider: thread.id != threads.first?.id)
         }
     }
 
@@ -289,9 +286,9 @@ struct ThreadListView: View {
         .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 0, trailing: 20))
     }
 
-    private func row(_ thread: MailThread, combined: Bool, divider: Bool) -> some View {
+    private func row(_ thread: MailThread, divider: Bool) -> some View {
         Group {
-            let content = ThreadRow(thread: thread, mailbox: combined ? store.mailbox(thread.mailbox) : nil)
+            let content = ThreadRow(thread: thread, mark: mailbox?.mark ?? "star")
             if selecting {
                 Button {
                     if selected.contains(thread.id) { selected.remove(thread.id) }
@@ -362,9 +359,13 @@ struct ThreadListView: View {
         var actions = [MailSwipeAction(title: "Trash", symbol: "trash", tint: .red) {
             withAnimation(actionAnimation) { store.trash(thread.id) }
         }]
-        if thread.labels.contains("INBOX") {
+        if store.canArchive(thread) {
             actions.append(MailSwipeAction(title: "Archive", symbol: "archivebox", tint: .indigo) {
                 withAnimation(actionAnimation) { store.archive(thread.id) }
+            })
+        } else if thread.labels.contains("ARCHIVE") {
+            actions.append(MailSwipeAction(title: "Inbox", symbol: "tray.and.arrow.down", tint: palette.focus) {
+                withAnimation(actionAnimation) { store.moveToInbox(thread.id) }
             })
         }
         return actions
@@ -398,10 +399,12 @@ struct ThreadActions: View {
                systemImage: thread.unread ? "envelope.open" : "envelope.badge") {
             store.setRead(thread.unread, thread.id)
         }
-        Button(thread.starred ? "Unstar" : "Star", systemImage: thread.starred ? "star.slash" : "star") {
+        let mailbox = store.mailbox(thread.mailbox)
+        let mark = mailbox?.mark ?? "star"
+        Button(thread.starred ? "Un\(mark)" : mark.capitalized, systemImage: thread.starred ? "\(mark).slash" : mark) {
             store.toggleStar(thread.id)
         }
-        if let mailbox = store.mailbox(thread.mailbox), !mailbox.labels.isEmpty {
+        if let mailbox, !mailbox.labels.isEmpty {
             Menu("Labels", systemImage: "tag") {
                 ForEach(mailbox.labels) { label in
                     Toggle(label.name, isOn: Binding(
@@ -414,7 +417,7 @@ struct ThreadActions: View {
             .toggleStyle(.automatic)
         }
         Divider()
-        if thread.labels.contains("INBOX") {
+        if store.canArchive(thread) {
             Button("Archive", systemImage: "archivebox") { store.archive(thread.id); onGone() }
         }
         if thread.labels.contains("SPAM") || thread.labels.contains("TRASH") || !thread.labels.contains("INBOX") {

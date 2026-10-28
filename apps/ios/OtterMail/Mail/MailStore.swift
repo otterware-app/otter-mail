@@ -16,7 +16,6 @@ final class MailStore {
     }
     @ObservationIgnored private var folderThreads: [Place: [MailThread]] = [:]
     @ObservationIgnored private var unreadCounts: [Place: Int] = [:]
-    @ObservationIgnored private var cachedShown: [String] = []
     let preferences: Preferences
     private(set) var recoveredDrafts: [RecoveredDraft] = []
     @ObservationIgnored private var recoveryDirectory: URL?
@@ -62,9 +61,6 @@ final class MailStore {
     var shownMailboxes: [Mailbox] {
         arrangedMailboxes.filter { !preferences.arrangement.off.contains($0.email) }
     }
-
-    /** "All mailboxes" is offered (it needs two or more). */
-    var offersCombined: Bool { preferences.arrangement.combined && shownMailboxes.count > 1 }
 
     func mailbox(_ email: String) -> Mailbox? { mailboxes.first { $0.email == email } }
 
@@ -137,46 +133,34 @@ final class MailStore {
 
     // ── Reading ──────────────────────────────────────────────────────────────
 
-    /** A folder's threads in `scope` (a mailbox's address, or nil for all shown), newest first. */
-    func threads(in folder: Folder, scope: String?) -> [MailThread] {
-        prepareFolderCache()
+    /** A folder's threads in `scope` (a mailbox's address), newest first. */
+    func threads(in folder: Folder, scope: String) -> [MailThread] {
+        // Cache hits must still subscribe the view to mail changes.
+        _ = threads
         let key = Place(scope: scope, folder: folder)
         if let cached = folderThreads[key] { return cached }
-        let result = inScope(scope).filter { matches($0, folder) }.sorted { $0.latest.date > $1.latest.date }
+        let result = allThreads(of: scope).filter { matches($0, folder) }.sorted { $0.latest.date > $1.latest.date }
         folderThreads[key] = result
         return result
     }
 
-    func unreadCount(in folder: Folder, scope: String?) -> Int {
-        prepareFolderCache()
+    func unreadCount(in folder: Folder, scope: String) -> Int {
+        _ = threads
         let key = Place(scope: scope, folder: folder)
         if let cached = unreadCounts[key] { return cached }
-        let count = inScope(scope).reduce(0) { $0 + ($1.unread && matches($1, folder) ? 1 : 0) }
+        let count = allThreads(of: scope).reduce(0) { $0 + ($1.unread && matches($1, folder) ? 1 : 0) }
         unreadCounts[key] = count
         return count
     }
 
-    private func prepareFolderCache() {
-        // Cache hits must still subscribe the view to mail and visibility changes.
-        _ = threads
-        let shown = shownMailboxes.map(\.email)
-        if cachedShown != shown {
-            cachedShown = shown
-            folderThreads.removeAll()
-            unreadCounts.removeAll()
-        }
-    }
-
     /** A folder's count in the sidebar, as on the desktop: its unread mail, but every draft in Drafts and none on All Mail. */
-    func badge(in folder: Folder, scope: String?) -> Int {
+    func badge(in folder: Folder, scope: String) -> Int {
         switch folder {
         case .allMail: return 0
         case .drafts:
-            let saved = inScope(scope).filter { matches($0, .drafts) }.flatMap(\.messages).filter(\.draft)
-            let shown = Set(shownMailboxes.map(\.email))
+            let saved = allThreads(of: scope).filter { matches($0, .drafts) }.flatMap(\.messages).filter(\.draft)
             let local = recoveredDrafts.filter { entry in
-                (scope.map { entry.draft.from == $0 } ?? shown.contains(entry.draft.from))
-                    && !saved.contains(where: { $0.id == entry.draft.messageID })
+                entry.draft.from == scope && !saved.contains(where: { $0.id == entry.draft.messageID })
             }
             return saved.count + local.count
         default: return unreadCount(in: folder, scope: scope)
@@ -187,11 +171,6 @@ final class MailStore {
 
     func allThreads(of email: String) -> [MailThread] { threads.filter { $0.mailbox == email } }
 
-    private func inScope(_ scope: String?) -> [MailThread] {
-        let shown = Set(shownMailboxes.map(\.email))
-        return threads.filter { thread in scope.map { thread.mailbox == $0 } ?? shown.contains(thread.mailbox) }
-    }
-
     private func matches(_ thread: MailThread, _ folder: Folder) -> Bool {
         let away = thread.labels.contains("SPAM") || thread.labels.contains("TRASH")
         switch folder {
@@ -201,6 +180,7 @@ final class MailStore {
         case .drafts: return thread.messages.contains(where: \.draft) && !away
         case .important: return thread.labels.contains("IMPORTANT") && !away
         case .allMail: return !away && !thread.isDraft
+        case .archive: return thread.labels.contains("ARCHIVE") && !away
         case .junk: return thread.labels.contains("SPAM")
         case .trash: return thread.labels.contains("TRASH")
         case .label(let id, _): return thread.labels.contains(id) && !away
@@ -212,11 +192,11 @@ final class MailStore {
      * `label:`, `is:unread`, `is:starred`, `has:attachment`, and words
      * anywhere. Junk and Trash are left out, as in Gmail.
      */
-    func search(_ query: String, scope: String?) -> [MailThread] {
+    func search(_ query: String, scope: String) -> [MailThread] {
         let terms = query.lowercased().split(separator: " ").map(String.init)
         guard !terms.isEmpty else { return [] }
         let labels = Dictionary(mailboxes.flatMap(\.labels).map { ($0.id, $0.name.lowercased()) }) { a, _ in a }
-        return inScope(scope)
+        return allThreads(of: scope)
             .filter { !$0.labels.contains("SPAM") && !$0.labels.contains("TRASH") }
             .filter { thread in terms.allSatisfy { Self.term($0, matches: thread, labels: labels) } }
             .sorted { $0.latest.date > $1.latest.date }
@@ -251,8 +231,7 @@ final class MailStore {
         var index = Dictionary(uniqueKeysWithValues: threads.enumerated().map { ($1.id, $0) })
         for var thread in fresh {
             if let pending = undoAction, pending.threads.contains(where: { $0.id == thread.id }) {
-                if pending.trash { thread.labels.subtract(["INBOX", "SPAM"]); thread.labels.insert("TRASH") }
-                else { thread.labels.remove("INBOX") }
+                stage(&thread, trash: pending.trash)
             }
             if let i = index[thread.id] {
                 if updated[i] != thread { updated[i] = thread; changed = true }
@@ -286,6 +265,16 @@ final class MailStore {
         case trash, untrash, delete
     }
 
+    /** Where Archive is a folder of its own in the thread's mailbox (Outlook, IMAP). */
+    private func archiveFolder(_ thread: MailThread) -> Bool {
+        mailbox(thread.mailbox)?.capabilities.archiveFolder == true
+    }
+
+    /** Whether Archive takes the thread somewhere: out of the inbox, or (Outlook, IMAP) one of the user's folders. */
+    func canArchive(_ thread: MailThread) -> Bool {
+        !thread.archivable(archiveFolder: archiveFolder(thread)).isEmpty
+    }
+
     private func edit(_ id: String, _ changes: [Change], _ change: (inout MailThread) -> Void) {
         commitPendingAction()
         guard let i = threads.firstIndex(where: { $0.id == id }) else { return }
@@ -315,12 +304,11 @@ final class MailStore {
 
     private func stage(_ ids: Set<String>, trash: Bool) {
         commitPendingAction()
-        let originals = threads.filter { ids.contains($0.id) && (trash ? !$0.labels.contains("TRASH") : $0.labels.contains("INBOX")) }
+        let originals = threads.filter { ids.contains($0.id) && (trash ? !$0.labels.contains("TRASH") : canArchive($0)) }
         guard !originals.isEmpty else { return }
         undoAction = PendingAction(trash: trash, threads: originals)
         for i in threads.indices where originals.contains(where: { $0.id == threads[i].id }) {
-            if trash { threads[i].labels.subtract(["INBOX", "SPAM"]); threads[i].labels.insert("TRASH") }
-            else { threads[i].labels.remove("INBOX") }
+            stage(&threads[i], trash: trash)
         }
         undoTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(6))
@@ -329,13 +317,26 @@ final class MailStore {
         }
     }
 
+    /** A thread as trashing or archiving leaves it, before the server has it. */
+    private func stage(_ thread: inout MailThread, trash: Bool) {
+        if trash {
+            thread.labels.subtract(["INBOX", "SPAM", "ARCHIVE"])
+            thread.labels.insert("TRASH")
+        } else {
+            let folders = archiveFolder(thread)
+            thread.land(add: [], remove: Array(thread.archivable(archiveFolder: folders)), archiveFolder: folders)
+        }
+    }
+
     func undo() {
         guard let action = undoAction else { return }
         undoTask?.cancel()
         undoAction = nil
-        let affected: Set<String> = action.trash ? ["INBOX", "SPAM", "TRASH"] : ["INBOX"]
         for original in action.threads {
             guard let i = threads.firstIndex(where: { $0.id == original.id }) else { continue }
+            let affected: Set<String> = action.trash
+                ? ["INBOX", "SPAM", "TRASH", "ARCHIVE"]
+                : original.archivable(archiveFolder: archiveFolder(original)).union(["ARCHIVE"])
             threads[i].labels.subtract(affected)
             threads[i].labels.formUnion(original.labels.intersection(affected))
         }
@@ -346,26 +347,28 @@ final class MailStore {
         guard let action = undoAction else { return }
         undoAction = nil
         for original in action.threads {
-            sync?.apply(action.trash ? .trash : .modify(add: [], remove: ["INBOX"]), to: thread(original.id) ?? original)
+            let archived = Array(original.archivable(archiveFolder: archiveFolder(original)))
+            sync?.apply(action.trash ? .trash : .modify(add: [], remove: archived), to: thread(original.id) ?? original)
         }
     }
 
     func markSpam(_ id: String) {
+        guard let thread = thread(id) else { return }
+        let folders = archiveFolder(thread)
         edit(id, [.modify(add: ["SPAM"], remove: ["INBOX"])]) { t in
-            t.labels.subtract(["INBOX", "TRASH"])
-            t.labels.insert("SPAM")
+            t.land(add: ["SPAM"], remove: ["INBOX", "TRASH"], archiveFolder: folders)
         }
     }
 
-    /** Back to the inbox, out of Junk or Trash. */
+    /** Back to the inbox, out of Junk, Trash or the Archive. */
     func moveToInbox(_ id: String) {
         guard let thread = thread(id) else { return }
+        let folders = archiveFolder(thread)
         let changes: [Change] = thread.labels.contains("TRASH")
             ? [.untrash, .modify(add: ["INBOX"], remove: [])]
             : [.modify(add: ["INBOX"], remove: ["SPAM"])]
         edit(id, changes) { t in
-            t.labels.subtract(["SPAM", "TRASH"])
-            t.labels.insert("INBOX")
+            t.land(add: ["INBOX"], remove: ["SPAM", "TRASH"], archiveFolder: folders)
         }
     }
 
@@ -378,9 +381,9 @@ final class MailStore {
 
     func toggleLabel(_ label: String, _ id: String) {
         guard let thread = thread(id) else { return }
-        let on = !thread.labels.contains(label)
+        let (on, folders) = (!thread.labels.contains(label), archiveFolder(thread))
         edit(id, [.modify(add: on ? [label] : [], remove: on ? [] : [label])]) { t in
-            if on { t.labels.insert(label) } else { t.labels.remove(label) }
+            t.land(add: on ? [label] : [], remove: on ? [] : [label], archiveFolder: folders)
         }
     }
 

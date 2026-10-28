@@ -28,7 +28,7 @@ nonisolated enum OutlookSearch {
 
     private static let systemLabels = [
         "inbox": "INBOX", "sent": "SENT", "draft": "DRAFT", "drafts": "DRAFT", "spam": "SPAM", "junk": "SPAM",
-        "trash": "TRASH", "starred": "STARRED", "flagged": "STARRED", "unread": "UNREAD", "important": "IMPORTANT",
+        "trash": "TRASH", "archive": "ARCHIVE", "starred": "STARRED", "flagged": "STARRED", "unread": "UNREAD", "important": "IMPORTANT",
     ]
 
     static func query(_ q: String, labels: [MailLabel], now: Date = .now) -> Query {

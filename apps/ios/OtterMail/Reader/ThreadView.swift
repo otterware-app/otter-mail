@@ -72,7 +72,7 @@ struct ThreadView: View {
                 ToolbarSpacer(.fixed, placement: .topBarTrailing)
             }
             ToolbarItem(placement: .topBarTrailing) {
-                Button(thread.starred ? "Unstar" : "Star", systemImage: thread.starred ? "star.fill" : "star") {
+                Button(thread.starred ? "Un\(mailbox.mark)" : mailbox.mark.capitalized, systemImage: thread.starred ? "\(mailbox.mark).fill" : mailbox.mark) {
                     store.toggleStar(thread.id)
                 }
             }
@@ -132,12 +132,14 @@ struct ThreadView: View {
         }
     }
 
-    /** Archive and Trash stay together, with Reply on the other side of the message. */
+    /** Archive (in the Archive, Move to Inbox) and Trash stay together, with Reply on the other side of the message. */
     private func replyBar(_ thread: MailThread, _ mailbox: Mailbox) -> some View {
-        let inInbox = thread.labels.contains("INBOX")
+        let archives = store.canArchive(thread)
+        let unarchives = !archives && thread.labels.contains("ARCHIVE")
         return HStack(spacing: 10) {
-            Button(inInbox ? "Archive" : "Trash", systemImage: inInbox ? "archivebox" : "trash") {
-                if inInbox { store.archive(thread.id) } else { store.trash(thread.id) }
+            Button(archives ? "Archive" : unarchives ? "Move to Inbox" : "Trash",
+                   systemImage: archives ? "archivebox" : unarchives ? "tray.and.arrow.down" : "trash") {
+                if archives { store.archive(thread.id) } else if unarchives { store.moveToInbox(thread.id) } else { store.trash(thread.id) }
                 leave(thread)
             }
             .labelStyle(.iconOnly)
@@ -146,7 +148,7 @@ struct ThreadView: View {
             .frame(width: 44, height: 44)
             .glassEffect(.regular.interactive(), in: .circle)
 
-            if inInbox {
+            if archives || unarchives {
                 Button("Trash", systemImage: "trash") {
                     store.trash(thread.id)
                     leave(thread)

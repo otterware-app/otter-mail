@@ -2,15 +2,15 @@ import SwiftUI
 
 /**
  * One thread, three lines, as the desktop lists them: who (the unread dot
- * before, the mailbox's dot in all mailboxes) and when, the subject, then a
- * line of the latest message. List styling and read backgrounds live in ThreadListView.
+ * before) and when, the subject, then a line of the latest message. List
+ * styling and read backgrounds live in ThreadListView.
  */
 struct ThreadRow: View {
     @Environment(\.palette) private var palette
     @Environment(Preferences.self) private var preferences
     let thread: MailThread
-    /** Set in all mailboxes: whose mail it is. */
-    let mailbox: Mailbox?
+    /** How the mailbox marks mail (`Mailbox.mark`): a star, or a flag. */
+    var mark = "star"
 
     var body: some View {
         let latest = thread.latest
@@ -26,7 +26,7 @@ struct ThreadRow: View {
                     .lineLimit(1)
                 Spacer(minLength: 8)
                 if thread.starred {
-                    Image(systemName: "star.fill")
+                    Image(systemName: "\(mark).fill")
                         .font(.caption2)
                         .foregroundStyle(palette.text)
                 }
@@ -40,12 +40,6 @@ struct ThreadRow: View {
                         .font(.footnote)
                         .foregroundStyle(palette.muted)
                         .monospacedDigit()
-                }
-                if let mailbox {
-                    Circle()
-                        .fill(Color(hex: mailbox.color))
-                        .frame(width: 7, height: 7)
-                        .accessibilityLabel(mailbox.displayName)
                 }
                 Text(RelativeTime.short(latest.date))
                     .font(.footnote)

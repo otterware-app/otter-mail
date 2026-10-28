@@ -1,9 +1,9 @@
 import SwiftUI
 
-/** Where the user is: a mailbox (or all of them) and a folder in it. */
+/** Where the user is: a mailbox and a folder in it. */
 struct Place: Hashable {
-    /** A mailbox's address; nil = all mailboxes. */
-    var scope: String?
+    /** The mailbox's address ("" until there's one). */
+    var scope = ""
     var folder: Folder = .inbox
 }
 
@@ -59,16 +59,9 @@ struct HomeView: View {
         .onChange(of: showsAgent) { _, shows in
             if !shows && tab == .agent { tab = .mail }
         }
-        .onChange(of: store.shownMailboxes.map(\.email)) { _, shown in
-            // The mailbox shown was turned off or removed: fall back to what's left.
-            if let scope = place.scope, !shown.contains(scope) {
-                place = Place(scope: store.offersCombined ? nil : shown.first)
-            } else if place.scope == nil, !store.offersCombined {
-                place.scope = shown.first
-            }
-        }
-        .onAppear {
-            if !store.offersCombined { place.scope = store.shownMailboxes.first?.email }
+        .onChange(of: store.shownMailboxes.map(\.email), initial: true) { _, shown in
+            // The first mailbox, or the mailbox shown was turned off or removed: fall back to what's left.
+            if !shown.contains(place.scope) { place = Place(scope: shown.first ?? "") }
         }
         .onChange(of: session.opening, initial: true) { _, _ in openNotification() }
         .onChange(of: store.sync?.loadingCache) { _, loading in
@@ -101,6 +94,23 @@ struct HomeView: View {
                     onSettings: { settingsOpen = true },
                     onResume: { draft = $0 }
                 )
+                // On the list, inside the tab, so it sits above the floating tab bar.
+                .safeAreaInset(edge: .bottom, spacing: 8) {
+                    if let action = store.undoAction {
+                        HStack {
+                            Text(action.title).font(.subheadline).lineLimit(2)
+                            Spacer(minLength: 12)
+                            Button("Undo") { store.undo() }.fontWeight(.semibold)
+                                .accessibilityHint("Restores the conversations to their previous folders")
+                        }
+                        .foregroundStyle(palette.text)
+                        .padding(16)
+                        .background(palette.raised, in: .rect(cornerRadius: 18))
+                        .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(palette.border))
+                        .padding(.horizontal, 16)
+                        .id(action.id)
+                    }
+                }
                 .navigationDestination(for: String.self) { id in
                     let reader = ThreadView(threadID: id, place: place, path: $path, draft: $draft)
                     if reduceMotion {
@@ -108,22 +118,6 @@ struct HomeView: View {
                     } else {
                         reader.navigationTransition(.zoom(sourceID: id, in: messageTransition))
                     }
-                }
-            }
-            .safeAreaInset(edge: .bottom, spacing: 8) {
-                if let action = store.undoAction {
-                    HStack {
-                        Text(action.title).font(.subheadline).lineLimit(2)
-                        Spacer(minLength: 12)
-                        Button("Undo") { store.undo() }.fontWeight(.semibold)
-                            .accessibilityHint("Restores the conversations to their previous folders")
-                    }
-                    .foregroundStyle(palette.text)
-                    .padding(16)
-                    .background(palette.raised, in: .rect(cornerRadius: 18))
-                    .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(palette.border))
-                    .padding(.horizontal, 16)
-                    .id(action.id)
                 }
             }
         }
@@ -163,7 +157,7 @@ struct HomeView: View {
     }
 
     private func compose(to: String = "") {
-        let mailbox = place.scope.flatMap(store.mailbox) ?? store.shownMailboxes.first
+        let mailbox = store.mailbox(place.scope) ?? store.shownMailboxes.first
         guard let mailbox else { return }
         setDrawer(open: false)
         draft = .new(from: mailbox, to: to)

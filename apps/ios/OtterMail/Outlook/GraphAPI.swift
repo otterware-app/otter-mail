@@ -218,14 +218,17 @@ nonisolated extension GraphAPI {
     /** The folder tree and categories (a few requests); the well-known folders' ids are asked for once. */
     func folders(wellKnown known: [String: String]?) async throws -> OutlookFolders {
         var wellKnown = known ?? [:]
+        struct Ref: Decodable { var id: String }
         if wellKnown["inbox"] == nil {
-            struct Ref: Decodable { var id: String }
             let names = OutlookFolders.wellKnownNames
             let answers = try await batch(names.map { BatchRequest(url: "/me/mailFolders/\($0)?$select=id") })
             for (name, answer) in zip(names, answers) where answer.ok {
                 if let ref = try? JSONDecoder().decode(Ref.self, from: answer.body) { wellKnown[name] = ref.id }
             }
             guard wellKnown["inbox"] != nil else { throw Failure(status: 0, code: "", message: "Outlook didn't say where this mailbox's inbox is.") }
+        } else if wellKnown["archive"] == nil {
+            // A mailbox without an Archive gets one when mail is first archived (by Outlook too).
+            if let archive = try? await get("/me/mailFolders/archive?$select=id") as Ref { wellKnown["archive"] = archive.id }
         }
         var children: [String?: [OutlookFolders.ApiFolder]] = [:]
         var parents: [String?] = [nil]

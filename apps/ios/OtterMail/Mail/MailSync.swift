@@ -210,6 +210,7 @@ final class MailSync {
             // Read after the awaits, so what changed meanwhile (a synced signature) isn't written over.
             if var mailbox = store.mailbox(email) {
                 mailbox.labels = labels
+                mailbox.hasArchive = provider.capabilities.archiveFolder ? provider.hasArchive : nil
                 if let signature { mailbox.signature = signature }
                 store.upsert(mailbox: mailbox)
             }
@@ -270,29 +271,29 @@ final class MailSync {
     }
 
     /** Whether a folder has more on the server than has been loaded. */
-    func hasMore(_ folder: Folder, scope: String?) -> Bool {
+    func hasMore(_ folder: Folder, scope: String) -> Bool {
         mailboxes(scope).contains { states[$0]?.pages[Self.key(folder)] != "" }
     }
 
-    /** Where the folder's pages got to in each mailbox of `scope`; a new page changes it. */
-    func cursor(_ folder: Folder, scope: String?) -> String {
+    /** Where the folder's pages got to in the mailbox; a new page changes it. */
+    func cursor(_ folder: Folder, scope: String) -> String {
         mailboxes(scope).map { states[$0]?.pages[Self.key(folder)] ?? "" }.joined(separator: " ")
     }
 
-    /** The folder's threads its list shows: in each mailbox, down to where its pages reached (MailboxState.lists). */
+    /** The folder's threads its list shows: down to where its pages reached (MailboxState.lists). */
     func listed(_ threads: [MailThread], in folder: Folder) -> [MailThread] {
         let key = Self.key(folder)
-        let paged = Set(mailboxes(nil))
+        let paged = Set(store.shownMailboxes.filter { !$0.signedOut }.map(\.email))
         return threads.filter { !paged.contains($0.mailbox) || states[$0.mailbox]?.lists($0, in: key) != false }
     }
 
-    /** The folder's next page in each mailbox of `scope` (its first, the first time). */
-    func loadMore(_ folder: Folder, scope: String?) async {
+    /** The folder's next page in the mailbox (its first, the first time). */
+    func loadMore(_ folder: Folder, scope: String) async {
         await loadMore(folder, in: mailboxes(scope))
     }
 
     /** A page on opening the folder where none yet says where its list ends, before the list gets there (not before a first sync). */
-    func open(_ folder: Folder, scope: String?) async {
+    func open(_ folder: Folder, scope: String) async {
         await waitForCache()
         let key = Self.key(folder)
         await loadMore(folder, in: mailboxes(scope).filter { states[$0]?.unbounded(key) == true })
@@ -307,8 +308,8 @@ final class MailSync {
         }
     }
 
-    /** The servers' search, in each mailbox of `scope`; answers the matching thread ids. */
-    func search(_ query: String, scope: String?) async -> [String] {
+    /** The server's search, in the mailbox; answers the matching thread ids. */
+    func search(_ query: String, scope: String) async -> [String] {
         await waitForCache()
         var found: [String] = []
         for email in mailboxes(scope) {
@@ -319,8 +320,8 @@ final class MailSync {
         return found
     }
 
-    private func mailboxes(_ scope: String?) -> [String] {
-        store.shownMailboxes.filter { !$0.signedOut && (scope == nil || $0.email == scope) }.map(\.email)
+    private func mailboxes(_ scope: String) -> [String] {
+        store.shownMailboxes.filter { !$0.signedOut && $0.email == scope }.map(\.email)
     }
 
     // ── Writing changes ──────────────────────────────────────────────────────
