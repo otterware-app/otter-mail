@@ -9,13 +9,22 @@ import { updateDockBadge } from "./notifier.js";
 
 // The backend is single-owner (a utility process, or the elected web worker).
 // SQLite commits the claim before a send: a crash must never automatically resend it.
+// `serverId`: the message a server holds and sends itself (Outlook).
+let migrated = false;
 function db() {
   const db = platform().database();
   db.exec(`CREATE TABLE IF NOT EXISTS mail_schedule (
     id TEXT PRIMARY KEY, accountId TEXT NOT NULL, kind TEXT NOT NULL,
     dueAt INTEGER NOT NULL, state TEXT NOT NULL, subject TEXT NOT NULL,
-    threadId TEXT, payload TEXT, error TEXT
+    threadId TEXT, payload TEXT, error TEXT, serverId TEXT
   )`);
+  if (!migrated) {
+    const columns = db.prepare("SELECT name FROM pragma_table_info('mail_schedule')").all();
+    if (!columns.some((c) => c.name === "serverId")) {
+      db.exec("ALTER TABLE mail_schedule ADD COLUMN serverId TEXT");
+    }
+    migrated = true;
+  }
   return db;
 }
 
@@ -46,17 +55,21 @@ export function futureTime(value: unknown): number {
 }
 
 export function listSchedules(): MailSchedule[] {
-  return db()
+  const rows = db()
     .prepare(
-      "SELECT id, accountId, kind, dueAt, state, subject, threadId, error FROM mail_schedule ORDER BY dueAt",
+      "SELECT id, accountId, kind, dueAt, state, subject, threadId, error, serverId FROM mail_schedule ORDER BY dueAt",
     )
-    .all() as unknown as MailSchedule[];
+    .all() as unknown as (Omit<MailSchedule, "onServer"> & { serverId: string | null })[];
+  return rows.map(({ serverId, ...entry }) => ({ ...entry, onServer: serverId !== null }));
 }
 
-export function scheduleSend(accountId: string, mail: OutgoingMail, dueAt: number): void {
+export async function scheduleSend(accountId: string, mail: OutgoingMail, dueAt: number) {
   futureTime(dueAt);
+  // Outlook holds it and sends it itself; it's listed here to cancel.
+  const provider = providerFor(accountId);
+  const held = provider.scheduleSend && (await provider.scheduleSend(accountId, mail, dueAt));
   db()
-    .prepare("INSERT INTO mail_schedule VALUES (?, ?, 'send', ?, 'pending', ?, ?, ?, NULL)")
+    .prepare("INSERT INTO mail_schedule VALUES (?, ?, 'send', ?, 'pending', ?, ?, ?, NULL, ?)")
     .run(
       crypto.randomUUID(),
       accountId,
@@ -64,6 +77,7 @@ export function scheduleSend(accountId: string, mail: OutgoingMail, dueAt: numbe
       mail.subject,
       mail.threadId ?? null,
       JSON.stringify(mail),
+      held ? held.messageId : null,
     );
   changed();
 }
@@ -99,7 +113,7 @@ export async function snoozeThread(
   }
   const id = crypto.randomUUID();
   db()
-    .prepare("INSERT INTO mail_schedule VALUES (?, ?, 'snooze', ?, 'running', ?, ?, ?, NULL)")
+    .prepare("INSERT INTO mail_schedule VALUES (?, ?, 'snooze', ?, 'running', ?, ?, ?, NULL, NULL)")
     .run(
       id,
       accountId,
@@ -163,22 +177,30 @@ function claim(id: string): MailSchedule {
 
 export async function cancelSchedule(id: string): Promise<void> {
   const entry = claim(id);
+  let sent = false;
   try {
     if (entry.kind === "send") {
-      const row = db().prepare("SELECT payload FROM mail_schedule WHERE id = ?").get(id)!;
+      const row = db().prepare("SELECT payload, serverId FROM mail_schedule WHERE id = ?").get(id)!;
       const mail = JSON.parse(String(row.payload)) as OutgoingMail;
       const provider = providerFor(entry.accountId);
-      const draft = await provider.saveDraft(entry.accountId, mail);
-      db().prepare("DELETE FROM mail_schedule WHERE id = ?").run(id);
-      if (draft.messageId) {
-        try {
-          store.upsertMessages(
-            entry.accountId,
-            await provider.getSummaries(entry.accountId, [draft.messageId]),
-          );
-          store.setDraftId(entry.accountId, draft.messageId, draft.draftId);
-        } catch {
-          /* The draft exists; sync will bring it into the cache. */
+      if (row.serverId != null) {
+        sent = !(await provider.cancelScheduledSend!(entry.accountId, String(row.serverId)));
+        // Cancelled there: a retry only restores the draft.
+        db().prepare("UPDATE mail_schedule SET serverId = NULL WHERE id = ?").run(id);
+      }
+      if (!sent) {
+        const draft = await provider.saveDraft(entry.accountId, mail);
+        db().prepare("DELETE FROM mail_schedule WHERE id = ?").run(id);
+        if (draft.messageId) {
+          try {
+            store.upsertMessages(
+              entry.accountId,
+              await provider.getSummaries(entry.accountId, [draft.messageId]),
+            );
+            store.setDraftId(entry.accountId, draft.messageId, draft.draftId);
+          } catch {
+            /* The draft exists; sync will bring it into the cache. */
+          }
         }
       }
     } else {
@@ -190,6 +212,8 @@ export async function cancelSchedule(id: string): Promise<void> {
     failed(id, error);
     throw error;
   }
+  // The server had already sent it: its contents are in Sent.
+  if (sent) throw new Error("Too late to cancel: it has been sent.");
 }
 
 export function removeAccountSchedules(accountId: string): void {
@@ -204,6 +228,12 @@ export async function processSchedules(): Promise<void> {
   try {
     for (const item of listSchedules()) {
       if (item.state !== "pending" || item.dueAt > Date.now()) continue;
+      if (item.onServer) {
+        // The server sends it: nothing left to do here.
+        db().prepare("DELETE FROM mail_schedule WHERE id = ? AND state = 'pending'").run(item.id);
+        changed();
+        continue;
+      }
       if (!(await getAccount(item.accountId))) {
         removeAccountSchedules(item.accountId);
         continue;

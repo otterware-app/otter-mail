@@ -59,6 +59,8 @@ export interface MailCapabilities {
   calendar: boolean;
   /** New mail arrives by push through the relay (Gmail, Outlook); otherwise the device watches itself. */
   relayPush: boolean;
+  /** The server holds scheduled mail and sends it on time, with Otter Mail closed (Outlook); otherwise this device sends it. */
+  serverScheduledSend?: boolean;
 }
 
 export const GMAIL_CAPABILITIES: MailCapabilities = {
@@ -84,6 +86,7 @@ export const OUTLOOK_CAPABILITIES: MailCapabilities = {
   serverSignatures: false,
   calendar: true,
   relayPush: true,
+  serverScheduledSend: true,
 };
 
 export const IMAP_CAPABILITIES: MailCapabilities = {
@@ -163,4 +166,6 @@ export type MailSchedule = {
   subject: string;
   threadId: string | null;
   error: string | null;
+  /** A send the mail server holds and sends itself (Outlook): it doesn't wait on this device. */
+  onServer: boolean;
 };

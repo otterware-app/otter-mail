@@ -227,6 +227,17 @@ export interface MailProvider {
   deleteLabel(accountId: string, labelId: string): Promise<void>;
 
   send(accountId: string, mail: OutgoingMail): Promise<{ messageId?: string }>;
+  /**
+   * With `capabilities.serverScheduledSend`: hands the message to the server,
+   * which holds it and sends it at `sendAt`, whether or not Otter Mail runs.
+   */
+  scheduleSend?(
+    accountId: string,
+    mail: OutgoingMail,
+    sendAt: number,
+  ): Promise<{ messageId: string }>;
+  /** Cancels a held send; false when it's too late, the server has sent it. */
+  cancelScheduledSend?(accountId: string, messageId: string): Promise<boolean>;
   /** Sends a ready-made RFC 822 message (unsubscribe mail, invitation replies). */
   sendRaw(accountId: string, raw: string, threadId?: string): Promise<void>;
 

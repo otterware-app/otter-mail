@@ -174,7 +174,34 @@ async function syncAttachments(
   await attach(accountId, draftId, attachments);
 }
 
-export async function send(accountId: string, mail: OutgoingMail): Promise<{ messageId?: string }> {
+/**
+ * Has Exchange send a draft at `sendAt`: PidTagDeferredSendTime, a MAPI
+ * property Graph has no field for. After `/send` Exchange holds the message,
+ * locked against edits and moves, and sends it then, with Otter Mail closed.
+ * It waits in the Outbox, which isn't synced, rather than in Drafts, where it
+ * would show as a draft nobody can edit. It keeps its id, then in Sent Items.
+ */
+async function hold(accountId: string, id: string, sendAt: number): Promise<void> {
+  await graph(accountId, messagePath(id), {
+    method: "PATCH",
+    body: {
+      singleValueExtendedProperties: [
+        { id: "SystemTime 0x3FEF", value: new Date(sendAt).toISOString() },
+      ],
+    },
+  });
+  await graph(accountId, `${messagePath(id)}/move`, {
+    method: "POST",
+    body: { destinationId: "outbox" },
+  });
+}
+
+/** Sends now, or with `sendAt`, has Outlook send it then. */
+export async function send(
+  accountId: string,
+  mail: OutgoingMail,
+  sendAt?: number,
+): Promise<{ messageId: string }> {
   if (recipients(mail.to).length + recipients(mail.cc).length + recipients(mail.bcc).length === 0) {
     throw new Error("Add at least one recipient.");
   }
@@ -182,6 +209,7 @@ export async function send(accountId: string, mail: OutgoingMail): Promise<{ mes
   const draft = await createDraft(accountId, mail, replyTo);
   try {
     if (mail.attachments?.length) await attach(accountId, draft.id, mail.attachments);
+    if (sendAt !== undefined) await hold(accountId, draft.id, sendAt);
     await graph(accountId, `${messagePath(draft.id)}/send`, { method: "POST" });
   } catch (err) {
     // Don't leave a half-made draft behind.
@@ -191,6 +219,23 @@ export async function send(accountId: string, mail: OutgoingMail): Promise<{ mes
     throw err;
   }
   return { messageId: draft.id };
+}
+
+/**
+ * Deleting a held message is what cancels it (Exchange won't move or edit
+ * it). Soft-deleted, so in a race with Exchange sending it the sent copy
+ * stays recoverable.
+ */
+export async function cancelScheduledSend(accountId: string, id: string): Promise<boolean> {
+  try {
+    const message = await graph<ApiMessage>(accountId, `${messagePath(id)}?$select=id,isDraft`);
+    if (!message.isDraft) return false;
+    await graph(accountId, messagePath(id), { method: "DELETE" });
+  } catch (err) {
+    // Deleted elsewhere: nothing left to send.
+    if (!isNotFound(err)) throw err;
+  }
+  return true;
 }
 
 /** A ready-made RFC 822 message (unsubscribe mail, invitation replies), sent as MIME. */
