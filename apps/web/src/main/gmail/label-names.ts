@@ -3,6 +3,9 @@ import type { GmailLabel } from "./types";
 /** Pseudo label id for "All Mail" (every message but Spam/Trash) — mirrors the backend. */
 export const ALL_MAIL_LABEL_ID = "ALL_MAIL";
 
+/** The Archive folder's label, where it's a folder of its own (Outlook, IMAP). */
+export { ARCHIVE_LABEL_ID } from "@otter-mail/contracts";
+
 /** Friendly display names for Gmail's system labels. */
 export const SYSTEM_LABEL_NAMES: Record<string, string> = {
   INBOX: "Inbox",
@@ -10,6 +13,7 @@ export const SYSTEM_LABEL_NAMES: Record<string, string> = {
   DRAFT: "Drafts",
   SPAM: "Spam",
   TRASH: "Trash",
+  ARCHIVE: "Archive",
   UNREAD: "Unread",
   STARRED: "Starred",
   IMPORTANT: "Important",

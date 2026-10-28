@@ -282,7 +282,7 @@ function providerScenario(
     await provider.modifyThread(accountId, threadId, { removeLabelIds: ["INBOX"] });
     const original = cachedByHeader(accountId, a.id)!;
     expect(pathOf(original.id)).toBe("Archive");
-    expect(original.labels).toEqual(["STARRED"]);
+    expect(original.labels.sort()).toEqual(["ARCHIVE", "STARRED"]);
     expect(pathOf(cachedByHeader(accountId, b.id)!.id)).toBe("Sent");
     expect(await serverSearch("INBOX", a.id)).toEqual([]);
     expect(await serverSearch("Archive", a.id)).toHaveLength(1);
@@ -290,6 +290,24 @@ function providerScenario(
     expect(store.getThreadMessages(accountId, threadId)).toHaveLength(2);
     await sync(accountId);
     expect(pathOf(cachedByHeader(accountId, a.id)!.id)).toBe("Archive");
+    expect(store.getLabels(accountId).find((l) => l.id === "ARCHIVE")).toMatchObject({
+      type: "system",
+      total: 1,
+    });
+  });
+
+  it("gives ARCHIVE to archived mail cached before the Archive had a label", async () => {
+    const { id } = cachedByHeader(accountId, a.id)!;
+    // As an older version left it: no label for the Archive's mail, nor in its sync state.
+    store.applyHistoryChanges(accountId, [{ kind: "labelsRemoved", id, labelIds: ["ARCHIVE"] }]);
+    const key = `imapSync:${accountId}`;
+    const state = JSON.parse(store.getKv(key)!) as Record<string, { label?: string | null }>;
+    for (const folder of Object.values(state)) delete folder.label;
+    store.setKv(key, JSON.stringify(state));
+
+    await sync(accountId);
+    expect(cachedByHeader(accountId, a.id)!.labels.sort()).toEqual(["ARCHIVE", "STARRED"]);
+    expect(cachedByHeader(accountId, b.id)!.labels).toEqual(["SENT"]);
   });
 
   it("moves to a folder, and back to the inbox", async () => {

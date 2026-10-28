@@ -1,16 +1,18 @@
 /**
  * Outlook's folders and categories as labels (docs/outlook.md).
  *
- * The well-known folders are Gmail's system labels: Inbox → INBOX, Sent
- * Items → SENT, Drafts → DRAFT, Deleted Items → TRASH, Junk Email → SPAM; the
- * Archive folder is no label at all (archived mail just lacks INBOX). Every
- * other folder is a user label, `folder:<id>`, named by its path. A message
- * sits in one folder: applying a folder label moves it.
+ * The well-known folders are system labels: Inbox → INBOX, Sent Items →
+ * SENT, Drafts → DRAFT, Deleted Items → TRASH, Junk Email → SPAM, and Archive
+ * → ARCHIVE (Gmail has no such folder; Outlook's archive moves mail there).
+ * Every other folder is a user label, `folder:<id>`, named by its path. A
+ * message sits in one folder: applying a folder label moves it.
  *
  * Categories are Outlook's labels: several per message, each with a color.
  * They're user labels too, `category:<name>`. Flags, read state and
  * importance stand for STARRED, UNREAD and IMPORTANT.
  */
+
+import { ARCHIVE_LABEL_ID } from "@otter-mail/contracts";
 
 import * as store from "../../services/mail-store.js";
 import type { GmailLabel } from "../../types.js";
@@ -40,6 +42,7 @@ const SYSTEM_LABEL: Partial<Record<WellKnown, string>> = {
   drafts: "DRAFT",
   deleteditems: "TRASH",
   junkemail: "SPAM",
+  archive: ARCHIVE_LABEL_ID,
 };
 
 /** Folders that hold no mail worth listing (mail on its way out, Skype logs, sync conflicts). */
@@ -55,7 +58,7 @@ export interface Folder {
   parentId: string | null;
   unread: number;
   total: number;
-  /** The label its mail carries: a system label, `folder:<id>`, or none (the archive). */
+  /** The label its mail carries: a system label or `folder:<id>`. */
   labelId: string | null;
 }
 
@@ -112,8 +115,17 @@ const FOLDER_FIELDS =
 export async function readMailbox(accountId: string): Promise<Mailbox> {
   const known = mailboxOf(accountId)?.wellKnown;
   const wellKnown: Mailbox["wellKnown"] = {};
-  if (known?.inbox) Object.assign(wellKnown, known);
-  else {
+  if (known?.inbox) {
+    Object.assign(wellKnown, known);
+    // A mailbox without an Archive gets one when mail is first archived (by Outlook too).
+    if (!known.archive) {
+      const archive = await graph<{ id?: string }>(
+        accountId,
+        "/me/mailFolders/archive?$select=id",
+      ).catch(() => null);
+      if (archive?.id) wellKnown.archive = archive.id;
+    }
+  } else {
     const answers = await graphBatch(
       accountId,
       WELL_KNOWN.map((name) => ({ method: "GET", url: `/me/mailFolders/${name}?$select=id` })),
@@ -193,7 +205,7 @@ export async function wellKnownId(accountId: string, name: WellKnown): Promise<s
   return id ?? name;
 }
 
-/** The label a folder's mail carries (null: archived, or a folder not worth listing). */
+/** The label a folder's mail carries (null: a folder not worth listing). */
 export function folderLabel(accountId: string, folderId: string | undefined): string | null {
   if (!folderId) return null;
   const mailbox = mailboxOf(accountId);

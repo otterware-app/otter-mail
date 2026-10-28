@@ -49,6 +49,8 @@ let threadFetches: string[];
 let listings: (string | null)[];
 /** Gmail answers pages of at most this many ids. */
 let pageSize: number;
+/** threads.modify calls: the thread, and what it was asked. */
+let modifies: { threadId: string; body: unknown }[];
 /** Messages whose next fetch Gmail refuses (once). */
 let refuse: Set<string>;
 /** While set, the first fetch of each of `ids` answers as of the request, but only once `until` resolves. */
@@ -106,10 +108,23 @@ function resource(m: Mail, format: string) {
   };
 }
 
-async function fakeFetch(input: string | URL | Request): Promise<Response> {
+async function fakeFetch(input: string | URL | Request, init?: RequestInit): Promise<Response> {
   const url = new URL(typeof input === "string" ? input : input instanceof URL ? input : input.url);
   if (url.host !== GMAIL) return json({ error: "not in this test" }, 404);
   const path = url.pathname.replace("/gmail/v1/users/me", "");
+
+  const modify = path.match(/^\/threads\/([^/]+)\/modify$/);
+  if (modify && init?.method === "POST") {
+    const body = JSON.parse(String(init.body)) as {
+      addLabelIds: string[];
+      removeLabelIds: string[];
+    };
+    modifies.push({ threadId: modify[1]!, body });
+    for (const m of mail.values()) {
+      if (m.threadId === modify[1]) relabel(m.id, body.addLabelIds, body.removeLabelIds);
+    }
+    return json({ id: modify[1] });
+  }
 
   if (path === "/profile") {
     return json({ historyId: String(historyId), messagesTotal: mail.size });
@@ -353,7 +368,10 @@ async function boot(
   mailSync.configureAutoSync(0);
   const status = () => mailSync.getSyncStatus(account.id);
   const labelsOf = (id: string) => mailStore.getAllMessageLabels(account.id).get(id);
-  return { mailSync, mailStore, status, labelsOf };
+  const { registeredHandlers } = await import("../../ipc.ts");
+  /** What a window asks of the backend. */
+  const invoke = (channel: string, params: unknown) => registeredHandlers().get(channel)!(params);
+  return { mailSync, mailStore, status, labelsOf, invoke };
 }
 
 beforeEach(() => {
@@ -368,6 +386,7 @@ beforeEach(() => {
   imapLogins = 0;
   listings = [];
   pageSize = 500;
+  modifies = [];
   refuse = new Set();
   hold = null;
   held.clear();
@@ -567,5 +586,40 @@ describe("Gmail sync", () => {
     expect(imapLogins).toBe(0);
     expect(mailStore.countAllMessages(account.id)).toBe(2);
     expect(status().error).toBeNull();
+  });
+
+  it("archives by taking INBOX off the conversation: into All Mail, no Archive folder", async () => {
+    deliver("a", ["INBOX", "UNREAD"], Date.now() - 60_000, "t");
+    deliver("b", ["SENT"], Date.now(), "t");
+    const { mailStore, status, labelsOf, invoke } = await boot();
+    await until(() => status().fullSyncDone && !status().syncing, "the first sync");
+
+    await invoke("gmail:modifyThread", {
+      accountId: account.id,
+      threadId: "t",
+      removeLabelIds: ["INBOX"],
+    });
+    expect(modifies).toEqual([
+      { threadId: "t", body: { addLabelIds: [], removeLabelIds: ["INBOX"] } },
+    ]);
+    expect(labelsOf("a")).toEqual(["UNREAD"]);
+    expect(labelsOf("b")).toEqual(["SENT"]);
+    expect(mailStore.getLabels(account.id).map((l) => l.id)).not.toContain("ARCHIVE");
+    const listed = (labelId: string) =>
+      mailStore.getThreadsPage(account.id, labelId, 0, 10).messages.map((m) => m.threadId);
+    expect(listed("ALL_MAIL")).toEqual(["t"]);
+    expect(listed("INBOX")).toEqual([]);
+
+    // Undo puts INBOX back.
+    await invoke("gmail:modifyThread", {
+      accountId: account.id,
+      threadId: "t",
+      addLabelIds: ["INBOX"],
+    });
+    expect(modifies.at(-1)).toEqual({
+      threadId: "t",
+      body: { addLabelIds: ["INBOX"], removeLabelIds: [] },
+    });
+    expect(listed("INBOX")).toEqual(["t"]);
   });
 });

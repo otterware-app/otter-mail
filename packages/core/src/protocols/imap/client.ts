@@ -610,8 +610,11 @@ export class ImapClient {
     return uidValidity !== null && uid !== null ? { uidValidity, uid } : null;
   }
 
-  async createMailbox(path: string): Promise<void> {
-    await this.command(["CREATE", this.mailboxName(path)]);
+  /** Creates a folder; `specialUse` flags its role where the server can (CREATE-SPECIAL-USE). */
+  async createMailbox(path: string, options: { specialUse?: SpecialUse } = {}): Promise<void> {
+    const use =
+      options.specialUse && this.has("CREATE-SPECIAL-USE") ? [`(USE (${options.specialUse}))`] : [];
+    await this.command(["CREATE", this.mailboxName(path), ...use]);
   }
 
   async renameMailbox(from: string, to: string): Promise<void> {

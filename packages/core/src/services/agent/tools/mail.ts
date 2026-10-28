@@ -5,6 +5,8 @@
  * starred are UNREAD and STARRED), as everywhere else in core.
  */
 
+import { ARCHIVE_LABEL_ID } from "@otter-mail/contracts";
+
 import { toBase64 } from "../../../bytes.js";
 import { providerFor } from "../../../providers/index.js";
 import {
@@ -71,6 +73,10 @@ export function labelsOf(account: GmailAccount): Promise<GmailLabel[]> {
 /** A label's id from its name, id or alias. */
 export function labelId(account: GmailAccount, labels: GmailLabel[], ref: string): string {
   const wanted = ref.trim().toLowerCase();
+  // Outlook's and IMAP's Archive is a folder; Gmail's archived mail is in All Mail.
+  if (wanted === "archive" && labels.some((l) => l.id === ARCHIVE_LABEL_ID)) {
+    return ARCHIVE_LABEL_ID;
+  }
   if (LABEL_ALIASES[wanted]) return LABEL_ALIASES[wanted];
   const found = labels.find(
     (l) => l.id.toLowerCase() === wanted || l.name.toLowerCase() === wanted,

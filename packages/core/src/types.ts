@@ -97,7 +97,8 @@ export interface ContactSuggestion {
 
 /** Per-account local-sync progress, exposed to the renderer for status UI. */
 /** Pseudo label id for "All Mail": every message except Spam and Trash
-    (Gmail has no such label — archived mail simply lacks INBOX). */
+    (Gmail has no such label — archived mail simply lacks INBOX). Outlook's
+    and IMAP's archived mail is in a folder of its own: ARCHIVE. */
 export const ALL_MAIL_LABEL_ID = "ALL_MAIL";
 
 export interface SyncStatus {

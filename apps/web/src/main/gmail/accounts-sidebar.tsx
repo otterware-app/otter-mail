@@ -12,6 +12,7 @@ import {
   ContextMenuSeparator,
 } from "./menu";
 import {
+  ArchiveIcon,
   InboxIcon,
   MailsIcon,
   StarIcon,
@@ -39,7 +40,7 @@ import {
 } from "./hooks";
 import type { GmailLabel, MailView } from "./types";
 import { COMBINED_ACCOUNT_ID } from "./custom-views";
-import { ALL_MAIL_LABEL_ID } from "./label-names";
+import { ALL_MAIL_LABEL_ID, ARCHIVE_LABEL_ID } from "./label-names";
 import { buildLabelTree, type LabelTreeNode } from "./label-tree";
 import {
   isMoveSourceLabel,
@@ -95,6 +96,7 @@ const SIDEBAR_SYSTEM_ORDER = [
   "DRAFT",
   "IMPORTANT",
   ALL_MAIL_LABEL_ID,
+  ARCHIVE_LABEL_ID,
   "SPAM",
   "TRASH",
 ];
@@ -106,6 +108,7 @@ const SYSTEM_LABEL_MAP: Record<string, { name: string; icon: ReactNode }> = {
   DRAFT: { name: "Drafts", icon: <FileIcon className="size-4" /> },
   IMPORTANT: { name: "Important", icon: <BookmarkIcon className="size-4" /> },
   [ALL_MAIL_LABEL_ID]: { name: "All Mail", icon: <MailsIcon className="size-4" /> },
+  [ARCHIVE_LABEL_ID]: { name: "Archive", icon: <ArchiveIcon className="size-4" /> },
   SPAM: { name: "Junk", icon: <ArchiveXIcon className="size-4" /> },
   TRASH: { name: "Trash", icon: <Trash2Icon className="size-4" /> },
 };
@@ -407,11 +410,16 @@ export function MailboxFolders({
 
   // Same order as the Combined built-in views. All Mail isn't a Gmail label
   // (archived mail just lacks INBOX), so it's listed without one — and, like
-  // Gmail, without an unread badge.
+  // Gmail, without an unread badge. Where the Archive is a folder of its own
+  // (Outlook, IMAP), archived mail is there and All Mail isn't a place.
+  // Important is Gmail's sorting, where the mailbox has it.
+  const shown = (id: string) =>
+    id in SYSTEM_LABEL_MAP && (id !== "IMPORTANT" || capabilities.categories);
   const allMail: GmailLabel = { id: ALL_MAIL_LABEL_ID, name: "All Mail", type: "system" };
+  const hasArchive = labels.some((l) => l.id === ARCHIVE_LABEL_ID);
   const systemLabels = [
-    ...labels.filter((l) => l.type === "system" && l.id in SYSTEM_LABEL_MAP),
-    allMail,
+    ...labels.filter((l) => l.type === "system" && shown(l.id)),
+    ...(hasArchive ? [] : [allMail]),
   ].sort((a, b) => SIDEBAR_SYSTEM_ORDER.indexOf(a.id) - SIDEBAR_SYSTEM_ORDER.indexOf(b.id));
   const userLabels = labels.filter((l) => l.type === "user");
   const labelSections = capabilities.foldersAndCategories
@@ -608,7 +616,11 @@ export function MailboxFolders({
                 unread: l.unread ?? 0,
                 total: l.total ?? 0,
               }))
-            : Object.keys(SYSTEM_LABEL_MAP).map((id) => ({ id, unread: 0, total: 0 }))
+            : SIDEBAR_SYSTEM_ORDER.filter(
+                (id) =>
+                  shown(id) &&
+                  id !== (capabilities.archiveFolder ? ALL_MAIL_LABEL_ID : ARCHIVE_LABEL_ID),
+              ).map((id) => ({ id, unread: 0, total: 0 }))
           ).map(({ id, unread, total }) => {
             const meta = SYSTEM_LABEL_MAP[id];
             if (!meta) return null;

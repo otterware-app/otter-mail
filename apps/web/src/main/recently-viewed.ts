@@ -20,7 +20,7 @@ import type { SettingsPane } from "./gmail/api";
 import { SETTINGS_SECTION_LABELS } from "./settings/settings-search";
 
 /** The icon a place shows: a view's kind, a label, a conversation, Settings, or a chat. */
-export type RecentIcon = ViewKind | "label" | "conversation" | "settings" | "chat";
+export type RecentIcon = ViewKind | "archive" | "label" | "conversation" | "settings" | "chat";
 
 export type RecentPlace = Readonly<{
   /** The router location that brings it back. */
@@ -75,13 +75,14 @@ export function useRecentlyViewed(): RecentPlace[] {
 }
 
 /** A system label's icon: the kind of the combined view that shows it. */
-const SYSTEM_LABEL_ICONS: Record<string, ViewKind> = {
+const SYSTEM_LABEL_ICONS: Record<string, RecentIcon> = {
   INBOX: "inbox",
   STARRED: "starred",
   SENT: "sent",
   DRAFT: "drafts",
   IMPORTANT: "important",
   ALL_MAIL: "allmail",
+  ARCHIVE: "archive",
   SPAM: "junk",
   TRASH: "trash",
 };

@@ -27,7 +27,7 @@ import {
   type Folder,
   type Mailbox,
 } from "./folders.js";
-import { GraphError, graph, type Page } from "./graph.js";
+import { GraphError, graph, graphAll, type Page } from "./graph.js";
 import {
   getApiMessages,
   getSummaries,
@@ -39,8 +39,11 @@ import {
 /** Messages a delta page carries. */
 const PAGE_SIZE = 100;
 
-/** Each folder's delta: the next page's link while listing, then the delta link. */
-type FolderDelta = { link: string; done: boolean };
+/**
+ * Each folder's delta: the next page's link while listing, then the delta
+ * link; and the label the folder's cached mail carries.
+ */
+type FolderDelta = { link: string; done: boolean; label?: string | null };
 type DeltaState = Record<string, FolderDelta>;
 
 const deltaKey = (accountId: string) => `outlookDelta:${accountId}`;
@@ -104,20 +107,15 @@ async function refreshFolders(
   return mailbox;
 }
 
-/**
- * Folders deleted for good take their cached mail with them; a folder whose
- * label changed (moved into Deleted Items, say) is listed again, so its mail
- * gets the new label.
- */
+/** Folders deleted for good take their cached mail with them. */
 function followFolderChanges(accountId: string, before: Mailbox | null, after: Mailbox): void {
   if (!before) return;
-  const now = new Map(after.folders.map((f) => [f.id, f]));
+  const now = new Set(after.folders.map((f) => f.id));
   const delta = readDelta(accountId);
   for (const folder of before.folders) {
-    const current = now.get(folder.id);
-    if (current && current.labelId === folder.labelId) continue;
+    if (now.has(folder.id)) continue;
     delete delta[folder.id];
-    if (!current && folder.labelId?.startsWith(FOLDER_PREFIX)) {
+    if (folder.labelId?.startsWith(FOLDER_PREFIX)) {
       const ids = store.getMessageIdsForLabel(accountId, folder.labelId);
       store.applyHistoryChanges(
         accountId,
@@ -128,11 +126,51 @@ function followFolderChanges(accountId: string, before: Mailbox | null, after: M
   writeDelta(accountId, delta);
 }
 
+/**
+ * A folder whose label changed (moved into Deleted Items, say, or the
+ * Archive, which had none before ARCHIVE) moves its cached mail to the new
+ * label. The cache can't tell which mail had none: Outlook lists the folder.
+ */
+async function relabelFolders(accountId: string, mailbox: Mailbox, ctx: SyncContext) {
+  for (const folder of mailbox.folders) {
+    const state = readDelta(accountId)[folder.id];
+    if (!state) continue;
+    // Listed before folders kept their label: only the Archive's has changed since.
+    const had =
+      state.label !== undefined
+        ? state.label
+        : folder.id === mailbox.wellKnown.archive
+          ? null
+          : folder.labelId;
+    if (had !== folder.labelId) {
+      const ids = await graphAll<{ id: string }>(
+        accountId,
+        `/me/mailFolders/${encodeURIComponent(folder.id)}/messages?$select=id&$top=500`,
+      );
+      ctx.assertActive();
+      store.applyHistoryChanges(
+        accountId,
+        ids.flatMap(({ id }) => [
+          ...(had ? [{ kind: "labelsRemoved" as const, id, labelIds: [had] }] : []),
+          ...(folder.labelId
+            ? [{ kind: "labelsAdded" as const, id, labelIds: [folder.labelId] }]
+            : []),
+        ]),
+      );
+      ctx.bumpRevision();
+    }
+    if (state.label !== folder.labelId) {
+      setFolderDelta(accountId, folder.id, { ...state, label: folder.labelId });
+    }
+  }
+}
+
 // ── Sync ────────────────────────────────────────────────────────────────────
 
 export async function syncOutlook(accountId: string, ctx: SyncContext): Promise<void> {
   ctx.update({ phase: mailboxOf(accountId) ? "incremental" : "labels" });
   const mailbox = await refreshFolders(accountId, false, ctx);
+  await relabelFolders(accountId, mailbox, ctx);
   if (store.getKv(peekedKey(accountId)) !== "1") await peekInbox(accountId, mailbox, ctx);
 
   ctx.update({ phase: "incremental", synced: 0 });
@@ -249,7 +287,11 @@ async function followDelta(
     for (const m of moved) for (const l of m.labelIds) touched.add(l);
   }
   store.recountLabels(accountId, [...touched]);
-  setFolderDelta(accountId, folder.id, { link: deltaLink, done: true });
+  setFolderDelta(accountId, folder.id, {
+    ...readDelta(accountId)[folder.id],
+    link: deltaLink,
+    done: true,
+  });
   ctx.update({ synced: summaries.length });
   return {
     added: summaries.filter((m) => fresh.has(m.id) && m.unread),
@@ -299,6 +341,8 @@ export async function backfillOutlook(accountId: string, ctx: SyncContext): Prom
       count += unknown.size;
       next = page["@odata.nextLink"];
       setFolderDelta(accountId, folder.id, {
+        // Listed from the start, its mail has the folder's label now.
+        ...(readDelta(accountId)[folder.id] ?? { label: folder.labelId }),
         link: next ?? page["@odata.deltaLink"] ?? firstDelta(folder.id),
         done: !next,
       });

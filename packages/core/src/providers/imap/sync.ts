@@ -52,6 +52,8 @@ interface FolderState {
   modseq?: string;
   /** First sync: UIDs below this are still to fetch; 0 once done. */
   below: number;
+  /** The label the folder's cached mail carries. */
+  label?: string | null;
   /** STATUS at the last run, to skip folders that didn't change. */
   messages?: number | null;
   unseen?: number | null;
@@ -99,6 +101,7 @@ export async function syncImap(accountId: string, ctx: SyncContext): Promise<voi
 
   const newMail: GmailMessageSummary[] = [];
   for (const folder of folders.synced) {
+    if (relabelFolder(accountId, folder, state[folder.path])) ctx.bumpRevision();
     const run = new FolderSync(accountId, folder, ctx, state[folder.path]);
     let added: GmailMessageSummary[];
     try {
@@ -202,6 +205,28 @@ function dropFolder(accountId: string, path: string, uidValidity: number): void 
 }
 
 /**
+ * A folder whose label changed (the Archive, which had none before ARCHIVE)
+ * moves its cached mail to the new label; answers whether it did.
+ */
+function relabelFolder(accountId: string, folder: Folder, state: FolderState | undefined): boolean {
+  if (!state) return false;
+  // Synced before folders kept their label: only the Archive's has changed since.
+  const had =
+    state.label !== undefined ? state.label : folder.role === "ARCHIVE" ? null : folder.labelId;
+  state.label = folder.labelId;
+  if (had === folder.labelId) return false;
+  const ids = [...cachedUids(accountId, state.uidValidity, folder.path).values()];
+  store.applyHistoryChanges(
+    accountId,
+    ids.flatMap((id) => [
+      ...(had ? [{ kind: "labelsRemoved" as const, id, labelIds: [had] }] : []),
+      ...(folder.labelId ? [{ kind: "labelsAdded" as const, id, labelIds: [folder.labelId] }] : []),
+    ]),
+  );
+  return true;
+}
+
+/**
  * A folder renamed here: its cached mail and sync state follow when the
  * server kept its UIDVALIDITY; otherwise the next sync fetches it anew.
  */
@@ -225,6 +250,7 @@ export function renameFolderState(
         labels.map((l) => (l === from ? to : l)),
       );
     }
+    if (folderState.label === from) folderState.label = to;
     state[to] = folderState;
   } else {
     dropFolder(accountId, from, folderState.uidValidity);
@@ -278,6 +304,7 @@ class FolderSync {
         uidNext: mailbox.uidNext ?? 1,
         modseq: mailbox.highestModseq?.toString(),
         below: mailbox.uidNext ?? Number.MAX_SAFE_INTEGER,
+        label: this.folder.labelId,
       };
       await this.firstSync();
       Object.assign(this.state, seen);

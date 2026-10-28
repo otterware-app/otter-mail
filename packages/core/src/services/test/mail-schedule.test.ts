@@ -4,6 +4,7 @@ import type { Platform, SqlDatabase } from "../../platform.js";
 import type { GmailMessageSummary } from "../../types.js";
 
 const mocks = vi.hoisted(() => ({
+  capabilities: { archiveFolder: false },
   send: vi.fn(),
   saveDraft: vi.fn(),
   getSummaries: vi.fn(),
@@ -56,6 +57,7 @@ beforeEach(async () => {
   } as unknown as Platform);
   schedule = await import("../mail-schedule.js");
   store = await import("../mail-store.js");
+  mocks.capabilities.archiveFolder = false;
   mocks.getAccount.mockResolvedValue({ id: "me" });
   mocks.send.mockResolvedValue({});
   mocks.getSummaries.mockResolvedValue([]);
@@ -184,6 +186,20 @@ describe("persistent mail scheduling", () => {
     });
     expect(store.getMessageLabelIds("me", "received")).toContain("INBOX");
     expect(schedule.listSchedules()).toEqual([]);
+  });
+  it("snoozes into the Archive where it's a folder (Outlook, IMAP), and wakes back out of it", async () => {
+    mocks.capabilities.archiveFolder = true;
+    store.upsertMessages("me", [row("received", ["INBOX"]), row("reply", ["SENT"])]);
+    await schedule.snoozeThread("me", "thread", Date.now() + 1);
+    expect(store.getMessageLabelIds("me", "received")).toEqual(["ARCHIVE"]);
+    expect(store.getMessageLabelIds("me", "reply")).toEqual(["SENT"]);
+    mocks.getSummaries.mockResolvedValue([row("received", ["ARCHIVE"]), row("reply", ["SENT"])]);
+    vi.setSystemTime(Date.now() + 2);
+    await schedule.processSchedules();
+    expect(mocks.modifyMessage).toHaveBeenCalledExactlyOnceWith("me", "received", {
+      addLabelIds: ["INBOX"],
+    });
+    expect(store.getMessageLabelIds("me", "received")).toEqual(["INBOX"]);
   });
   it("returns a snoozed email sent to yourself to the inbox", async () => {
     store.upsertMessages("me", [row("self", ["SENT", "INBOX"])]);

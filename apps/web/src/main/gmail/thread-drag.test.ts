@@ -17,6 +17,8 @@ describe("Outlook folder moves", () => {
   it("leaves the source folder while retaining Gmail's label-move behavior", () => {
     expect(isMoveSourceLabel("INBOX", "folder:Clients", true)).toBe(true);
     expect(isMoveSourceLabel("folder:Clients", "INBOX", true)).toBe(true);
+    expect(isMoveSourceLabel("ARCHIVE", "folder:Clients", true)).toBe(true);
+    expect(isMoveSourceLabel("ARCHIVE", "category:Urgent", true)).toBe(false);
     expect(isMoveSourceLabel("Label_1", "Label_2")).toBe(true);
     expect(isMoveSourceLabel("SENT", "Label_2")).toBe(false);
   });

@@ -7,6 +7,7 @@ import {
   useQueryClient,
   type InfiniteData,
 } from "@tanstack/react-query";
+import { landLabelChange } from "@otter-mail/contracts";
 import { toast } from "./toast";
 import {
   gmailApi,
@@ -724,19 +725,23 @@ function removeMessagesFromInfiniteData(
  * added label joins the thread's union; a removed one may still be on sibling
  * messages, so the union keeps it until the server refresh).
  */
+/** `archiveFolder`: the change lands as it does where Archive is a folder (landLabelChange). */
 function applyLabelPatch<T extends GmailMessageSummary>(
   m: T,
   addLabelIds: string[],
   removeLabelIds: string[],
   scope: "thread" | "message" = "message",
+  archiveFolder?: boolean,
 ): T {
-  const patch = (ids: string[], removals: string[]) => {
+  // A conversation's own mail stays in Sent where Archive is a folder; the conversation still moves.
+  const patch = (ids: string[], removals: string[], thread = false) => {
+    const landed = landLabelChange(ids, addLabelIds, removals, { archiveFolder, thread });
     const set = new Set(ids);
-    for (const lid of removals) set.delete(lid);
-    for (const lid of addLabelIds) set.add(lid);
+    for (const lid of landed.remove) set.delete(lid);
+    for (const lid of landed.add) set.add(lid);
     return [...set];
   };
-  const labelIds = patch(m.labelIds, removeLabelIds);
+  const labelIds = patch(m.labelIds, removeLabelIds, scope === "thread");
   const unread = labelIds.includes("UNREAD");
   const starred = labelIds.includes("STARRED");
   return {
@@ -749,8 +754,19 @@ function applyLabelPatch<T extends GmailMessageSummary>(
     threadLabelIds:
       m.threadLabelIds === undefined
         ? undefined
-        : patch(m.threadLabelIds, scope === "thread" ? removeLabelIds : []),
+        : scope === "thread"
+          ? patch(m.threadLabelIds, removeLabelIds)
+          : [...new Set([...m.threadLabelIds, ...labelIds])],
   };
+}
+
+/** Whether the account's Archive is a folder (capabilities.archiveFolder): Outlook, IMAP. */
+function archiveFolderOf(
+  qc: ReturnType<typeof useQueryClient>,
+  accountId: string,
+): boolean | undefined {
+  return qc.getQueryData<GmailAccount[]>(queryKeys.accounts())?.find((a) => a.id === accountId)
+    ?.capabilities?.archiveFolder;
 }
 
 // ---- Mutations ----
@@ -905,9 +921,10 @@ export function useModifyMessage() {
           .find((m) => m.id === messageId)?.labelIds ??
         [];
 
+      const archiveFolder = archiveFolderOf(qc, accountId);
       const isTarget = (m: GmailMessageSummary) => m.id === messageId;
       const applyPatch = (m: GmailMessageSummary) =>
-        applyLabelPatch(m, addLabelIds, removeLabelIds);
+        applyLabelPatch(m, addLabelIds, removeLabelIds, "message", archiveFolder);
 
       if (prevMessage) qc.setQueryData(messageKey, applyPatch(prevMessage));
       qc.setQueriesData(
@@ -935,7 +952,10 @@ export function useModifyMessage() {
         old?.map((m) => (isTarget(m) ? applyPatch(m) : m)),
       );
 
-      const deltas = computeLabelCountDeltas(priorLabelIds, addLabelIds, removeLabelIds);
+      const landed = landLabelChange(priorLabelIds, addLabelIds, removeLabelIds, {
+        archiveFolder,
+      });
+      const deltas = computeLabelCountDeltas(priorLabelIds, landed.add, landed.remove);
       qc.setQueryData<GmailLabel[]>(labelsKey, (old) => applyLabelCountDeltas(old, deltas));
 
       return {
@@ -1173,12 +1193,12 @@ export function useModifyThread() {
       const prevThread = qc.getQueryData<GmailMessageSummary[]>(threadKey);
       const prevLabels = qc.getQueryData<GmailLabel[]>(labelsKey);
 
+      const archiveFolder = archiveFolderOf(qc, accountId);
       const applyPatch = (m: GmailMessageSummary) =>
-        applyLabelPatch(m, addLabelIds, removeLabelIds, "thread");
+        applyLabelPatch(m, addLabelIds, removeLabelIds, "thread", archiveFolder);
 
       for (const [key, message] of prevMessageQueries) {
-        if (message)
-          qc.setQueryData(key, applyLabelPatch(message, addLabelIds, removeLabelIds, "thread"));
+        if (message) qc.setQueryData(key, applyPatch(message));
       }
 
       qc.setQueriesData(
@@ -1209,15 +1229,15 @@ export function useModifyThread() {
       // Safe only here (whole-thread removal); single-message ops can't know
       // whether sibling messages still match.
       // All Mail (per account, or Combined rules without labels) only loses
-      // threads that become spam/trash.
+      // threads that become spam/trash. Mail put in a folder leaves the Archive.
       const leavesAllMail = addLabelIds.includes("SPAM") || addLabelIds.includes("TRASH");
-      if (removeLabelIds.length > 0 || leavesAllMail) {
+      const leaves = landLabelChange([], addLabelIds, removeLabelIds, { archiveFolder }).remove;
+      if (leaves.length > 0 || leavesAllMail) {
         for (const [key] of prevMessagesQueries) {
           const listLabelId = key[2];
           if (
             typeof listLabelId === "string" &&
-            (removeLabelIds.includes(listLabelId) ||
-              (leavesAllMail && listLabelId === ALL_MAIL_LABEL_ID))
+            (leaves.includes(listLabelId) || (leavesAllMail && listLabelId === ALL_MAIL_LABEL_ID))
           ) {
             qc.setQueryData(key, (old: InfiniteData<ListMessagesResult> | undefined) =>
               removeMessagesFromInfiniteData(old, inThread),
@@ -1231,7 +1251,7 @@ export function useModifyThread() {
             rules.length > 0 &&
             rules.every(
               (r) =>
-                r.allOf.some((id) => removeLabelIds.includes(id)) ||
+                r.allOf.some((id) => leaves.includes(id)) ||
                 (leavesAllMail && r.allOf.length === 0),
             )
           ) {
@@ -1247,11 +1267,11 @@ export function useModifyThread() {
       if (prevThread) {
         const merged = new Map<string, LabelCountDelta>();
         for (const msg of prevThread) {
-          for (const [lid, d] of computeLabelCountDeltas(
-            msg.labelIds,
-            addLabelIds,
-            removeLabelIds,
-          )) {
+          const landed = landLabelChange(msg.labelIds, addLabelIds, removeLabelIds, {
+            archiveFolder,
+            thread: true,
+          });
+          for (const [lid, d] of computeLabelCountDeltas(msg.labelIds, landed.add, landed.remove)) {
             const cur = merged.get(lid) ?? { total: 0, unread: 0 };
             merged.set(lid, { total: cur.total + d.total, unread: cur.unread + d.unread });
           }

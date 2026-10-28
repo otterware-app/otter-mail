@@ -7,6 +7,8 @@
  * `is:starred`, a category) is checked on each result.
  */
 
+import { ARCHIVE_LABEL_ID } from "@otter-mail/contracts";
+
 import { categoryOf, folderOfLabel, labelsFor } from "./folders.js";
 import { graph, type Page } from "./graph.js";
 import type { ApiMessage } from "./messages.js";
@@ -66,6 +68,7 @@ const SYSTEM_LABELS: Record<string, string> = {
   spam: "SPAM",
   junk: "SPAM",
   trash: "TRASH",
+  archive: ARCHIVE_LABEL_ID,
   starred: "STARRED",
   flagged: "STARRED",
   unread: "UNREAD",

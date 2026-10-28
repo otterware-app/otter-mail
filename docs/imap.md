@@ -49,13 +49,21 @@ MailProvider                packages/core/src/providers/provider.ts
 ## IMAP on the Gmail-shaped cache
 
 - Folders are labels. Special-use folders map to system label ids: INBOX → `INBOX`, `\Sent` →
-  `SENT`, `\Drafts` → `DRAFT`, `\Trash` → `TRASH`, `\Junk` → `SPAM`, `\Archive` / `\All` → none
-  (archived mail simply lacks `INBOX`, as in Gmail). Other folders are user labels whose id is
-  the folder path and whose name uses `/` as the separator.
+  `SENT`, `\Drafts` → `DRAFT`, `\Trash` → `TRASH`, `\Junk` → `SPAM`, `\Archive` → `ARCHIVE`
+  (shown as Archive in the sidebar, in place of All Mail: `capabilities.archiveFolder`). Servers
+  that don't flag them get them by name (Archive, Archives, …). Other folders are user labels
+  whose id is the folder path and whose name uses `/` as the separator. `\All` and `\Flagged`
+  folders hold copies of other folders' mail and aren't synced.
 - Flags: no `\Seen` → `UNREAD`, `\Flagged` → `STARRED`.
 - A message sits in one folder (`capabilities.multipleLabels = false`): applying a label moves
-  it (UID MOVE, or COPY + `\Deleted` + UID EXPUNGE), archive moves to the Archive folder, trash
-  moves to Trash.
+  it (UID MOVE, or COPY + `\Deleted` + UID EXPUNGE), archive (taking INBOX or a folder away)
+  moves to the Archive folder, made (flagged `\Archive` where the server has CREATE-SPECIAL-USE)
+  when there's none, and trash moves to Trash. Taking ARCHIVE away puts mail back in the inbox.
+  Archived mail lands in ARCHIVE in the cache at once (contracts' `landLabelChange`).
+- Gmail's IMAP (X-GM-EXT-1) archives into `[Gmail]/All Mail` (`\All`), which only takes the
+  message out of the inbox; a folder named Archive there is just a label. Moving mail back out
+  of All Mail is a COPY (taking it out of All Mail would delete it). All Mail isn't synced, so
+  Gmail-over-IMAP mailboxes have no Archive in the sidebar.
 - Message ids: `<uidvalidity>:<uid>:<folder path>`, re-keyed in the cache when the message
   moves (COPYUID tells the new uid, else the next sync finds it by Message-ID).
 - Threads: the root Message-ID of `References` (else `In-Reply-To`, else its own Message-ID),

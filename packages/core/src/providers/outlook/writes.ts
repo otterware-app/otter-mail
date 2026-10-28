@@ -1,11 +1,14 @@
 /**
  * Changing Outlook mail through labels (docs/outlook.md): UNREAD, STARRED and
  * IMPORTANT set the read state, the flag and the importance; categories are
- * set on the message; a folder label (INBOX, SPAM, TRASH, `folder:<id>`)
- * moves it, and taking one away moves it to the Archive (out of Junk or
- * Deleted Items: back to the inbox). Labels themselves are categories (made,
+ * set on the message; a folder label (INBOX, ARCHIVE, SPAM, TRASH,
+ * `folder:<id>`) moves it, and taking the inbox's or a folder's away moves it
+ * to the Archive, as Outlook's Archive does (out of Junk, Deleted Items or
+ * the Archive: back to the inbox). Labels themselves are categories (made,
  * renamed, recolored, deleted) or folders (renamed, deleted).
  */
+
+import { ARCHIVE_LABEL_ID } from "@otter-mail/contracts";
 
 import * as store from "../../services/mail-store.js";
 import { renamePendingLabel } from "../../services/pending-label-writes.js";
@@ -55,6 +58,7 @@ async function destination(
     add.find((l) => l === "TRASH") ??
     add.find((l) => l === "SPAM") ??
     add.find((l) => l.startsWith(FOLDER_PREFIX)) ??
+    add.find((l) => l === ARCHIVE_LABEL_ID) ??
     add.find((l) => l === "INBOX");
   if (target) {
     if (target === current) return null;
@@ -62,7 +66,7 @@ async function destination(
     return folderOfLabel(accountId, target);
   }
   if (current && remove.includes(current)) {
-    if (current === "SPAM" || current === "TRASH") {
+    if (current === "SPAM" || current === "TRASH" || current === ARCHIVE_LABEL_ID) {
       return wellKnownId(accountId, ownMail ? "sentitems" : "inbox");
     }
     if (current === "INBOX" || current.startsWith(FOLDER_PREFIX)) {

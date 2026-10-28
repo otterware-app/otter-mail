@@ -695,17 +695,6 @@ function getThreadMessageIds(accountId: string, threadId: string): string[] {
   return rows.map((r) => r.id);
 }
 
-export function applyLabelChangeToThread(
-  accountId: string,
-  threadId: string,
-  addLabelIds: string[],
-  removeLabelIds: string[],
-): void {
-  for (const id of getThreadMessageIds(accountId, threadId)) {
-    applyLabelChange(accountId, id, addLabelIds, removeLabelIds);
-  }
-}
-
 export function deleteThread(accountId: string, threadId: string): void {
   for (const id of getThreadMessageIds(accountId, threadId)) {
     deleteMessage(accountId, id);

@@ -2,6 +2,7 @@ import type { ComponentType, ReactNode } from "react";
 import { useRouter, type RouterHistory } from "@tanstack/react-router";
 import { useSyncExternalStore } from "react";
 import {
+  ArchiveIcon,
   ArchiveXIcon,
   BookmarkIcon,
   ChevronLeftIcon,
@@ -69,6 +70,7 @@ const RECENT_ICONS: Record<RecentIcon, ComponentType<{ className?: string }>> = 
   drafts: FileIcon,
   important: BookmarkIcon,
   allmail: MailsIcon,
+  archive: ArchiveIcon,
   junk: ArchiveXIcon,
   trash: Trash2Icon,
   custom: LayersIcon,

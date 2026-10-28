@@ -16,7 +16,7 @@ import {
   futureTime,
 } from "../services/mail-schedule.js";
 
-import { GMAIL_CAPABILITIES } from "@otter-mail/contracts";
+import { GMAIL_CAPABILITIES, landLabelChange, type Landing } from "@otter-mail/contracts";
 
 import { fromBase64 } from "../bytes.js";
 import { SignInCancelledError } from "../google.js";
@@ -96,19 +96,22 @@ async function refreshMetadata(accountId: string, ids: string[]): Promise<void> 
 
 /** Applies a label change to the local cache and returns an exact undo: only
  *  labels that actually changed on each message are restored, so undoing
- *  "remove INBOX" never adds INBOX to a thread's sent replies. */
+ *  "remove INBOX" never adds INBOX to a thread's sent replies. Where Archive
+ *  is a folder, mail leaving the inbox lands in it (landLabelChange). */
 function applyLocalLabelChange(
   accountId: string,
   messageIds: string[],
   add: string[],
   remove: string[],
+  landing: Landing,
 ): () => void {
   const undo = messageIds.flatMap((id) => {
     const prior = mailStore.getMessageLabelIds(accountId, id);
     if (!prior) return [];
-    const reAdd = remove.filter((l) => prior.includes(l));
-    const reRemove = add.filter((l) => !prior.includes(l));
-    mailStore.applyLabelChange(accountId, id, add, remove);
+    const landed = landLabelChange(prior, add, remove, landing);
+    const reAdd = landed.remove.filter((l) => prior.includes(l));
+    const reRemove = landed.add.filter((l) => !prior.includes(l));
+    mailStore.applyLabelChange(accountId, id, landed.add, landed.remove);
     return [{ id, reAdd, reRemove }];
   });
   updateDockBadge();
@@ -156,9 +159,11 @@ function settleLabelWrite(
   add: string[],
   remove: string[],
   write: () => Promise<unknown>,
+  { thread = false } = {},
 ): Promise<{ ok: true; pending?: boolean }> {
-  const revert = applyLocalLabelChange(accountId, messageIds, add, remove);
-  const tracked = trackLabelWrite(accountId, messageIds, add, remove);
+  const landing = { archiveFolder: findProvider(accountId)?.capabilities.archiveFolder, thread };
+  const revert = applyLocalLabelChange(accountId, messageIds, add, remove, landing);
+  const tracked = trackLabelWrite(accountId, messageIds, add, remove, landing);
   const running = afterEarlierWrites(accountId, messageIds, write);
   running.then(tracked.settled, tracked.dropped);
   return settleGmailWrite(channel, running, revert);
@@ -734,6 +739,7 @@ export function registerGmailHandlers(): void {
             addLabelIds,
             removeLabelIds,
           }),
+        { thread: true },
       );
     } catch (err) {
       console.log("[gmail:modifyThread] error", { error: String(err) });

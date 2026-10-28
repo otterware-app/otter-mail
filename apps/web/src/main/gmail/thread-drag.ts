@@ -5,7 +5,7 @@
  * add the label.
  */
 
-import { ALL_MAIL_LABEL_ID } from "./label-names";
+import { ALL_MAIL_LABEL_ID, ARCHIVE_LABEL_ID } from "./label-names";
 
 export const THREAD_DRAG_MIME = "application/x-ottermail-threads";
 
@@ -51,6 +51,7 @@ export function isMoveSourceLabel(
     (!foldersAndCategories ||
       (!targetLabelId.startsWith("category:") &&
         (labelId === "INBOX" ||
+          labelId === ARCHIVE_LABEL_ID ||
           labelId === "SPAM" ||
           labelId === "TRASH" ||
           labelId.startsWith("folder:"))))
