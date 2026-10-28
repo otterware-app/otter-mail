@@ -1,6 +1,7 @@
 /**
- * Changing Outlook mail through labels (docs/outlook.md): UNREAD, STARRED and
- * IMPORTANT set the read state, the flag and the importance; categories are
+ * Changing Outlook mail through labels (docs/outlook.md): UNREAD, STARRED,
+ * IMPORTANT and OTHER set the read state, the flag, the importance and Focused
+ * Inbox's sorting; categories are
  * set on the message; a folder label (INBOX, ARCHIVE, SPAM, TRASH,
  * `folder:<id>`) moves it, and taking the inbox's or a folder's away moves it
  * to the Archive, as Outlook's Archive does (out of Junk, Deleted Items or
@@ -8,7 +9,7 @@
  * renamed, recolored, deleted) or folders (renamed, deleted).
  */
 
-import { ARCHIVE_LABEL_ID } from "@otter-mail/contracts";
+import { ARCHIVE_LABEL_ID, OTHER_LABEL_ID, SNOOZED_LABEL_ID } from "@otter-mail/contracts";
 
 import * as store from "../../services/mail-store.js";
 import { renamePendingLabel } from "../../services/pending-label-writes.js";
@@ -29,7 +30,8 @@ import {
 import { batchError, graph, graphAll, graphBatch, ok, type BatchRequest } from "./graph.js";
 import { getApiMessages, messagePath, toSummary, type ApiMessage } from "./messages.js";
 
-const STATE_FIELDS = "id,parentFolderId,categories,isRead,flag,importance,isDraft,from";
+const STATE_FIELDS =
+  "id,parentFolderId,categories,isRead,flag,importance,inferenceClassification,isDraft,from";
 
 /** Runs a batch of writes; a message already gone (404) is fine, any other failure isn't. */
 async function run(accountId: string, requests: BatchRequest[]): Promise<void> {
@@ -59,6 +61,7 @@ async function destination(
     add.find((l) => l === "SPAM") ??
     add.find((l) => l.startsWith(FOLDER_PREFIX)) ??
     add.find((l) => l === ARCHIVE_LABEL_ID) ??
+    add.find((l) => l === SNOOZED_LABEL_ID) ??
     add.find((l) => l === "INBOX");
   if (target) {
     if (target === current) return null;
@@ -88,6 +91,9 @@ function patchFor(message: ApiMessage, change: LabelChange): Record<string, unkn
   if (remove.has("STARRED") && flagged) patch.flag = { flagStatus: "notFlagged" };
   if (add.has("IMPORTANT") && message.importance !== "high") patch.importance = "high";
   if (remove.has("IMPORTANT") && message.importance === "high") patch.importance = "normal";
+  const other = message.inferenceClassification === "other";
+  if (add.has(OTHER_LABEL_ID) && !other) patch.inferenceClassification = "other";
+  if (remove.has(OTHER_LABEL_ID) && other) patch.inferenceClassification = "focused";
   const categories = new Set(message.categories ?? []);
   let edited = false;
   for (const id of add) {

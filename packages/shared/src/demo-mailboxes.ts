@@ -1208,6 +1208,8 @@ export type OutlookSeedMessage = {
   unread?: boolean;
   flagged?: boolean;
   importance?: "low" | "high";
+  /** Focused Inbox sorted it as Other. */
+  other?: boolean;
   categories?: string[];
   headers?: Record<string, string>;
 };
@@ -1362,6 +1364,7 @@ export const DEMO_OUTLOOK_ACCOUNT: OutlookSeedAccount = {
       {
         folder: "inbox",
         conversation: "design-weekly",
+        other: true,
         subject: "Design Weekly #58: Calm interfaces",
         from: p("Design Weekly", "letters@designweekly.example"),
         hoursAgo: 30,

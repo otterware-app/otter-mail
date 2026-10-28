@@ -28,6 +28,7 @@ export const SUMMARY_FIELDS = [
   "flag",
   "importance",
   "categories",
+  "inferenceClassification",
   "hasAttachments",
   "parentFolderId",
   "internetMessageId",
@@ -54,6 +55,8 @@ export type ApiMessage = {
   flag?: { flagStatus?: string } | null;
   importance?: string;
   categories?: string[];
+  /** Focused Inbox's sorting: "focused" or "other". */
+  inferenceClassification?: string;
   hasAttachments?: boolean;
   parentFolderId?: string;
   internetMessageId?: string | null;

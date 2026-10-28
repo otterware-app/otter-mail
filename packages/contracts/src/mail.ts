@@ -51,6 +51,8 @@ export interface MailCapabilities {
   archiveFolder?: boolean;
   /** Gmail's stars: STARRED is the Starred folder. Without it (Outlook, IMAP), it's their Flagged. */
   stars?: boolean;
+  /** Outlook's Focused Inbox: the inbox's mail it sorted as Other carries OTHER. */
+  focusedInbox?: boolean;
   /** Label colors, kept by the server. */
   labelColors: boolean;
   /** Signatures kept by the server (Gmail's settings) rather than on this device. */
@@ -78,6 +80,7 @@ export const GMAIL_CAPABILITIES: MailCapabilities = {
 export const OUTLOOK_CAPABILITIES: MailCapabilities = {
   foldersAndCategories: true,
   archiveFolder: true,
+  focusedInbox: true,
   categories: false,
   multipleLabels: true,
   labelColors: true,
@@ -99,13 +102,20 @@ export const IMAP_CAPABILITIES: MailCapabilities = {
 /** The label of the Archive folder (`capabilities.archiveFolder`); Gmail has none. */
 export const ARCHIVE_LABEL_ID = "ARCHIVE";
 
+/** Outlook's Focused Inbox: mail it sorted as Other (`capabilities.focusedInbox`). */
+export const OTHER_LABEL_ID = "OTHER";
+
+/** Outlook's Scheduled folder, where its Snooze keeps mail until it's due. */
+export const SNOOZED_LABEL_ID = "SNOOZED";
+
 /** Labels that say how a message is rather than where it is: flags, and Outlook's categories. */
 const isFolderLabel = (id: string) =>
-  id !== "UNREAD" && id !== "STARRED" && id !== "IMPORTANT" && !id.startsWith("category:");
+  !["UNREAD", "STARRED", "IMPORTANT", OTHER_LABEL_ID].includes(id) && !id.startsWith("category:");
 
 /** Folders mail leaves for the Archive: the inbox and the user's own (not Sent, Junk, …). */
 const archivesFrom = (id: string) =>
-  isFolderLabel(id) && !["SENT", "DRAFT", "SPAM", "TRASH", ARCHIVE_LABEL_ID].includes(id);
+  isFolderLabel(id) &&
+  !["SENT", "DRAFT", "SPAM", "TRASH", ARCHIVE_LABEL_ID, SNOOZED_LABEL_ID].includes(id);
 
 /** How a change lands: where Archive is a folder, and whether a conversation's change. */
 export type Landing = { archiveFolder?: boolean; thread?: boolean };

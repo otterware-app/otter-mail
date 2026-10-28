@@ -23,6 +23,7 @@ import {
   ArchiveXIcon,
   XIcon,
   Trash2Icon,
+  ClockIcon,
   PlusIcon,
   ChevronDownIcon,
   TagIcon,
@@ -38,7 +39,7 @@ import {
   useEmptyFolder,
 } from "./hooks";
 import type { GmailLabel } from "./types";
-import { ALL_MAIL_LABEL_ID, ARCHIVE_LABEL_ID } from "./label-names";
+import { ALL_MAIL_LABEL_ID, ARCHIVE_LABEL_ID, SNOOZED_LABEL_ID } from "./label-names";
 import { buildLabelTree, type LabelTreeNode } from "./label-tree";
 import {
   isMoveSourceLabel,
@@ -89,6 +90,7 @@ const GMAIL_LABEL_COLORS: { backgroundColor: string; textColor: string }[] = [
 const SIDEBAR_SYSTEM_ORDER = [
   "INBOX",
   "STARRED",
+  SNOOZED_LABEL_ID,
   "SENT",
   "DRAFT",
   "IMPORTANT",
@@ -106,6 +108,7 @@ const SYSTEM_LABEL_MAP: Record<string, { name: string; icon: ReactNode }> = {
   IMPORTANT: { name: "Important", icon: <BookmarkIcon className="size-4" /> },
   [ALL_MAIL_LABEL_ID]: { name: "All Mail", icon: <MailsIcon className="size-4" /> },
   [ARCHIVE_LABEL_ID]: { name: "Archive", icon: <ArchiveIcon className="size-4" /> },
+  [SNOOZED_LABEL_ID]: { name: "Snoozed", icon: <ClockIcon className="size-4" /> },
   SPAM: { name: "Junk", icon: <ArchiveXIcon className="size-4" /> },
   TRASH: { name: "Trash", icon: <Trash2Icon className="size-4" /> },
 };

@@ -46,14 +46,18 @@ MailProvider               packages/core/src/providers/provider.ts
 - Folders: Inbox → `INBOX`, Sent Items → `SENT`, Drafts → `DRAFT`, Deleted Items → `TRASH`,
   Junk Email → `SPAM` (folders inside the last two count as them), Archive → `ARCHIVE` (shown
   as Archive in the sidebar with Outlook's counts, in place of Gmail's All Mail and Important:
-  `capabilities.archiveFolder`). Other folders are user labels `folder:<id>`, named by their
-  path. Outbox, Conversation History, Sync Issues and Scheduled (Outlook's own snooze) aren't
-  synced. Each folder's delta state keeps the label its cached mail carries, so a folder whose
+  `capabilities.archiveFolder`), Scheduled → `SNOOZED` (where Outlook's Snooze keeps mail till
+  it's due; Snoozed in the sidebar). Other folders are user labels `folder:<id>`, named by their
+  path. Outbox, Conversation History and Sync Issues aren't synced. Each folder's delta state keeps the label its cached mail carries, so a folder whose
   label changes (moved into Deleted Items; the Archive, unlabelled before) relabels its mail.
 - Categories are labels `category:<name>`: several per message, with Outlook's preset colors
   (picking a color in the app takes the nearest preset). New labels are categories. Outlook
   can't rename a category, so renaming makes a new one and moves it onto its messages.
-- Flagged → `STARRED`, unread → `UNREAD`, high importance → `IMPORTANT`.
+- Flagged → `STARRED` (Flagged in the sidebar), unread → `UNREAD`, high importance → `IMPORTANT`,
+  Focused Inbox's Other (`inferenceClassification`) → `OTHER`. The inbox has All · Focused ·
+  Other tabs (`capabilities.focusedInbox`; All until picked, as Graph doesn't say whether
+  Focused Inbox is on), and a row's menu moves it between Focused and Other (a PATCH, so
+  Outlook learns from it). Mail cached before `OTHER` existed gets it once.
 - Writes (`outlook/writes.ts`): those three are message properties, categories are set on the
   message; adding a folder label (ARCHIVE included) moves the message there; removing its
   folder's label moves it to Archive (`POST /me/messages/{id}/move`, `destinationId: "archive"`),

@@ -32,7 +32,7 @@ const GRAPH_HOST = "graph.microsoft.com";
 const GRAPH = `https://${GRAPH_HOST}/v1.0`;
 const TOKEN_PREFIX = "outlook-demo:";
 const STATE_FILE = "demo-outlook.json";
-const STATE_VERSION = 1;
+const STATE_VERSION = 2;
 /** Every answer waits this long, so the app sees a network, not a function call. */
 const LATENCY_MS = 30;
 /** Graph's page when the request doesn't say: small, so paging gets exercised. */
@@ -70,6 +70,8 @@ type Message = {
   isDraft: boolean;
   flagged: boolean;
   importance: "low" | "normal" | "high";
+  /** Focused Inbox's sorting. */
+  inferenceClassification: "focused" | "other";
   categories: string[];
   internetMessageId: string;
   inReplyTo?: string;
@@ -141,13 +143,14 @@ const recipient = (person: Person): Recipient => ({
 
 const domainOf = (email: string) => email.split("@")[1] ?? "contoso.example";
 
-const WELL_KNOWN: [OutlookSeedFolder | "outbox" | "conversationhistory", string][] = [
+const WELL_KNOWN: [OutlookSeedFolder | "outbox" | "conversationhistory" | "scheduled", string][] = [
   ["inbox", "Inbox"],
   ["drafts", "Drafts"],
   ["sentitems", "Sent Items"],
   ["deleteditems", "Deleted Items"],
   ["junkemail", "Junk Email"],
   ["archive", "Archive"],
+  ["scheduled", "Scheduled"],
   ["outbox", "Outbox"],
   ["conversationhistory", "Conversation History"],
 ];
@@ -220,6 +223,7 @@ function seedMailbox(seed: OutlookSeedAccount, seededAt: number): Mailbox {
       isDraft: s.folder === "drafts",
       flagged: s.flagged === true,
       importance: s.importance ?? "normal",
+      inferenceClassification: s.other ? "other" : "focused",
       categories: s.categories ?? [],
       internetMessageId: `<${id}@${domainOf(from.email)}>`,
       ...(previous
@@ -409,7 +413,7 @@ function messageResource(box: Mailbox, m: Message): Record<string, unknown> {
     isRead: m.isRead,
     isDraft: m.isDraft,
     webLink: `https://outlook.office.com/mail/deeplink/read/${m.id}`,
-    inferenceClassification: "focused",
+    inferenceClassification: m.inferenceClassification,
     body: m.body,
     sender: m.from,
     from: m.from,
@@ -616,6 +620,7 @@ const MESSAGE_FILTERS: Record<string, (m: Message, value: string) => boolean> = 
   isDraft: (m, v) => m.isDraft === (v === "true"),
   "flag/flagStatus": (m, v) => (m.flagged ? "flagged" : "notFlagged") === v,
   importance: (m, v) => m.importance === v,
+  inferenceClassification: (m, v) => m.inferenceClassification === v,
   "categories/any": (m, v) => m.categories.includes(v),
   conversationId: (m, v) => m.conversationId === v,
   internetMessageId: (m, v) => m.internetMessageId === v,
@@ -879,6 +884,8 @@ function applyFields(m: Message, body: Record<string, unknown>): void {
   if (body.importance === "low" || body.importance === "normal" || body.importance === "high")
     m.importance = body.importance;
   if (Array.isArray(body.categories)) m.categories = body.categories.map(String);
+  if (body.inferenceClassification === "focused" || body.inferenceClassification === "other")
+    m.inferenceClassification = body.inferenceClassification;
   if (typeof body.subject === "string") m.subject = body.subject;
   if (body.body && typeof body.body === "object") {
     const b = body.body as { contentType?: string; content?: string };
@@ -921,6 +928,7 @@ function draft(box: Mailbox, fields: Partial<Message>): Message {
     isDraft: true,
     flagged: false,
     importance: "normal",
+    inferenceClassification: "focused",
     categories: [],
     internetMessageId: `<${id}@${domainOf(box.email)}>`,
     headers: [],

@@ -14,6 +14,8 @@
  * backfill gets to it.
  */
 
+import { OTHER_LABEL_ID } from "@otter-mail/contracts";
+
 import { logger } from "../../logger.js";
 import * as store from "../../services/mail-store.js";
 import type { GmailMessageSummary } from "../../types.js";
@@ -165,12 +167,34 @@ async function relabelFolders(accountId: string, mailbox: Mailbox, ctx: SyncCont
   }
 }
 
+/**
+ * The inbox's mail Focused Inbox sorted as Other gets OTHER, once: it came
+ * after mail cached before (later syncs bring it with the mail).
+ */
+async function labelOtherMail(accountId: string, mailbox: Mailbox, ctx: SyncContext) {
+  const key = `outlookOther:${accountId}`;
+  if (store.getKv(key) === "1") return;
+  const filter = encodeURIComponent("inferenceClassification eq 'other'");
+  const other = await graphAll<{ id: string }>(
+    accountId,
+    `/me/mailFolders/${encodeURIComponent(mailbox.wellKnown.inbox!)}/messages?$filter=${filter}&$select=id&$top=500`,
+  );
+  ctx.assertActive();
+  store.applyHistoryChanges(
+    accountId,
+    other.map(({ id }) => ({ kind: "labelsAdded" as const, id, labelIds: [OTHER_LABEL_ID] })),
+  );
+  store.setKv(key, "1");
+  if (other.length > 0) ctx.bumpRevision();
+}
+
 // ── Sync ────────────────────────────────────────────────────────────────────
 
 export async function syncOutlook(accountId: string, ctx: SyncContext): Promise<void> {
   ctx.update({ phase: mailboxOf(accountId) ? "incremental" : "labels" });
   const mailbox = await refreshFolders(accountId, false, ctx);
   await relabelFolders(accountId, mailbox, ctx);
+  await labelOtherMail(accountId, mailbox, ctx);
   if (store.getKv(peekedKey(accountId)) !== "1") await peekInbox(accountId, mailbox, ctx);
 
   ctx.update({ phase: "incremental", synced: 0 });
