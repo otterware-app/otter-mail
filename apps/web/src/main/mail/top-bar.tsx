@@ -21,7 +21,6 @@ import {
 } from "lucide-react";
 import { AgentIcon } from "./agent-icon";
 import { IconBtn, HintTooltip, cn } from "./ui";
-import { COMBINED_ACCOUNT_ID } from "./custom-views";
 import { getAccountDisplayName } from "./account-style";
 import { useAllAccountLabels } from "./hooks";
 import {
@@ -36,7 +35,6 @@ import type { GmailAccount } from "./types";
 import type { KeybindingCommand } from "../keybindings/commands";
 import { shortcutLabelFor, useKeybindingsState } from "../keybindings/store";
 import { features } from "../features";
-import { useMailboxArrangement } from "../mailboxes";
 
 /**
  * Every column owns the slice of the title band above it, so the pane
@@ -324,40 +322,32 @@ export function SidebarTitle() {
 
 export type MailboxOption = {
   id: string;
-  account: GmailAccount | null;
+  account: GmailAccount;
   name: string;
   shortcut: string;
 };
 
-/** The mailboxes to switch between, in ⌘1… order: All mailboxes (when on), then each account. */
+/** The mailboxes to switch between, in ⌘1… order. */
 export function useMailboxOptions(accounts: GmailAccount[]): MailboxOption[] {
   const { resolved: keybindings } = useKeybindingsState();
-  const combined = useMailboxArrangement().combined && accounts.length > 1;
   const jump = (digit: number) =>
     shortcutLabelFor(keybindings, `mailbox.jump.${digit}` as KeybindingCommand) ?? "";
-  return [
-    ...(combined
-      ? [{ id: COMBINED_ACCOUNT_ID, account: null, name: "All mailboxes", shortcut: jump(1) }]
-      : []),
-    ...accounts.map((account, i) => ({
-      id: account.id,
-      account,
-      name: getAccountDisplayName(account),
-      shortcut: jump(combined ? i + 2 : i + 1),
-    })),
-  ];
+  return accounts.map((account, i) => ({
+    id: account.id,
+    account,
+    name: getAccountDisplayName(account),
+    shortcut: jump(i + 1),
+  }));
 }
 
-/** Unread in each mailbox's Inbox (as its sidebar shows it), and their sum for All mailboxes. */
+/** Unread in each mailbox's Inbox (as its sidebar shows it). */
 export function useInboxUnread(accounts: GmailAccount[]): Record<string, number> {
-  const counts = Object.fromEntries(
+  return Object.fromEntries(
     useAllAccountLabels(accounts.map((a) => a.id)).map(({ accountId, labels }) => [
       accountId,
       labels.find((l) => l.id === "INBOX")?.unread ?? 0,
     ]),
   );
-  const total = Object.values(counts).reduce((sum, n) => sum + n, 0);
-  return { ...counts, [COMBINED_ACCOUNT_ID]: total };
 }
 
 /**

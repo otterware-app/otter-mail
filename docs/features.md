@@ -51,7 +51,6 @@ from GitHub Releases. Everything in the Mac column works the same, except:
 | One sidebar: Mail and Chats tabs, Search or ask (⌘K)         | ✓                  | ✓                                   | — (drawer)              |
 | Sidebar: each mailbox opens to its folders and labels; views | ✓                  | ✓                                   | — (drawer)              |
 | Sidebar hidden: hover the window's edge to peek              | ✓                  | ✓                                   | —                       |
-| Combined mailbox (all accounts)                              | ✓                  | ✓                                   | ✓ ("All")               |
 | Rename and color a mailbox (synced)                          | ✓                  | ✓                                   | ✓                       |
 | Google profile picture per mailbox                           | ✓ (kept current)   | ✓ (kept current)                    | —                       |
 | Remove a mailbox (unlinks it everywhere)                     | ✓                  | ✓                                   | ✓                       |

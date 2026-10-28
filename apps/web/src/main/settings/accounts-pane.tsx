@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Avatar, AvatarFallback, AvatarImage } from "~/components/ui/avatar";
 import { Dialog } from "~/components/ui/dialog";
 import { Text } from "~/components/ui/text";
-import { CheckIcon, GripVerticalIcon, LayersIcon, PlusIcon, RotateCwIcon } from "lucide-react";
+import { CheckIcon, GripVerticalIcon, PlusIcon, RotateCwIcon } from "lucide-react";
 import { Switch } from "~/components/ui/switch";
 import { arrangeAccounts, setMailboxArrangement, useMailboxArrangement } from "../mailboxes";
 import { gmailApi } from "../mail/api";
@@ -40,7 +40,6 @@ import {
   SettingsGroup,
   SettingsPageContainer,
   SettingsRow,
-  SettingsSearchTarget,
   SettingsSection,
 } from "./settings-ui";
 import { searchableSetting } from "./settings-search";
@@ -300,30 +299,6 @@ function AccountListRow({
         </span>
       </HintTooltip>
     </div>
-  );
-}
-
-/** "All mailboxes", the combined inbox: pinned first, only turned on or off. */
-function AllMailboxesRow({ on, onToggle }: { on: boolean; onToggle: (on: boolean) => void }) {
-  return (
-    <SettingsSearchTarget
-      id={searchableSetting("all-mailboxes").id}
-      data-slot="settings-row"
-      className="flex min-h-[60px] items-center gap-3 px-4 py-2.5"
-    >
-      <span className={cn("contents", !on && "[&>*]:opacity-50")}>
-        <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-foreground/[0.06] text-muted-foreground">
-          <LayersIcon className="size-4" />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm text-foreground">All mailboxes</span>
-          <span className="block truncate text-[13px] leading-[18px] text-muted-foreground">
-            One inbox for every mailbox
-          </span>
-        </span>
-      </span>
-      <Switch checked={on} onCheckedChange={onToggle} aria-label="All mailboxes on" />
-    </SettingsSearchTarget>
   );
 }
 
@@ -700,12 +675,6 @@ export function AccountsPane() {
       {current ? (
         <>
           <SettingsGroup>
-            {accounts.length > 1 ? (
-              <AllMailboxesRow
-                on={arrangement.combined}
-                onToggle={(combined) => setMailboxArrangement({ ...arrangement, combined })}
-              />
-            ) : null}
             {accounts.map((account) => {
               const on = !arrangement.off.includes(account.email);
               return (

@@ -98,21 +98,10 @@ export type LabelSelection = {
   labelId: string;
 };
 
-export type ViewKind =
-  | "inbox"
-  | "starred"
-  | "sent"
-  | "drafts"
-  | "important"
-  | "allmail"
-  | "junk"
-  | "trash"
-  | "custom";
-
 /**
- * One account's filter within a Combined-mailbox view. A message matches when
- * it belongs to the account, carries every label in `allOf` (empty = any mail
- * from the account), and carries none of the labels in `noneOf`.
+ * One account's filter within a view. A message matches when it belongs to
+ * the account, carries every label in `allOf` (empty = any mail from the
+ * account), and carries none of the labels in `noneOf`.
  */
 export type ViewRule = {
   accountId: string;
@@ -121,19 +110,16 @@ export type ViewRule = {
 };
 
 /**
- * A Combined-mailbox view: the union of messages matching any of its per-account
- * `rules`. Built-in "inbox"/"sent" views use dynamic defaults when `rules` is
- * null (every account's INBOX/SENT) and can be reset back to it.
+ * A view: a saved filter across the mailboxes, the union of messages matching
+ * any of its per-account `rules`; a space of its own.
  */
 export type MailView = {
   id: string;
   name: string;
-  kind: ViewKind;
-  /** null = use the dynamic default for this kind (only for inbox/sent). */
-  rules: ViewRule[] | null;
-  /** Where it was made: an account id, or "__combined__" (views were once each mailbox's). */
-  mailbox?: string;
-  /** Its mark in the rail: an icon's key or an emoji (custom views; absent = its initial). */
+  /** Always "custom": older versions, which share the synced list, look for it. */
+  kind: "custom";
+  rules: ViewRule[];
+  /** Its mark in the rail: an icon's key or an emoji (absent = its initial). */
   icon?: string | null;
   /** The icon's color (or the initial's). */
   color?: string | null;

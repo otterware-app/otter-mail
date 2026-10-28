@@ -24,8 +24,9 @@ linked worktree or when 5833 is busy. The page title ends in "(demo)".
 
 ## What's in it
 
-Two mailboxes under "All mailboxes": Personal (`demo@otter.example`) and Work
-(`sam@acme.example`). A few weeks of mail: multi-message threads, newsletters
+Three mailboxes: Personal (`demo@otter.example`) and Work (`sam@acme.example`),
+on a pretend Gmail, and Contoso (`jordan.lee@contoso.example`), on a pretend
+Outlook (Microsoft Graph, `apps/web/src/web/demo/outlook.ts`) with an Archive. A few weeks of mail: multi-message threads, newsletters
 with unsubscribe, PDF/SVG/CSV attachments, calendar invitations (RSVP),
 drafts, spam, trash, nested labels (`Projects/Otter`), non-ASCII names.
 The seed is `packages/shared/src/demo-mailboxes.ts`; add to it when a flow needs

@@ -362,8 +362,8 @@ export function useDebouncedValue<T>(value: T, delayMs: number): T {
 }
 
 /**
- * View restriction + structured filters for search: a label in account mode,
- * rules in Combined, plus flag/importance/attachment/date criteria that work
+ * View restriction + structured filters for search: a label in a mailbox,
+ * a view's rules, plus flag/importance/attachment/date criteria that work
  * with an empty query too.
  */
 export type SearchScope = {
@@ -377,7 +377,7 @@ export type SearchScope = {
 
 /**
  * Instant local full-text search (FTS5 over the mail cache). Message-level
- * rows; accountId null searches every account (Combined mode / palette).
+ * rows; accountId null searches every account (a view, the palette).
  * `scope` restricts results to the current view (the list's filter search).
  */
 export function useSearchMessages(
@@ -453,10 +453,10 @@ export function useGmailSearch(q: string, accountIds: string[], enabled = true) 
   });
 }
 
-// ---- Combined (cross-account) views ----
+// ---- Views (lists across the mailboxes) ----
 
 /**
- * Cross-account message list for the Combined mailbox. `rules` are the view's
+ * A view's message list across the mailboxes. `rules` are the view's
  * per-account filters (union across rules); `viewId` keys the cache per view.
  */
 export function useCombinedMessages(rules: ViewRule[], viewId: string, enabled = true) {
@@ -497,11 +497,10 @@ export function useCombinedCounts(rules: ViewRule[], viewId: string, enabled = t
   });
 }
 
-/** Unread count per view id, for the Combined sidebar rows. */
+/** Unread count per view id, for the sidebar's Views. */
 export function useViewUnreadCounts(
   views: MailView[],
   accounts: GmailAccount[],
-  enabled = true,
 ): Record<string, number> {
   const results = useQueries({
     queries: views.map((view) => {
@@ -509,19 +508,12 @@ export function useViewUnreadCounts(
       return {
         queryKey: queryKeys.combinedCounts(view.id, rules),
         queryFn: () => gmailApi.countCombinedMessages({ rules }),
-        // All Mail carries no badge (Gmail parity) — skip a whole-mailbox count.
-        enabled: enabled && rules.length > 0 && view.kind !== "allmail",
+        enabled: rules.length > 0,
         staleTime: STALE_TIME,
       };
     }),
   });
-  return Object.fromEntries(
-    views.map((v, i) => {
-      const data = results[i]?.data;
-      // Drafts badge counts every draft, not unread ones (Gmail parity).
-      return [v.id, (v.kind === "drafts" ? data?.total : data?.unread) ?? 0];
-    }),
-  );
+  return Object.fromEntries(views.map((v, i) => [v.id, results[i]?.data?.unread ?? 0]));
 }
 
 /** Full label list per account, keyed by accountId, for the view-editor picker. */
@@ -991,7 +983,7 @@ export function useModifyMessage() {
       void qc.invalidateQueries({
         queryKey: ["gmail:messages", params.accountId],
       });
-      // Combined ("All Inboxes") lists are keyed by viewId, not accountId, so the
+      // Views' lists are keyed by viewId, not accountId, so the
       // prefix invalidation above never reaches them — without this, read/unread
       // and star changes never show up there until the 30s staleTime lapses.
       void qc.invalidateQueries({ queryKey: ["gmail:combinedMessages"] });
@@ -1228,7 +1220,7 @@ export function useModifyThread() {
       // longer match, so archive/move/junk clear the view instantly like trash.
       // Safe only here (whole-thread removal); single-message ops can't know
       // whether sibling messages still match.
-      // All Mail (per account, or Combined rules without labels) only loses
+      // All Mail (per account, or a view's rules without labels) only loses
       // threads that become spam/trash. Mail put in a folder leaves the Archive.
       const leavesAllMail = addLabelIds.includes("SPAM") || addLabelIds.includes("TRASH");
       const leaves = landLabelChange([], addLabelIds, removeLabelIds, { archiveFolder }).remove;
@@ -1603,8 +1595,8 @@ export function useGlobalSyncStatus(accountIds: string[]): { syncing: boolean; l
 }
 
 /**
- * Same as `useAccountSync` but for every account at once — the Combined mailbox
- * has no single "active account" to drive `useAccountSync`, so its per-account
+ * Same as `useAccountSync` but for every account at once — a view has no
+ * single "active account" to drive `useAccountSync`, so its per-account
  * label counts (used by the mailbox header) would otherwise never refresh once
  * the background sync fills them in.
  */
@@ -1829,15 +1821,14 @@ export function useEmptyFolder() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({
-      accountIds,
+      accountId,
       labelId,
     }: {
-      accountIds: string[];
+      accountId: string;
       labelId: "SPAM" | "TRASH";
     }) => {
-      console.log("[hooks:useEmptyFolder]", { accounts: accountIds.length, labelId });
-      const results = await Promise.all(accountIds.map((id) => gmailApi.emptyFolder(id, labelId)));
-      return results.reduce((sum, r) => sum + r.deleted, 0);
+      console.log("[hooks:useEmptyFolder]", { accountId, labelId });
+      return (await gmailApi.emptyFolder(accountId, labelId)).deleted;
     },
     onSuccess: (deleted, { labelId }) => {
       clearUndo();

@@ -3,7 +3,7 @@
 Gmail, calm and fast. An app for macOS and Linux, and the same app in your browser at
 [mail.otterware.app](https://mail.otterware.app).
 
-- Several Gmail accounts side by side, or combined into one inbox
+- Several mailboxes side by side: Gmail, Outlook and any IMAP server
 - Gmail labels, plus saved views that filter across accounts
 - A local SQLite cache with full-text search, so mail opens instantly and works offline
 - New-mail notifications, and a Dock unread badge
@@ -22,7 +22,7 @@ Mac releases support Apple Silicon Macs (arm64).
 
 | Feature                                                       | Mac app                                          | Web app in Chrome                              | Web app in other browsers                      |
 | ------------------------------------------------------------- | ------------------------------------------------ | ---------------------------------------------- | ---------------------------------------------- |
-| Several Gmail accounts, combined inbox, labels, saved views   | ✓                                                | ✓                                              | ✓                                              |
+| Several mailboxes, labels, saved views across them            | ✓                                                | ✓                                              | ✓                                              |
 | Read, search, compose, drafts, attachments                    | ✓                                                | ✓                                              | ✓                                              |
 | Calendar invitations answered in place, one-click unsubscribe | ✓                                                | ✓                                              | ✓                                              |
 | Local cache                                                   | ✓ every message, readable offline                | ✓ lists and opened messages, in the browser    | ✓ lists and opened messages, in the browser    |

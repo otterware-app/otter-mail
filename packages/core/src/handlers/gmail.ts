@@ -566,7 +566,7 @@ export function registerGmailHandlers(): void {
     }
   });
 
-  // gmail:listViews / saveView / deleteView / resetView — Combined-view store
+  // gmail:listViews / saveView / deleteView — the user's views
   // (userData/views.json); mutations broadcast gmail:views-changed so every
   // window's view queries refresh.
   handle("gmail:listViews", async () => {
@@ -588,7 +588,6 @@ export function registerGmailHandlers(): void {
         id,
         name,
         rules: parseRules(p?.rules),
-        mailbox: asString(p?.mailbox),
         icon: p?.icon === null ? null : asString(p?.icon),
         color: p?.color === null ? null : asString(p?.color),
       });
@@ -611,20 +610,6 @@ export function registerGmailHandlers(): void {
       return { ok: true };
     } catch (err) {
       console.log("[gmail:deleteView] error", { error: String(err) });
-      throw err;
-    }
-  });
-
-  handle("gmail:resetView", async (params: unknown) => {
-    const p = params as Record<string, unknown>;
-    console.log("[gmail:resetView]", { viewId: p?.viewId });
-    try {
-      await viewsStore.resetView(assertString(p?.viewId, "viewId"));
-      broadcast("gmail:views-changed");
-      preferenceChanged("views");
-      return { ok: true };
-    } catch (err) {
-      console.log("[gmail:resetView] error", { error: String(err) });
       throw err;
     }
   });

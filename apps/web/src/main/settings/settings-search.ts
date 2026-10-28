@@ -270,12 +270,6 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["accounts gmail imap turn on off order reorder drag add"],
   },
   {
-    id: "all-mailboxes",
-    title: "All mailboxes",
-    pane: "accounts",
-    searchTerms: ["combined unified one inbox"],
-  },
-  {
     id: "mailbox-status",
     title: "Mailbox status",
     pane: "accounts",

@@ -1,71 +1,23 @@
 /**
  * custom-views.ts
  *
- * Combined-mailbox view hooks. Views live in the backend (userData/views.json,
- * via gmail:*View IPC) so the main and settings windows share one source of
- * truth; mutations broadcast gmail:views-changed to refresh every window.
- * Last-location persistence stays in localStorage (per-window UI state).
+ * The user's views: saved filters across the mailboxes. They live in the
+ * backend (userData/views.json, via gmail:*View IPC) so the main and settings
+ * windows share one source of truth; mutations broadcast gmail:views-changed
+ * to refresh every window. Last-location persistence stays in localStorage
+ * (per-window UI state).
  */
 
 import { useCallback, useEffect } from "react";
 import { toast } from "./toast";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { gmailApi, type SaveViewParams } from "./api";
-import type { GmailAccount, MailView, ViewKind, ViewRule } from "./types";
+import type { GmailAccount, MailView, ViewRule } from "./types";
 
-/** Sentinel account id for the cross-account "Combined" mailbox. */
-export const COMBINED_ACCOUNT_ID = "__combined__";
-
-export const INBOX_VIEW_ID = "__inbox__";
-export const STARRED_VIEW_ID = "__starred__";
-export const SENT_VIEW_ID = "__sent__";
-export const DRAFTS_VIEW_ID = "__drafts__";
-export const IMPORTANT_VIEW_ID = "__important__";
-export const ALL_MAIL_VIEW_ID = "__allmail__";
-export const JUNK_VIEW_ID = "__junk__";
-export const TRASH_VIEW_ID = "__trash__";
-
-const DEFAULT_VIEWS: MailView[] = [
-  { id: INBOX_VIEW_ID, name: "Inbox", kind: "inbox", rules: null },
-  { id: STARRED_VIEW_ID, name: "Starred", kind: "starred", rules: null },
-  { id: SENT_VIEW_ID, name: "Sent", kind: "sent", rules: null },
-  { id: DRAFTS_VIEW_ID, name: "Drafts", kind: "drafts", rules: null },
-  { id: IMPORTANT_VIEW_ID, name: "Important", kind: "important", rules: null },
-  { id: ALL_MAIL_VIEW_ID, name: "All Mail", kind: "allmail", rules: null },
-  { id: JUNK_VIEW_ID, name: "Junk", kind: "junk", rules: null },
-  { id: TRASH_VIEW_ID, name: "Trash", kind: "trash", rules: null },
-];
-
-/** The Gmail system-label id a default view aggregates across accounts. */
-function systemLabelForKind(kind: ViewKind): string | null {
-  if (kind === "inbox") return "INBOX";
-  if (kind === "starred") return "STARRED";
-  if (kind === "sent") return "SENT";
-  if (kind === "drafts") return "DRAFT";
-  if (kind === "important") return "IMPORTANT";
-  if (kind === "junk") return "SPAM";
-  if (kind === "trash") return "TRASH";
-  return null;
-}
-
-/** Dynamic default rules for a built-in view: every account's INBOX/SENT/…,
-    or for All Mail every account's mail (no label; spam/trash stay out). */
-export function defaultRulesFor(kind: ViewKind, accounts: GmailAccount[]): ViewRule[] {
-  if (kind === "allmail") return accounts.map((a) => ({ accountId: a.id, allOf: [], noneOf: [] }));
-  const labelId = systemLabelForKind(kind);
-  if (!labelId) return [];
-  return accounts.map((a) => ({ accountId: a.id, allOf: [labelId], noneOf: [] }));
-}
-
-/**
- * Resolves a view to the concrete rules used for querying, pruned to accounts
- * that still exist. Built-in views with null rules fall back to their dynamic
- * default.
- */
+/** A view's rules, pruned to accounts that still exist. */
 export function resolveRules(view: MailView, accounts: GmailAccount[]): ViewRule[] {
   const accountIds = new Set(accounts.map((a) => a.id));
-  const raw = view.rules ?? defaultRulesFor(view.kind, accounts);
-  return raw.filter((r) => accountIds.has(r.accountId));
+  return view.rules.filter((r) => accountIds.has(r.accountId));
 }
 
 // ── View hooks ───────────────────────────────────────────────────────────────
@@ -88,7 +40,7 @@ export function useMailViews() {
     queryKey: VIEWS_QUERY_KEY,
     queryFn: () => gmailApi.listViews(),
     staleTime: 30_000,
-    placeholderData: DEFAULT_VIEWS,
+    placeholderData: [],
   });
 
   const invalidate = useCallback(
@@ -101,7 +53,7 @@ export function useMailViews() {
     async (patch: (views: MailView[]) => MailView[]) => {
       await qc.cancelQueries({ queryKey: VIEWS_QUERY_KEY });
       const prev = qc.getQueryData<MailView[]>(VIEWS_QUERY_KEY);
-      qc.setQueryData<MailView[]>(VIEWS_QUERY_KEY, (views) => patch(views ?? DEFAULT_VIEWS));
+      qc.setQueryData<MailView[]>(VIEWS_QUERY_KEY, (views) => patch(views ?? []));
       return { prev };
     },
     [qc],
@@ -133,7 +85,6 @@ export function useMailViews() {
                 name: input.name,
                 kind: "custom",
                 rules: input.rules,
-                mailbox: input.mailbox ?? COMBINED_ACCOUNT_ID,
                 icon: input.icon ?? null,
                 color: input.color ?? null,
               },
@@ -142,7 +93,7 @@ export function useMailViews() {
     // The saved view in place of its pending one at once, so whoever goes
     // to it (a new view opens in its space) finds it before the refetch.
     onSuccess: (saved) =>
-      qc.setQueryData<MailView[]>(VIEWS_QUERY_KEY, (views = DEFAULT_VIEWS) =>
+      qc.setQueryData<MailView[]>(VIEWS_QUERY_KEY, (views = []) =>
         views.some((v) => v.id === saved.id)
           ? views.map((v) => (v.id === saved.id ? saved : v))
           : views.map((v) => (v.id === `pending:${saved.name}` ? saved : v)),
@@ -162,37 +113,18 @@ export function useMailViews() {
     },
     onSettled: invalidate,
   });
-  const resetMutation = useMutation({
-    mutationFn: (id: string) => gmailApi.resetView(id),
-    onMutate: (id) =>
-      patchViews((views) =>
-        views.map((v) =>
-          v.id === id && v.kind !== "custom"
-            ? { ...v, name: DEFAULT_VIEWS.find((d) => d.id === id)?.name ?? v.name, rules: null }
-            : v,
-        ),
-      ),
-    onError: (_err, _vars, context) => {
-      rollback(context);
-      toast.error("Could not reset the view");
-    },
-    onSettled: invalidate,
-  });
-
   const saveView = useCallback(
     (input: SaveViewParams) => saveMutation.mutateAsync(input),
     [saveMutation],
   );
   const deleteView = useCallback((id: string) => deleteMutation.mutateAsync(id), [deleteMutation]);
-  const resetView = useCallback((id: string) => resetMutation.mutateAsync(id), [resetMutation]);
 
   return {
-    views: query.data ?? DEFAULT_VIEWS,
-    /** False while `views` are only the built-in ones, before the saved views load. */
+    views: query.data ?? [],
+    /** False until the saved views have loaded. */
     loaded: !query.isPlaceholderData,
     saveView,
     deleteView,
-    resetView,
   };
 }
 

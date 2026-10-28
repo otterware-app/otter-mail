@@ -1,7 +1,6 @@
 /**
  * The sidebar, the window's only one (Notion's): Search or ask (the command
- * palette), a tab for each mailbox (All mailboxes first, when it's on) and
- * one for Chats, then the tab's page. A mailbox: New message, its folders and
+ * palette), a tab for each mailbox and one for Chats, then the tab's page. A mailbox: New message, its folders and
  * labels, then the views. Chats: the AI workspace's chats. Sync health, an
  * update and you (with Settings) at its foot.
  */
@@ -9,7 +8,6 @@
 import { useState, type ReactNode } from "react";
 import {
   CircleUserRoundIcon,
-  LayersIcon,
   LogInIcon,
   MessageSquareIcon,
   PlusIcon,
@@ -74,7 +72,7 @@ export function AppSidebar({
 }: {
   /** The mailboxes that are on. */
   accounts: GmailAccount[];
-  /** Every view: the built-in ones (All mailboxes' folders) and your own. */
+  /** The user's views. */
   views: MailView[];
   /** The space showing (spaces.ts), and its folder, label, list or chat. */
   spaceId: string | null;
@@ -261,10 +259,8 @@ function SidebarTabs({
         tab({
           id: option.id,
           label: option.name,
-          icon: option.account ? (
+          icon: (
             <AccountPicture account={option.account} className="size-5 rounded-md text-[10px]" />
-          ) : (
-            <LayersIcon />
           ),
           hint: option.shortcut,
           dot: (unread[option.id] ?? 0) > 0,
@@ -303,8 +299,7 @@ function MailPage({
   onSelectSearch: (id: string) => void;
   onCloseSearch: (id: string) => void;
 }) {
-  const customViews = views.filter((v) => v.kind === "custom");
-  const viewUnread = useViewUnreadCounts(customViews, accounts);
+  const viewUnread = useViewUnreadCounts(views, accounts);
   const addAccount = useAddAccount();
   const showing = mailbox != null && mailbox === spaceId;
 
@@ -349,7 +344,6 @@ function MailPage({
             mailboxId={mailbox}
             selectedLabelId={showing ? labelId : ""}
             onSelectLabel={(label) => onGo(mailbox, label)}
-            views={views}
             searchRows={showing ? searchRows : undefined}
           />
         ) : (
@@ -366,7 +360,7 @@ function MailPage({
 
         {/* Views: one list of what their filters find, across the mailboxes. */}
         <Section title="Views" action={<SectionAddButton label="New view" onClick={onNewView} />}>
-          {customViews.map((view) => (
+          {views.map((view) => (
             <ContextMenu key={view.id}>
               <ContextMenuTrigger>
                 <SkRow

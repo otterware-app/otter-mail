@@ -70,7 +70,6 @@ import { SignedOutMailbox } from "./signed-out-mailbox";
 import { LabelOverlay, type LabelOverlayMode } from "./label-overlay";
 import { useCapabilities } from "./capabilities";
 import { moveToFolder, renderLabelChoices, useLabelChoices } from "./label-picker-menu";
-import { INBOX_VIEW_ID, STARRED_VIEW_ID, SENT_VIEW_ID, DRAFTS_VIEW_ID } from "./custom-views";
 import { isTypingTarget } from "./keyboard";
 import { useCommandHandlers } from "../keybindings/dispatch";
 import { SEARCH_HINT, SearchHeader } from "./search-header";
@@ -87,12 +86,12 @@ import { isModClick } from "../keybindings/keys";
 
 type ResolveLabel = (accountId: string | undefined, labelId: string) => GmailLabel | undefined;
 
-/** Cross-account query descriptor for the Combined mailbox. */
+/** A view's list: its rules across the mailboxes. */
 export type CombinedList = { viewId: string; name: string; rules: ViewRule[] };
 
-/** Mailbox + account identity shown next to the date in Combined view rows.
-    mailbox is null when every selection in the view is the same mailbox (e.g.
-    built-in Inbox), where naming it on every row would be redundant. */
+/** Mailbox + account identity shown next to the date in a view's rows.
+    mailbox is null when every selection in the view is the same mailbox,
+    where naming it on every row would be redundant. */
 type CombinedMeta = { mailbox: string | null; accountName: string; accountColor: string };
 
 type MessageListProps = {
@@ -105,11 +104,11 @@ type MessageListProps = {
   /** Active account — used for account-mode queries and as a fallback owner id. */
   accountId: string;
   labelId: string;
-  /** When set, the list is cross-account (Combined mailbox). */
+  /** When set, the list is a view's, across the mailboxes. */
   combined: CombinedList | null;
   /** All connected account ids, for resolving label chips across accounts. */
   accountIds: string[];
-  /** Connected accounts (name/color), for the Combined view's mailbox-account line. */
+  /** Connected accounts (name/color), for a view's mailbox-account line. */
   accounts: GmailAccount[];
   selectedMessageId: string | null;
   /** A single message of the selected row's conversation shown on its own. */
@@ -319,7 +318,7 @@ type MessageRowProps = {
   /** Fallback owner id when a summary has no accountId (e.g. live search results). */
   accountId: string;
   resolveLabel: ResolveLabel;
-  /** Whose mailbox it is, a badge on the face, only in Combined view. */
+  /** Whose mailbox it is, a badge on the face, only in a view. */
   combinedMeta: CombinedMeta | null;
   /** Mark rows still in the inbox (shown when browsing non-inbox views). */
   showInboxChip: boolean;
@@ -893,7 +892,7 @@ export function MessageList({
       : accountMessages;
 
   const resolveLabel = useLabelResolver(isCombined ? accountIds : [accountId]);
-  // Combined mode has no single "active account" to drive per-account label
+  // A view has no single "active account" to drive per-account label
   // sync (see useAccountSync), so the header's counts need their own refresh loop.
   useSyncAccountLabels(accountIds, isCombined);
 
@@ -1038,20 +1037,10 @@ export function MessageList({
     }
   };
 
-  // The single label the current view IS (Gmail's v "move" needs a label to
-  // leave). Built-in combined views map to their system label; rule-based
-  // custom views and search results have no single label, so v is unavailable.
-  const COMBINED_VIEW_LABELS: Record<string, string> = {
-    [INBOX_VIEW_ID]: "INBOX",
-    [STARRED_VIEW_ID]: "STARRED",
-    [SENT_VIEW_ID]: "SENT",
-    [DRAFTS_VIEW_ID]: "DRAFT",
-  };
-  const moveContextLabelId = searching
-    ? null
-    : isCombined
-      ? (COMBINED_VIEW_LABELS[combined.viewId] ?? null)
-      : labelId;
+  // The single label the list IS (Gmail's v "move" needs a label to leave).
+  // Views (rules across mailboxes) and search results have none, so v is
+  // unavailable there.
+  const moveContextLabelId = searching || isCombined ? null : labelId;
 
   const [labelOverlay, setLabelOverlay] = useState<LabelOverlayMode | null>(null);
 
@@ -1739,8 +1728,7 @@ export function MessageList({
   // Outside the Inbox (labels, views, global search), rows still in the inbox
   // say so. The view filter stays inside the current view, so its rows carry
   // the view's labels by construction — no chip needed there.
-  const inInboxContext =
-    !globalSearching && (isCombined ? combined.viewId === INBOX_VIEW_ID : labelId === "INBOX");
+  const inInboxContext = !globalSearching && !isCombined && labelId === "INBOX";
 
   // Labels that define what's on screen (the browsed label, or a view's
   // required labels for that account) are on every row — no chip for them.

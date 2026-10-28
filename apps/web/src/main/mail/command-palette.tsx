@@ -10,20 +10,15 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import {
-  ArchiveXIcon,
   MessageSquareIcon,
   ArrowDownCircleIcon,
   ArrowDownIcon,
   ArrowUpIcon,
-  BookmarkIcon,
-  MailsIcon,
   CheckIcon,
   ChevronRightIcon,
-  FileIcon,
   MessageSquarePlusIcon,
   PanelRightIcon,
   InboxIcon,
-  LayersIcon,
   ListChecksIcon,
   MonitorIcon,
   MoonIcon,
@@ -32,21 +27,17 @@ import {
   RotateCwIcon,
   ScrollTextIcon,
   SearchIcon,
-  SendIcon,
   SettingsIcon,
   SignpostIcon,
   SquarePenIcon,
-  StarIcon,
   SunIcon,
   SunMoonIcon,
-  Trash2Icon,
 } from "lucide-react";
 import { AgentIcon } from "./agent-icon";
 import { useDebouncedValue, useSearchMessages } from "./hooks";
 import { getAccountColor, getAccountDisplayName } from "./account-style";
 import { senderLabel } from "./address";
 import { cn } from "./ui";
-import { COMBINED_ACCOUNT_ID } from "./custom-views";
 import { changelogUrl } from "@otter-mail/shared/changelog";
 import { openLink } from "../browser/store";
 import { getThemeModes } from "../theme/themePalette";
@@ -87,7 +78,6 @@ type CommandPaletteProps = {
   onOpenMessage: (message: GmailMessageSummary) => void;
   /** Runs the typed text as a Gmail search in the Search mailbox. */
   onSearchMail: (query: string) => void;
-  onGoToView: (viewId: string) => void;
   onSelectAccount: (accountId: string) => void;
   /** A chat in the AI workspace. */
   onOpenChat: (chatId: string) => void;
@@ -122,18 +112,6 @@ type PaletteItem = {
 type PaletteGroup = { id: string; label: string; items: PaletteItem[] };
 
 const ICON = "size-4";
-
-function viewIcon(view: MailView): ReactNode {
-  if (view.kind === "inbox") return <InboxIcon className={ICON} />;
-  if (view.kind === "starred") return <StarIcon className={ICON} />;
-  if (view.kind === "sent") return <SendIcon className={ICON} />;
-  if (view.kind === "drafts") return <FileIcon className={ICON} />;
-  if (view.kind === "important") return <BookmarkIcon className={ICON} />;
-  if (view.kind === "allmail") return <MailsIcon className={ICON} />;
-  if (view.kind === "junk") return <ArchiveXIcon className={ICON} />;
-  if (view.kind === "trash") return <Trash2Icon className={ICON} />;
-  return <LayersIcon className={ICON} />;
-}
 
 function formatResultDate(timestamp: number): string {
   const date = new Date(timestamp);
@@ -191,7 +169,6 @@ export function CommandPalette({
   selectedAccountId,
   onOpenMessage,
   onSearchMail,
-  onGoToView,
   onSelectAccount,
   onOpenChat,
   onNewChat,
@@ -428,55 +405,25 @@ export function CommandPalette({
       },
     ];
 
-    const mailboxes: PaletteItem[] = [
-      ...(accounts.length > 1
-        ? [
-            {
-              id: `mailbox:${COMBINED_ACCOUNT_ID}`,
-              icon: <LayersIcon className={ICON} />,
-              title: "All mailboxes",
-              shortcut: jump(1),
-              checked: selectedAccountId === COMBINED_ACCOUNT_ID,
-              run: () => onSelectAccount(COMBINED_ACCOUNT_ID),
-            },
-          ]
-        : []),
-      ...accounts.map((account, i) => ({
-        id: `mailbox:${account.id}`,
-        icon: <Dot color={getAccountColor(account)} />,
-        title: getAccountDisplayName(account),
-        description: account.email,
-        shortcut: jump(accounts.length > 1 ? i + 2 : 1),
-        checked: selectedAccountId === account.id,
-        run: () => onSelectAccount(account.id),
-      })),
-    ];
+    const mailboxes: PaletteItem[] = accounts.map((account, i) => ({
+      id: `mailbox:${account.id}`,
+      icon: <Dot color={getAccountColor(account)} />,
+      title: getAccountDisplayName(account),
+      description: account.email,
+      shortcut: jump(i + 1),
+      checked: selectedAccountId === account.id,
+      run: () => onSelectAccount(account.id),
+    }));
 
-    // Views are spaces; All mailboxes' folders only when 2+ accounts are
-    // connected (matches the sidebar).
-    const viewItems: PaletteItem[] = [
-      ...views
-        .filter((v) => v.kind === "custom")
-        .map((view) => ({
-          id: `view:${view.id}`,
-          icon: <ViewMark view={view} className="size-4 text-[13px]" />,
-          title: view.name,
-          keywords: "view space",
-          checked: selectedAccountId === view.id,
-          run: () => onSelectAccount(view.id),
-        })),
-      ...(accounts.length > 1
-        ? views
-            .filter((v) => v.kind !== "custom")
-            .map((view) => ({
-              id: `view:${view.id}`,
-              icon: viewIcon(view),
-              title: view.name,
-              keywords: "go to view",
-              run: () => onGoToView(view.id),
-            }))
-        : []),
-    ];
+    // Views are spaces.
+    const viewItems: PaletteItem[] = views.map((view) => ({
+      id: `view:${view.id}`,
+      icon: <ViewMark view={view} className="size-4 text-[13px]" />,
+      title: view.name,
+      keywords: "view space",
+      checked: selectedAccountId === view.id,
+      run: () => onSelectAccount(view.id),
+    }));
 
     const chatItems: PaletteItem[] = conversations
       .filter((c) => !isBlank(c))
@@ -567,7 +514,6 @@ export function CommandPalette({
     onNewChat,
     onToggleBrowser,
     conversations,
-    onGoToView,
     onOpenMessage,
     onSearchMail,
   ]);

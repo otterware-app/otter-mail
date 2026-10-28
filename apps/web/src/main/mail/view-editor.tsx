@@ -16,7 +16,6 @@ import { LabelChip } from "./label-chip";
 import { cn } from "./ui";
 import { ViewIconPicker, ViewMark } from "./view-icon";
 import { useAllAccountLabels, useCombinedCounts } from "./hooks";
-import { defaultRulesFor } from "./custom-views";
 import { getAccountColor, getAccountDisplayName } from "./account-style";
 import { SYSTEM_LABEL_NAMES, SYSTEM_LABEL_ORDER, labelDisplayName } from "./label-names";
 import type { GmailAccount, GmailLabel, MailView, ViewRule } from "./types";
@@ -38,7 +37,6 @@ type ViewEditorProps = {
     color: string | null;
   }) => Promise<unknown>;
   onDelete: (id: string) => Promise<unknown>;
-  onReset: (id: string) => Promise<unknown>;
   onClose: () => void;
 };
 
@@ -258,7 +256,6 @@ export function ViewEditorDialog({
   accounts,
   onSave,
   onDelete,
-  onReset,
   onClose,
 }: ViewEditorProps & { open: boolean }) {
   const accountLabels = useAllAccountLabels(
@@ -275,11 +272,9 @@ export function ViewEditorDialog({
       ? accounts[0]
         ? { [accounts[0].id]: { allOf: [], noneOf: [] } }
         : {}
-      : rulesToPicks(view.rules ?? defaultRulesFor(view.kind, accounts)),
+      : rulesToPicks(view.rules),
   );
   const [confirmDelete, setConfirmDelete] = useState(false);
-
-  const isDefault = view != null && view.kind !== "custom";
 
   const labelsOf = (accountId: string) =>
     accountLabels.find((a) => a.accountId === accountId)?.labels ?? [];
@@ -309,47 +304,28 @@ export function ViewEditorDialog({
         }}
         size="xl"
         title={view ? `Edit “${view.name}”` : "New view"}
-        description={
-          isDefault
-            ? "A folder of All mailboxes."
-            : "Mail from your mailboxes, by their labels: one list, in the sidebar's Views."
-        }
+        description="Mail from your mailboxes, by their labels: one list, in the sidebar's Views."
         confirmLabel={view ? "Save" : "Create view"}
         confirmDisabled={!canSave}
         onConfirm={save}
         destructiveAction={
-          view && view.kind === "custom"
-            ? { label: "Delete view", onClick: () => setConfirmDelete(true) }
-            : undefined
-        }
-        secondaryAction={
-          view && isDefault
-            ? {
-                label: "Reset to default",
-                onClick: async () => {
-                  await onReset(view.id);
-                  onClose();
-                },
-              }
-            : undefined
+          view ? { label: "Delete view", onClick: () => setConfirmDelete(true) } : undefined
         }
       >
         <Field label="Name" orientation="vertical">
           <div className="flex items-center gap-2">
-            {isDefault ? null : (
-              <button
-                type="button"
-                aria-label="Choose an icon"
-                aria-expanded={picking}
-                onClick={() => setPicking((open) => !open)}
-                className={cn(
-                  "flex size-8 shrink-0 items-center justify-center rounded-lg border border-input outline-none hover:bg-accent-surface focus-visible:ring-2 focus-visible:ring-focus-ring",
-                  picking && "bg-accent-surface",
-                )}
-              >
-                <ViewMark view={{ name: name || "?", ...mark }} />
-              </button>
-            )}
+            <button
+              type="button"
+              aria-label="Choose an icon"
+              aria-expanded={picking}
+              onClick={() => setPicking((open) => !open)}
+              className={cn(
+                "flex size-8 shrink-0 items-center justify-center rounded-lg border border-input outline-none hover:bg-accent-surface focus-visible:ring-2 focus-visible:ring-focus-ring",
+                picking && "bg-accent-surface",
+              )}
+            >
+              <ViewMark view={{ name: name || "?", ...mark }} />
+            </button>
             <Input
               value={name}
               onChange={(e) => setName(e.target.value)}

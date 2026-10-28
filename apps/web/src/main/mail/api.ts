@@ -31,11 +31,11 @@ export type ListMessagesResult = {
 export type SearchMessagesParams = {
   /** May be empty when structured filters are set. */
   q: string;
-  /** Omit to search every account (Combined mode / command palette). */
+  /** Omit to search every account (a view, the command palette). */
   accountId?: string;
   /** Restrict to messages carrying this label (view filter, account mode). */
   labelId?: string;
-  /** Restrict to messages matching these rules (view filter, Combined mode). */
+  /** Restrict to messages matching these rules (a view's filter). */
   rules?: ViewRule[];
   starred?: boolean;
   important?: boolean;
@@ -413,7 +413,6 @@ export type SaveViewParams = {
   id?: string;
   name: string;
   rules: ViewRule[];
-  mailbox?: string;
   icon?: string | null;
   color?: string | null;
 };
@@ -679,8 +678,6 @@ export const gmailApi = {
   saveView: (params: SaveViewParams): Promise<MailView> => ipc("gmail:saveView", params),
 
   deleteView: (viewId: string): Promise<{ ok: boolean }> => ipc("gmail:deleteView", { viewId }),
-
-  resetView: (viewId: string): Promise<{ ok: boolean }> => ipc("gmail:resetView", { viewId }),
 
   openSettings: (target?: SettingsTarget): Promise<void> => ipc("window:openSettings", target),
   closeMainWindow: (): Promise<void> => ipc("window:closeMain"),

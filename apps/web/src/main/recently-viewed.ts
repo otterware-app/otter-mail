@@ -9,18 +9,31 @@
 import { useEffect, useSyncExternalStore } from "react";
 import { getAccountDisplayName } from "./mail/account-style";
 import { senderLabel } from "./mail/address";
-import { COMBINED_ACCOUNT_ID } from "./mail/custom-views";
 import { CHATS_SPACE, isViewSpaceId } from "./mail/spaces";
 import { SEARCH_MAILBOX } from "./mail/gmail-query";
 import { useLabels, useMessage } from "./mail/hooks";
 import { isBlank, useChats } from "./mail/chat-store";
 import { SYSTEM_LABEL_NAMES, labelDisplayName } from "./mail/label-names";
-import type { GmailAccount, MailView, ViewKind } from "./mail/types";
+import type { GmailAccount, MailView } from "./mail/types";
 import type { SettingsPane } from "./mail/api";
 import { SETTINGS_SECTION_LABELS } from "./settings/settings-search";
 
-/** The icon a place shows: a view's kind, a label, a conversation, Settings, or a chat. */
-export type RecentIcon = ViewKind | "archive" | "label" | "conversation" | "settings" | "chat";
+/** The icon a place shows: a system folder's, a view's ("custom"), a label, a conversation, Settings, or a chat. */
+export type RecentIcon =
+  | "inbox"
+  | "starred"
+  | "sent"
+  | "drafts"
+  | "important"
+  | "allmail"
+  | "archive"
+  | "junk"
+  | "trash"
+  | "custom"
+  | "label"
+  | "conversation"
+  | "settings"
+  | "chat";
 
 export type RecentPlace = Readonly<{
   /** The router location that brings it back. */
@@ -74,7 +87,7 @@ export function useRecentlyViewed(): RecentPlace[] {
   return useSyncExternalStore(subscribe, getRecentlyViewed);
 }
 
-/** A system label's icon: the kind of the combined view that shows it. */
+/** A system label's icon. */
 const SYSTEM_LABEL_ICONS: Record<string, RecentIcon> = {
   INBOX: "inbox",
   STARRED: "starred",
@@ -149,14 +162,11 @@ export function useRecordRecentlyViewed({
     if (chat && !isBlank(chat)) place = { href, context: "Chats", title: chat.title, icon: "chat" };
   } else if (mailbox && label !== SEARCH_MAILBOX) {
     const account = accounts.find((a) => a.id === mailbox);
-    const context =
-      mailbox === COMBINED_ACCOUNT_ID
-        ? "All mailboxes"
-        : account
-          ? getAccountDisplayName(account)
-          : isViewSpaceId(mailbox)
-            ? "Views"
-            : null;
+    const context = account
+      ? getAccountDisplayName(account)
+      : isViewSpaceId(mailbox)
+        ? "Views"
+        : null;
     // A view's space is its list: the view itself.
     const view = views.find((v) => v.id === (isViewSpaceId(mailbox) ? mailbox : label));
     const ownLabel = ownLabels?.find((l) => l.id === label);

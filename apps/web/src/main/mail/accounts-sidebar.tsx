@@ -24,7 +24,6 @@ import {
   Trash2Icon,
   PlusIcon,
   ChevronDownIcon,
-  LayersIcon,
   TagIcon,
   FolderIcon,
   SearchIcon,
@@ -36,10 +35,8 @@ import {
   useDeleteLabel,
   useModifyThread,
   useEmptyFolder,
-  useViewUnreadCounts,
 } from "./hooks";
-import type { GmailLabel, MailView } from "./types";
-import { COMBINED_ACCOUNT_ID } from "./custom-views";
+import type { GmailLabel } from "./types";
 import { ALL_MAIL_LABEL_ID, ARCHIVE_LABEL_ID } from "./label-names";
 import { buildLabelTree, type LabelTreeNode } from "./label-tree";
 import {
@@ -53,7 +50,6 @@ import { labelMoveName } from "../keybindings/commands";
 import { renameLabelKeybindings, useKeybindingsState } from "../keybindings/store";
 import { formatShortcut, parseShortcut } from "../keybindings/keys";
 import { LabelShortcutDialog } from "../settings/keybindings-pane";
-import { useMailboxes } from "../mailboxes";
 import { Section, SectionAddButton, SkRow, type RowDragProps } from "./sidebar-ui";
 import { useCapabilities } from "./capabilities";
 
@@ -112,18 +108,6 @@ const SYSTEM_LABEL_MAP: Record<string, { name: string; icon: ReactNode }> = {
   SPAM: { name: "Junk", icon: <ArchiveXIcon className="size-4" /> },
   TRASH: { name: "Trash", icon: <Trash2Icon className="size-4" /> },
 };
-
-function viewIcon(view: MailView): ReactNode {
-  if (view.kind === "inbox") return <InboxIcon className="size-4" />;
-  if (view.kind === "starred") return <StarIcon className="size-4" />;
-  if (view.kind === "sent") return <SendIcon className="size-4" />;
-  if (view.kind === "drafts") return <FileIcon className="size-4" />;
-  if (view.kind === "important") return <BookmarkIcon className="size-4" />;
-  if (view.kind === "allmail") return <MailsIcon className="size-4" />;
-  if (view.kind === "junk") return <ArchiveXIcon className="size-4" />;
-  if (view.kind === "trash") return <Trash2Icon className="size-4" />;
-  return <LayersIcon className="size-4" />;
-}
 
 /** An open search, listed under the view it was started from. */
 export type SidebarSearch = { id: string; parent: string; title: string; selected: boolean };
@@ -346,35 +330,29 @@ function LabelNode({
 }
 
 /**
- * One mailbox's folders and labels (All mailboxes': its built-in views), in
- * the sidebar under its tab (app-sidebar.tsx), with what they offer: a
- * label's menu, dropping conversations or labels on one, emptying Junk and Trash.
+ * One mailbox's folders and labels, in the sidebar under its tab
+ * (app-sidebar.tsx), with what they offer: a label's menu, dropping
+ * conversations or labels on one, emptying Junk and Trash.
  */
 export function MailboxFolders({
   mailboxId,
   selectedLabelId,
   onSelectLabel,
-  views,
   searchRows,
   depth = 0,
 }: {
-  /** An account's id, or All mailboxes'. */
+  /** The account's id. */
   mailboxId: string;
   /** The folder or label showing, while this mailbox is the one showing; "" otherwise. */
   selectedLabelId: string;
   onSelectLabel: (labelId: string) => void;
-  /** Every view: All mailboxes' folders are the built-in ones. */
-  views: MailView[];
   /** Its open searches, under where each started (the mailbox showing has them). */
   searchRows?: (parent: string, depth: number) => ReactNode;
   /** How far its rows are indented. */
   depth?: number;
 }) {
-  const isCombined = mailboxId === COMBINED_ACCOUNT_ID;
-  const ownAccountId = isCombined ? null : mailboxId;
-
-  const labelsQuery = useLabels(ownAccountId);
-  const capabilities = useCapabilities(ownAccountId);
+  const labelsQuery = useLabels(mailboxId);
+  const capabilities = useCapabilities(mailboxId);
   // Mail in one folder at a time (IMAP): its labels are folders.
   const labelNoun = capabilities.foldersAndCategories
     ? "Category"
@@ -394,33 +372,28 @@ export function MailboxFolders({
   const [rootDropActive, setRootDropActive] = useState(false);
   const [shortcutTarget, setShortcutTarget] = useState<string | null>(null);
   // Empty Junk / Empty Trash, waiting for its confirmation.
-  const [emptyTarget, setEmptyTarget] = useState<{
-    labelId: "SPAM" | "TRASH";
-    accountIds: string[];
-  } | null>(null);
+  const [emptyTarget, setEmptyTarget] = useState<"SPAM" | "TRASH" | null>(null);
   const emptyFolder = useEmptyFolder();
   const modifyThread = useModifyThread();
   const { rules: keybindingRules } = useKeybindingsState();
 
-  const { accounts } = useMailboxes();
   const labels: GmailLabel[] = labelsQuery.data ?? [];
-  // The combined mailbox's folders are its built-in views.
-  const folders = views.filter((v) => v.kind !== "custom");
-  const viewUnreadCounts = useViewUnreadCounts(folders, accounts, isCombined);
 
-  // Same order as the Combined built-in views. All Mail isn't a Gmail label
-  // (archived mail just lacks INBOX), so it's listed without one — and, like
-  // Gmail, without an unread badge. Where the Archive is a folder of its own
-  // (Outlook, IMAP), archived mail is there and All Mail isn't a place.
+  // All Mail isn't a Gmail label (archived mail just lacks INBOX), so it's
+  // listed without one — and, like Gmail, without an unread badge. Where the
+  // Archive is a folder of its own (Outlook, IMAP), archived mail is there and
+  // All Mail isn't a place; an IMAP server's Archive may be made on first use.
   // Important is Gmail's sorting, where the mailbox has it.
   const shown = (id: string) =>
-    id in SYSTEM_LABEL_MAP && (id !== "IMPORTANT" || capabilities.categories);
-  const allMail: GmailLabel = { id: ALL_MAIL_LABEL_ID, name: "All Mail", type: "system" };
-  const hasArchive = labels.some((l) => l.id === ARCHIVE_LABEL_ID);
-  const systemLabels = [
-    ...labels.filter((l) => l.type === "system" && shown(l.id)),
-    ...(hasArchive ? [] : [allMail]),
-  ].sort((a, b) => SIDEBAR_SYSTEM_ORDER.indexOf(a.id) - SIDEBAR_SYSTEM_ORDER.indexOf(b.id));
+    (id !== "IMPORTANT" || capabilities.categories) &&
+    id !== (capabilities.archiveFolder ? ALL_MAIL_LABEL_ID : ARCHIVE_LABEL_ID);
+  const systemLabels = SIDEBAR_SYSTEM_ORDER.filter(shown).flatMap((id): GmailLabel[] => {
+    const label = labels.find((l) => l.id === id);
+    if (label) return [label];
+    return id === ALL_MAIL_LABEL_ID || id === ARCHIVE_LABEL_ID
+      ? [{ id, name: id, type: "system" }]
+      : [];
+  });
   const userLabels = labels.filter((l) => l.type === "user");
   const labelSections = capabilities.foldersAndCategories
     ? [
@@ -557,169 +530,127 @@ export function MailboxFolders({
     },
   };
 
-  /** Right-click on Junk/Trash (a mailbox's own, or Combined's) → Empty…. */
-  const withEmptyMenu = (row: ReactNode, labelId: string, accountIds: string[]) => {
-    if ((labelId !== "SPAM" && labelId !== "TRASH") || accountIds.length === 0) return row;
+  /** Right-click on Junk/Trash → Empty…. */
+  const withEmptyMenu = (row: ReactNode, labelId: string) => {
+    if (labelId !== "SPAM" && labelId !== "TRASH") return row;
     return (
       <ContextMenu>
         <ContextMenuTrigger>{row}</ContextMenuTrigger>
         <ContextMenuContent>
-          <ContextMenuItem
-            icon="trash"
-            color="red"
-            onSelect={() => setEmptyTarget({ labelId, accountIds })}
-          >
+          <ContextMenuItem icon="trash" color="red" onSelect={() => setEmptyTarget(labelId)}>
             {labelId === "SPAM" ? "Empty Junk…" : "Empty Trash…"}
           </ContextMenuItem>
         </ContextMenuContent>
       </ContextMenu>
     );
   };
-  /** The folder a built-in Combined view shows, and the accounts in it. */
-  const viewFolder = (view: MailView): { labelId: string; accountIds: string[] } => ({
-    labelId: view.kind === "junk" ? "SPAM" : view.kind === "trash" ? "TRASH" : "",
-    accountIds: view.rules
-      ? [...new Set(view.rules.map((r) => r.accountId))]
-      : accounts.map((a) => a.id),
-  });
-
   return (
     <SearchRowsContext.Provider value={searchRows ?? noSearchRows}>
-      {isCombined ? (
-        <>
-          {folders.map((view) => (
-            <Fragment key={view.id}>
+      <>
+        {(labels.length > 0
+          ? systemLabels.map((l) => ({
+              id: l.id,
+              unread: l.unread ?? 0,
+              total: l.total ?? 0,
+            }))
+          : SIDEBAR_SYSTEM_ORDER.filter(shown).map((id) => ({ id, unread: 0, total: 0 }))
+        ).map(({ id, unread, total }) => {
+          const meta = SYSTEM_LABEL_MAP[id];
+          if (!meta) return null;
+          // Drafts is a raw count of drafts, not an unread signal.
+          const isDrafts = id === "DRAFT";
+          return (
+            <Fragment key={id}>
               {withEmptyMenu(
                 <SkRow
-                  icon={viewIcon(view)}
-                  title={view.name}
+                  icon={meta.icon}
+                  title={meta.name}
                   depth={depth}
-                  selected={selectedLabelId === view.id}
-                  badge={viewUnreadCounts[view.id] ?? 0}
+                  selected={selectedLabelId === id}
+                  badge={isDrafts ? total : unread}
                   onClick={() => {
-                    console.log("[AccountsSidebar:selectView]", { viewId: view.id });
-                    onSelectLabel(view.id);
+                    console.log("[AccountsSidebar:selectLabel]", { labelId: id });
+                    onSelectLabel(id);
                   }}
                 />,
-                viewFolder(view).labelId,
-                viewFolder(view).accountIds,
+                id,
               )}
-              <SearchRows parent={view.id} depth={depth} />
+              <SearchRows parent={id} depth={depth} />
             </Fragment>
-          ))}
-        </>
-      ) : (
-        <>
-          {(labels.length > 0
-            ? systemLabels.map((l) => ({
-                id: l.id,
-                unread: l.unread ?? 0,
-                total: l.total ?? 0,
-              }))
-            : SIDEBAR_SYSTEM_ORDER.filter(
-                (id) =>
-                  shown(id) &&
-                  id !== (capabilities.archiveFolder ? ALL_MAIL_LABEL_ID : ARCHIVE_LABEL_ID),
-              ).map((id) => ({ id, unread: 0, total: 0 }))
-          ).map(({ id, unread, total }) => {
-            const meta = SYSTEM_LABEL_MAP[id];
-            if (!meta) return null;
-            // Drafts is a raw count of drafts, not an unread signal.
-            const isDrafts = id === "DRAFT";
-            return (
-              <Fragment key={id}>
-                {withEmptyMenu(
-                  <SkRow
-                    icon={meta.icon}
-                    title={meta.name}
-                    depth={depth}
-                    selected={selectedLabelId === id}
-                    badge={isDrafts ? total : unread}
-                    onClick={() => {
-                      console.log("[AccountsSidebar:selectLabel]", { labelId: id });
-                      onSelectLabel(id);
-                    }}
-                  />,
-                  id,
-                  [mailboxId],
-                )}
-                <SearchRows parent={id} depth={depth} />
-              </Fragment>
-            );
-          })}
+          );
+        })}
 
-          {labelSections.map((section) =>
-            section.labels.length === 0 ? (
-              // None yet: a row to make the first, rather than an empty heading.
-              section.create ? (
-                <SkRow
-                  key={section.title}
-                  icon={<PlusIcon className="size-4" />}
-                  title={`New ${labelNoun.toLowerCase()}`}
-                  depth={depth}
-                  onClick={() => setCreateLabelOpen(true)}
-                />
-              ) : null
-            ) : (
-              <Section
+        {labelSections.map((section) =>
+          section.labels.length === 0 ? (
+            // None yet: a row to make the first, rather than an empty heading.
+            section.create ? (
+              <SkRow
                 key={section.title}
-                title={section.title}
+                icon={<PlusIcon className="size-4" />}
+                title={`New ${labelNoun.toLowerCase()}`}
                 depth={depth}
-                action={
-                  section.create ? (
-                    <SectionAddButton
-                      label={`Add ${labelNoun.toLowerCase()}`}
-                      onClick={() => setCreateLabelOpen(true)}
-                    />
-                  ) : undefined
-                }
-                dropZone={
-                  section.title === "Categories"
-                    ? undefined
-                    : {
-                        active: rootDropActive,
-                        onDragOver: (e) => {
-                          if (!e.dataTransfer.types.includes(LABEL_DRAG_MIME)) return;
-                          e.preventDefault();
-                          e.dataTransfer.dropEffect = "move";
-                          setRootDropActive(true);
-                        },
-                        onDragLeave: () => setRootDropActive(false),
-                        onDrop: (e) => {
-                          setRootDropActive(false);
-                          const raw = e.dataTransfer.getData(LABEL_DRAG_MIME);
-                          if (!raw) return;
-                          e.preventDefault();
-                          handleMoveLabel(JSON.parse(raw) as LabelDragPayload, null);
-                        },
-                      }
-                }
-              >
-                {(section.title === "Categories"
-                  ? section.labels
-                      .toSorted((a, b) => a.name.localeCompare(b.name))
-                      .map((label) => ({
-                        key: label.id,
-                        segment: label.name,
-                        label,
-                        children: [],
-                      }))
-                  : buildLabelTree(section.labels)
-                ).map((node) => (
-                  <LabelNode
-                    key={node.key}
-                    node={node}
-                    depth={depth}
-                    selectedLabelId={selectedLabelId}
-                    onSelectLabel={onSelectLabel}
-                    actions={labelActions}
+                onClick={() => setCreateLabelOpen(true)}
+              />
+            ) : null
+          ) : (
+            <Section
+              key={section.title}
+              title={section.title}
+              depth={depth}
+              action={
+                section.create ? (
+                  <SectionAddButton
+                    label={`Add ${labelNoun.toLowerCase()}`}
+                    onClick={() => setCreateLabelOpen(true)}
                   />
-                ))}
-              </Section>
-            ),
-          )}
-        </>
-      )}
+                ) : undefined
+              }
+              dropZone={
+                section.title === "Categories"
+                  ? undefined
+                  : {
+                      active: rootDropActive,
+                      onDragOver: (e) => {
+                        if (!e.dataTransfer.types.includes(LABEL_DRAG_MIME)) return;
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect = "move";
+                        setRootDropActive(true);
+                      },
+                      onDragLeave: () => setRootDropActive(false),
+                      onDrop: (e) => {
+                        setRootDropActive(false);
+                        const raw = e.dataTransfer.getData(LABEL_DRAG_MIME);
+                        if (!raw) return;
+                        e.preventDefault();
+                        handleMoveLabel(JSON.parse(raw) as LabelDragPayload, null);
+                      },
+                    }
+              }
+            >
+              {(section.title === "Categories"
+                ? section.labels
+                    .toSorted((a, b) => a.name.localeCompare(b.name))
+                    .map((label) => ({
+                      key: label.id,
+                      segment: label.name,
+                      label,
+                      children: [],
+                    }))
+                : buildLabelTree(section.labels)
+              ).map((node) => (
+                <LabelNode
+                  key={node.key}
+                  node={node}
+                  depth={depth}
+                  selectedLabelId={selectedLabelId}
+                  onSelectLabel={onSelectLabel}
+                  actions={labelActions}
+                />
+              ))}
+            </Section>
+          ),
+        )}
+      </>
 
       <Dialog
         open={createLabelOpen}
@@ -816,21 +747,18 @@ export function MailboxFolders({
         onOpenChange={(o) => {
           if (!o) setEmptyTarget(null);
         }}
-        title={emptyTarget?.labelId === "TRASH" ? "Empty Trash" : "Empty Junk"}
-        confirmLabel={emptyTarget?.labelId === "TRASH" ? "Empty Trash" : "Empty Junk"}
+        title={emptyTarget === "TRASH" ? "Empty Trash" : "Empty Junk"}
+        confirmLabel={emptyTarget === "TRASH" ? "Empty Trash" : "Empty Junk"}
         confirmVariant="destructive"
         onConfirm={() => {
-          const target = emptyTarget;
+          const labelId = emptyTarget;
           setEmptyTarget(null);
-          if (target) emptyFolder.mutate(target);
+          if (labelId) emptyFolder.mutate({ accountId: mailboxId, labelId });
         }}
       >
         <Text variant="small">
-          Permanently delete every message in {emptyTarget?.labelId === "TRASH" ? "Trash" : "Junk"}
-          {emptyTarget && emptyTarget.accountIds.length > 1
-            ? ` for all ${emptyTarget.accountIds.length} accounts`
-            : ""}
-          ? This can't be undone.
+          Permanently delete every message in {emptyTarget === "TRASH" ? "Trash" : "Junk"}? This
+          can't be undone.
         </Text>
       </Dialog>
     </SearchRowsContext.Provider>
