@@ -7,11 +7,11 @@ import { searchableSetting } from "../settings/settings-search";
 import { useMailboxes } from "../mailboxes";
 import { useLatest } from "../use-latest";
 import { getAccountDisplayName } from "./account-style";
-import { gmailApi } from "./api";
+import { mailApi } from "./api";
 import { signInProvider, signsInWithPassword } from "./capabilities";
 import { syncStatusPollMs, useAddAccount } from "./hooks";
 import { toast, type ToastId } from "./toast";
-import type { GmailAccount, SyncStatus } from "./types";
+import type { MailAccount, SyncStatus } from "./types";
 import { Btn, cn } from "./ui";
 
 /**
@@ -54,17 +54,17 @@ function syncLine(status: SyncStatus | undefined): StatusLine {
 }
 
 /** Never synced here: it was added on another device (through the Otter account). */
-function notOnThisDevice(account: GmailAccount, status: SyncStatus | undefined): boolean {
+function notOnThisDevice(account: MailAccount, status: SyncStatus | undefined): boolean {
   return account.signedOut === true && status != null && !status.lastSyncAt;
 }
 
 /** Sync stopped until the user signs in again (or enters the password). */
-export function needsSignIn(account: GmailAccount, status: SyncStatus | undefined): boolean {
+export function needsSignIn(account: MailAccount, status: SyncStatus | undefined): boolean {
   return account.signedOut === true || status?.signInNeeded === true;
 }
 
 /** Sync state for an account, with a signed-out account called out first. */
-export function accountStatus(account: GmailAccount, status: SyncStatus | undefined): StatusLine {
+export function accountStatus(account: MailAccount, status: SyncStatus | undefined): StatusLine {
   if (notOnThisDevice(account, status)) {
     return {
       text: "Not signed in on this device",
@@ -112,7 +112,7 @@ function useSyncStatuses(accountIds: string[]): (SyncStatus | undefined)[] {
   return useQueries({
     queries: accountIds.map((id) => ({
       queryKey: ["gmail:syncStatus", id],
-      queryFn: () => gmailApi.getSyncStatus(id),
+      queryFn: () => mailApi.getSyncStatus(id),
       refetchInterval: (query: { state: { data?: SyncStatus } }) =>
         syncStatusPollMs(query.state.data),
     })),
@@ -130,12 +130,12 @@ export function takeRequestedMailbox(): string | null {
 }
 
 /** "Contoso is signed out", "Contoso needs its password". */
-function signedOutTitle(account: GmailAccount): string {
+function signedOutTitle(account: MailAccount): string {
   const name = getAccountDisplayName(account);
   return signsInWithPassword(account) ? `${name} needs its password` : `${name} is signed out`;
 }
 
-const signInLabel = (account: GmailAccount) =>
+const signInLabel = (account: MailAccount) =>
   signsInWithPassword(account) ? "Enter password" : "Sign in";
 
 /**
@@ -146,7 +146,7 @@ export function useSignInAgain() {
   const google = useAddAccount("gmail");
   const microsoft = useAddAccount("outlook");
   const navigate = useNavigate();
-  const signIn = (account: GmailAccount) => {
+  const signIn = (account: MailAccount) => {
     if (signsInWithPassword(account)) {
       requestedMailbox = account.id;
       void navigate({
@@ -234,7 +234,7 @@ export function MailboxHealth({ accountIds }: { accountIds: string[] }) {
   const { accounts: all } = useMailboxes();
   const accounts = accountIds
     .map((id) => all.find((a) => a.id === id))
-    .filter((a): a is GmailAccount => a != null);
+    .filter((a): a is MailAccount => a != null);
   const statuses = useSyncStatuses(accounts.map((a) => a.id));
   const { signIn, pending } = useSignInAgain();
   const [syncing, setSyncing] = useState(false);
@@ -264,7 +264,7 @@ export function MailboxHealth({ accountIds }: { accountIds: string[] }) {
               <Btn
                 size="xs"
                 className="mt-2 w-full"
-                onClick={() => void gmailApi.cancelAddAccount()}
+                onClick={() => void mailApi.cancelAddAccount()}
               >
                 Cancel sign-in
               </Btn>
@@ -322,7 +322,7 @@ export function MailboxHealth({ accountIds }: { accountIds: string[] }) {
         disabled={busy}
         onClick={() => {
           setSyncing(true);
-          for (const a of accounts) void gmailApi.syncAccount(a.id).catch(() => {});
+          for (const a of accounts) void mailApi.syncAccount(a.id).catch(() => {});
         }}
         className="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-accent-surface hover:text-foreground focus-visible:ring-2 focus-visible:ring-focus-ring disabled:cursor-default disabled:opacity-60"
       >

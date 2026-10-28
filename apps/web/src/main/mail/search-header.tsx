@@ -16,7 +16,7 @@ import {
   UserIcon,
   XIcon,
 } from "lucide-react";
-import type { GmailAccount, GmailMessageSummary } from "./types";
+import type { MailAccount, MessageSummary } from "./types";
 import { capabilitiesOf } from "./capabilities";
 import { senderLabel } from "./address";
 import {
@@ -73,7 +73,7 @@ type Suggestion =
   | { kind: "search"; query: string }
   | { kind: "recent"; query: string }
   | { kind: "person"; name: string; email: string }
-  | { kind: "message"; message: GmailMessageSummary };
+  | { kind: "message"; message: MessageSummary };
 
 function useSuggestions(draft: string, accountIds: string[], open: boolean): Suggestion[] {
   const text = draft.trim();
@@ -551,7 +551,7 @@ function ScopeChip({
   scope,
   onScope,
 }: {
-  accounts: GmailAccount[];
+  accounts: MailAccount[];
   scope: string[];
   onScope: (accountIds: string[]) => void;
 }) {
@@ -616,8 +616,8 @@ export function SearchHeader({
   onSearch: (q: string) => void;
   /** Leave the Search mailbox (Escape once the search is empty). */
   onExit: () => void;
-  onOpenMessage: (message: GmailMessageSummary) => void;
-  accounts: GmailAccount[];
+  onOpenMessage: (message: MessageSummary) => void;
+  accounts: MailAccount[];
   scope: string[];
   onScope: (accountIds: string[]) => void;
   estimate: number | null;

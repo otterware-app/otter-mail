@@ -1,6 +1,6 @@
 import type { ImapSettings, MailCapabilities, MailProviderKind } from "@otter-mail/contracts";
 
-export type GmailAccount = {
+export type MailAccount = {
   id: string;
   email: string;
   name: string;
@@ -23,7 +23,7 @@ export type GmailAccount = {
   signedOut?: boolean;
 };
 
-export type GmailLabel = {
+export type MailLabel = {
   id: string;
   name: string;
   type: "system" | "user";
@@ -32,7 +32,7 @@ export type GmailLabel = {
   color?: { backgroundColor: string; textColor: string };
 };
 
-export type GmailMessageSummary = {
+export type MessageSummary = {
   id: string;
   /** Owning account — populated on reads so combined (cross-account) views can route. */
   accountId?: string;
@@ -75,7 +75,7 @@ export type ContactSuggestion = {
   email: string;
 };
 
-export type GmailMessageDetail = GmailMessageSummary & {
+export type MessageDetail = MessageSummary & {
   /** Provider revision of this cached draft body (Outlook keeps its message ID). */
   draftRevision?: string;
   bodyHtml: string | null;

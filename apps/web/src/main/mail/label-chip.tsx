@@ -1,6 +1,6 @@
 import type { CSSProperties } from "react";
 import { ChevronsRightIcon, InboxIcon, XIcon } from "lucide-react";
-import type { GmailLabel } from "./types";
+import type { MailLabel } from "./types";
 
 /** Badge chrome shared by every chip (Otter Code's `Badge`, size sm). */
 // no-drag: in the reader's title band (a window-drag region in the Mac app)
@@ -100,7 +100,7 @@ export function LabelChip({
   selected,
   onRemove,
 }: {
-  label: GmailLabel;
+  label: MailLabel;
   selected?: boolean;
   onRemove?: () => void;
 }) {

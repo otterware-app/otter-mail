@@ -13,7 +13,7 @@ import {
   type ImapAddress,
   type ParsedMessage,
 } from "../../protocols/index.js";
-import type { GmailMessageDetail, GmailMessageSummary } from "../../types.js";
+import type { MessageDetail, MessageSummary } from "../../types.js";
 import { labelsFor, messageId, type Folder } from "./folders.js";
 
 const SNIPPET_BYTES = 1024;
@@ -136,7 +136,7 @@ export async function toSummary(
   folder: Folder,
   uidValidity: number,
   message: FetchedMessage,
-): Promise<GmailMessageSummary> {
+): Promise<MessageSummary> {
   const envelope = message.envelope;
   const id = messageId(uidValidity, message.uid, folder.path);
   const labelIds = labelsFor(folder, message.flags ?? []);
@@ -169,7 +169,7 @@ export async function toDetail(
   folder: Folder,
   uidValidity: number,
   message: FetchedMessage,
-): Promise<GmailMessageDetail> {
+): Promise<MessageDetail> {
   const summary = await toSummary(folder, uidValidity, message);
   const parsed = await parseMessage(message.source ?? new Uint8Array());
   const attachments = parsed.attachments.map((a, i) => ({

@@ -47,7 +47,7 @@ import { CHATS_SPACE, VIEW_LIST } from "./spaces";
 import { MailboxHealth } from "./sync-health";
 import { toast } from "./toast";
 import { useInboxUnread, useMailboxOptions, type MailboxOption } from "./top-bar";
-import type { GmailAccount, MailView } from "./types";
+import type { MailAccount, MailView } from "./types";
 import { HintTooltip, cn } from "./ui";
 import { ViewMark } from "./view-icon";
 
@@ -71,7 +71,7 @@ export function AppSidebar({
   onCloseSearch,
 }: {
   /** The mailboxes that are on. */
-  accounts: GmailAccount[];
+  accounts: MailAccount[];
   /** The user's views. */
   views: MailView[];
   /** The space showing (spaces.ts), and its folder, label, list or chat. */
@@ -191,7 +191,7 @@ function SidebarTabs({
   onSelect,
 }: {
   options: MailboxOption[];
-  accounts: GmailAccount[];
+  accounts: MailAccount[];
   selectedId: string | null;
   onSelect: (id: string) => void;
 }) {
@@ -285,7 +285,7 @@ function MailPage({
   onSelectSearch,
   onCloseSearch,
 }: {
-  accounts: GmailAccount[];
+  accounts: MailAccount[];
   views: MailView[];
   /** The mailbox whose folders show (its tab is the one picked). */
   mailbox: string | null;

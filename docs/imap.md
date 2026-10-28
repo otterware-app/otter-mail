@@ -24,7 +24,7 @@ MailProvider                packages/core/src/providers/provider.ts
 - `contracts/src/mail.ts` has the shared model: `MailProviderKind`, `ImapSettings`,
   `MailCapabilities` (and each provider's). The UI gates on capabilities, the way it gates
   Mac-only UI on `features`.
-- An account is `GmailAccount` with `provider` (absent = Gmail) and `imap` settings. Its id is
+- An account is `MailAccount` with `provider` (absent = Gmail) and `imap` settings. Its id is
   its address for both providers.
 - The IMAP password lives in `platform.secrets` under `imap-password:<accountId>`
   (`services/imap-passwords.ts`); it is never synced. A mailbox linked on another device arrives

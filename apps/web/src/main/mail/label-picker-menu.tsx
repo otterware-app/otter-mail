@@ -12,7 +12,7 @@ import {
 import { useCapabilities } from "./capabilities";
 import { useLabels, useModifyThread } from "./hooks";
 import { buildLabelTree, type LabelTreeNode, isAssignableLabel } from "./label-tree";
-import type { GmailLabel } from "./types";
+import type { MailLabel } from "./types";
 
 type LabelChoicesParams = {
   /** Owning account of the message (per-row account in Combined mode). */
@@ -91,7 +91,7 @@ export function renderLabelMenuNodes(
  * folder at a time (IMAP: no `multipleLabels`): the folder is added and the
  * folders it was in (Inbox, or another of `labels`) come off.
  */
-export function moveToFolder(labelIds: string[], folderId: string, labels: GmailLabel[]) {
+export function moveToFolder(labelIds: string[], folderId: string, labels: MailLabel[]) {
   const folders = new Set(["INBOX", ...labels.filter(isAssignableLabel).map((l) => l.id)]);
   return {
     addLabelIds: [folderId],

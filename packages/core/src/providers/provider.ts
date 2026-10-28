@@ -12,9 +12,9 @@ import type { MailCapabilities, MailProviderKind } from "@otter-mail/contracts";
 
 import type {
   ComposeAttachment,
-  GmailLabel,
-  GmailMessageDetail,
-  GmailMessageSummary,
+  MailLabel,
+  MessageDetail,
+  MessageSummary,
   SyncStatus,
 } from "../types.js";
 
@@ -27,7 +27,7 @@ export interface SyncContext {
   /** Throws a SyncCancelled once the account was removed; call before every cache write. */
   assertActive(): void;
   /** Mail that arrived since the last run, to notify about. */
-  newMail(messages: GmailMessageSummary[]): Promise<void>;
+  newMail(messages: MessageSummary[]): Promise<void>;
 }
 
 /**
@@ -162,13 +162,13 @@ export interface MailProvider {
   watch?(accountId: string, onChange: () => void): () => void;
 
   // ── Reads ────────────────────────────────────────────────────────────────
-  listLabels(accountId: string): Promise<GmailLabel[]>;
+  listLabels(accountId: string): Promise<MailLabel[]>;
   /** Summaries (labels, headers, snippet) for messages; ids gone from the server are left out. */
-  getSummaries(accountId: string, messageIds: string[]): Promise<GmailMessageSummary[]>;
+  getSummaries(accountId: string, messageIds: string[]): Promise<MessageSummary[]>;
   /** The whole message: bodies and the attachment list. */
-  getMessage(accountId: string, messageId: string): Promise<GmailMessageDetail>;
+  getMessage(accountId: string, messageId: string): Promise<MessageDetail>;
   /** Every message of a thread, whole, where one request is cheaper than one per message. */
-  getThread?(accountId: string, threadId: string): Promise<GmailMessageDetail[]>;
+  getThread?(accountId: string, threadId: string): Promise<MessageDetail[]>;
   fetchAttachment(accountId: string, messageId: string, attachmentId: string): Promise<Uint8Array>;
   /** Message-ID and References, for replying to a message cached without them. */
   getReplyHeaders(
@@ -207,14 +207,14 @@ export interface MailProvider {
   trashMessage(accountId: string, messageId: string): Promise<void>;
   trashThread(accountId: string, threadId: string): Promise<void>;
   /** Restores trashed mail; answers fresh summaries of what came back. */
-  untrashMessage(accountId: string, messageId: string): Promise<GmailMessageSummary[]>;
-  untrashThread(accountId: string, threadId: string): Promise<GmailMessageSummary[]>;
+  untrashMessage(accountId: string, messageId: string): Promise<MessageSummary[]>;
+  untrashThread(accountId: string, threadId: string): Promise<MessageSummary[]>;
   /** PERMANENT. */
   deleteForever(accountId: string, messageIds: string[]): Promise<void>;
   /** PERMANENTLY empties Junk or Trash, `cachedIds` included; answers every id deleted. */
   emptyFolder(accountId: string, labelId: "SPAM" | "TRASH", cachedIds: string[]): Promise<string[]>;
 
-  createLabel(accountId: string, name: string): Promise<GmailLabel>;
+  createLabel(accountId: string, name: string): Promise<MailLabel>;
   /** Renames (nested labels follow) and/or recolors a label. */
   updateLabel(
     accountId: string,

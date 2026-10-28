@@ -15,9 +15,9 @@ import { platform, type SqlDatabase } from "../platform.js";
 import { ALL_MAIL_LABEL_ID } from "../types.js";
 import { withPendingLabels } from "./pending-label-writes.js";
 import type {
-  GmailLabel,
-  GmailMessageSummary,
-  GmailMessageDetail,
+  MailLabel,
+  MessageSummary,
+  MessageDetail,
   ViewRule,
   ContactSuggestion,
 } from "../types.js";
@@ -217,7 +217,7 @@ function parseLabelIds(json: string): string[] {
   }
 }
 
-function rowToSummary(row: MessageRow): GmailMessageSummary {
+function rowToSummary(row: MessageRow): MessageSummary {
   return {
     id: row.id,
     accountId: row.accountId,
@@ -243,7 +243,7 @@ interface ThreadRow extends MessageRow {
   threadLabels: string | null;
 }
 
-function rowToThreadSummary(row: ThreadRow): GmailMessageSummary {
+function rowToThreadSummary(row: ThreadRow): MessageSummary {
   return {
     ...rowToSummary(row),
     threadCount: row.threadCount,
@@ -253,11 +253,11 @@ function rowToThreadSummary(row: ThreadRow): GmailMessageSummary {
   };
 }
 
-function rowToDetail(row: MessageRow): GmailMessageDetail {
-  let attachments: GmailMessageDetail["attachments"] = [];
+function rowToDetail(row: MessageRow): MessageDetail {
+  let attachments: MessageDetail["attachments"] = [];
   if (row.attachments) {
     try {
-      attachments = JSON.parse(row.attachments) as GmailMessageDetail["attachments"];
+      attachments = JSON.parse(row.attachments) as MessageDetail["attachments"];
     } catch {
       attachments = [];
     }
@@ -275,7 +275,7 @@ function rowToDetail(row: MessageRow): GmailMessageDetail {
 
 // ── Messages: writes ────────────────────────────────────────────────────────
 
-export function upsertMessages(accountId: string, fetched: GmailMessageSummary[]): void {
+export function upsertMessages(accountId: string, fetched: MessageSummary[]): void {
   if (fetched.length === 0) return;
   inTransaction(() => writeSummaries(accountId, fetched));
 }
@@ -293,7 +293,7 @@ function inTransaction(fn: () => void): void {
   }
 }
 
-function writeSummaries(accountId: string, fetched: GmailMessageSummary[]): void {
+function writeSummaries(accountId: string, fetched: MessageSummary[]): void {
   // Gmail may not have caught up with changes made here moments ago; keep them.
   const messages = withPendingLabels(accountId, fetched);
   const d = getDb();
@@ -347,12 +347,12 @@ function writeSummaries(accountId: string, fetched: GmailMessageSummary[]): void
   }
 }
 
-export function upsertMessageDetail(accountId: string, detail: GmailMessageDetail): void {
+export function upsertMessageDetail(accountId: string, detail: MessageDetail): void {
   upsertMessageDetails(accountId, [detail]);
 }
 
 /** Whole messages (metadata, labels, bodies, attachments), in one transaction. */
-export function upsertMessageDetails(accountId: string, details: GmailMessageDetail[]): void {
+export function upsertMessageDetails(accountId: string, details: MessageDetail[]): void {
   if (details.length === 0) return;
   const setBody = getDb().prepare(`
     UPDATE messages
@@ -622,7 +622,7 @@ export function getThreadsPage(
   labelId: string,
   offset: number,
   limit: number,
-): { messages: GmailMessageSummary[]; hasMore: boolean } {
+): { messages: MessageSummary[]; hasMore: boolean } {
   const d = getDb();
   if (labelId === ALL_MAIL_LABEL_ID) {
     const rows = d
@@ -658,7 +658,7 @@ export function getThreadsPage(
  * Conversation rows for the given threads (Gmail search results), in the
  * order given. Threads with nothing cached are skipped.
  */
-export function getThreadSummaries(accountId: string, threadIds: string[]): GmailMessageSummary[] {
+export function getThreadSummaries(accountId: string, threadIds: string[]): MessageSummary[] {
   if (threadIds.length === 0) return [];
   const rows = getDb()
     .prepare(
@@ -677,7 +677,7 @@ export function getThreadSummaries(accountId: string, threadIds: string[]): Gmai
 }
 
 /** All locally-cached messages of a thread, oldest first. */
-export function getThreadMessages(accountId: string, threadId: string): GmailMessageSummary[] {
+export function getThreadMessages(accountId: string, threadId: string): MessageSummary[] {
   const d = getDb();
   const rows = d
     .prepare(
@@ -701,7 +701,7 @@ export function deleteThread(accountId: string, threadId: string): void {
   }
 }
 
-export function getMessageDetail(accountId: string, messageId: string): GmailMessageDetail | null {
+export function getMessageDetail(accountId: string, messageId: string): MessageDetail | null {
   const d = getDb();
   const row = d
     .prepare("SELECT * FROM messages WHERE accountId = ? AND id = ?")
@@ -1071,7 +1071,7 @@ export function getCombinedThreadsByRules(
   rules: ViewRule[],
   offset: number,
   limit: number,
-): { messages: GmailMessageSummary[]; hasMore: boolean } {
+): { messages: MessageSummary[]; hasMore: boolean } {
   if (rules.length === 0) return { messages: [], hasMore: false };
   const d = getDb();
   const { clause, params } = rulesWhere(rules);
@@ -1150,7 +1150,7 @@ export function searchMessages(
   offset: number,
   limit: number,
   scope?: SearchScope,
-): { messages: GmailMessageSummary[]; hasMore: boolean } {
+): { messages: MessageSummary[]; hasMore: boolean } {
   const match = toFtsMatch(queryText);
   const hasFilters = Boolean(
     scope?.labelId ||
@@ -1299,7 +1299,7 @@ export function suggestContacts(queryText: string, limit: number): ContactSugges
 
 // ── Labels ──────────────────────────────────────────────────────────────────
 
-export function upsertLabels(accountId: string, labels: GmailLabel[]): void {
+export function upsertLabels(accountId: string, labels: MailLabel[]): void {
   const d = getDb();
   d.exec("BEGIN");
   try {
@@ -1337,7 +1337,7 @@ interface LabelRow {
   textColor: string | null;
 }
 
-export function getLabels(accountId: string): GmailLabel[] {
+export function getLabels(accountId: string): MailLabel[] {
   const d = getDb();
   const rows = d
     .prepare("SELECT * FROM labels WHERE accountId = ?")
@@ -1380,7 +1380,7 @@ export function getSyncState(accountId: string): SyncStateRow {
 // ── Label edits (mirrored locally before Gmail confirms) ────────────────────
 
 /** Inserts a label or updates its name/color, keeping cached counts. */
-export function putLabel(accountId: string, label: GmailLabel): void {
+export function putLabel(accountId: string, label: MailLabel): void {
   getDb()
     .prepare(`
       INSERT INTO labels (accountId, id, name, type, unread, total, bgColor, textColor)
@@ -1415,7 +1415,7 @@ export function editLabelLocally(
   const before = getLabels(accountId);
   const target = before.find((l) => l.id === labelId);
   if (!target) return () => {};
-  const changed: GmailLabel[] = [];
+  const changed: MailLabel[] = [];
   if (edit.name && edit.name !== target.name) {
     const prefix = `${target.name}/`;
     for (const l of before) {

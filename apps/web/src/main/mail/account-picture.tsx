@@ -1,6 +1,6 @@
 import { Avatar, AvatarFallback, AvatarImage } from "~/components/ui/avatar";
 import { getAccountColor, getAccountDisplayName } from "./account-style";
-import type { GmailAccount } from "./types";
+import type { MailAccount } from "./types";
 
 /**
  * The account's Google profile picture, round unless `className` shapes it;
@@ -10,7 +10,7 @@ export function AccountPicture({
   account,
   className,
 }: {
-  account: GmailAccount;
+  account: MailAccount;
   className?: string;
 }) {
   return (

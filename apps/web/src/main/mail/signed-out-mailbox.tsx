@@ -1,10 +1,10 @@
 import { Button } from "~/components/ui/button";
 import { ImapPasswordForm } from "./add-mailbox";
-import { gmailApi } from "./api";
+import { mailApi } from "./api";
 import { signInName, signInProvider, signsInWithPassword } from "./capabilities";
 import { useAddAccount } from "./hooks";
 import { toast } from "./toast";
-import type { GmailAccount } from "./types";
+import type { MailAccount } from "./types";
 
 /**
  * A mailbox with nothing to show because this device isn't signed in to it:
@@ -13,7 +13,7 @@ import type { GmailAccount } from "./types";
  * prefilled; an IMAP mailbox asks for its password, which never leaves the
  * device it was typed on.
  */
-export function SignedOutMailbox({ account }: { account: GmailAccount }) {
+export function SignedOutMailbox({ account }: { account: MailAccount }) {
   const signIn = useAddAccount(signInProvider(account));
   if (signsInWithPassword(account)) {
     return (
@@ -34,7 +34,7 @@ export function SignedOutMailbox({ account }: { account: GmailAccount }) {
       </span>
       <div className="pt-3">
         {signIn.isPending ? (
-          <Button size="small" onClick={() => void gmailApi.cancelAddAccount()}>
+          <Button size="small" onClick={() => void mailApi.cancelAddAccount()}>
             Cancel sign-in
           </Button>
         ) : (

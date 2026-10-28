@@ -7,7 +7,7 @@ import { Text } from "~/components/ui/text";
 import { CheckIcon, GripVerticalIcon, PlusIcon, RotateCwIcon } from "lucide-react";
 import { Switch } from "~/components/ui/switch";
 import { arrangeAccounts, setMailboxArrangement, useMailboxArrangement } from "../mailboxes";
-import { gmailApi } from "../mail/api";
+import { mailApi } from "../mail/api";
 import { useOtterAccount } from "../otter-account";
 import { toast } from "../mail/toast";
 import {
@@ -31,7 +31,7 @@ import {
   getAccountColor,
   getAccountDisplayName,
 } from "../mail/account-style";
-import type { GmailAccount, SyncStatus } from "../mail/types";
+import type { MailAccount, SyncStatus } from "../mail/types";
 import { StatusText, accountStatus, needsSignIn, takeRequestedMailbox } from "../mail/sync-health";
 import { Btn, HintTooltip, cn, restoreFocusForKeyboardOnly } from "../mail/ui";
 import {
@@ -54,7 +54,7 @@ import { searchableSetting } from "./settings-search";
 function useSyncStatusOnly(accountId: string) {
   return useQuery<SyncStatus>({
     queryKey: ["gmail:syncStatus", accountId],
-    queryFn: () => gmailApi.getSyncStatus(accountId),
+    queryFn: () => mailApi.getSyncStatus(accountId),
     refetchInterval: (query) => syncStatusPollMs(query.state.data),
   });
 }
@@ -121,7 +121,7 @@ function AccountAvatar({
   account,
   size = "small",
 }: {
-  account: GmailAccount;
+  account: MailAccount;
   size?: "small" | "medium";
 }) {
   const displayName = getAccountDisplayName(account);
@@ -159,7 +159,7 @@ function SignInButton({
   const signIn = useAddAccount(provider);
   if (signIn.isPending) {
     return (
-      <Btn size="sm" onClick={() => void gmailApi.cancelAddAccount()}>
+      <Btn size="sm" onClick={() => void mailApi.cancelAddAccount()}>
         Cancel sign-in
       </Btn>
     );
@@ -208,7 +208,7 @@ function AccountListRow({
   onDrop,
   onDragEnd,
 }: {
-  account: GmailAccount;
+  account: MailAccount;
   selected: boolean;
   onSelect: () => void;
   on: boolean;
@@ -312,7 +312,7 @@ function editedSignature(editor: RichTextRef): string {
   return editor.getText().trim() || /<img\b/i.test(html) ? html : "";
 }
 
-function AccountEditor({ account }: { account: GmailAccount }) {
+function AccountEditor({ account }: { account: MailAccount }) {
   const updateAccount = useUpdateAccount();
   const removeAccount = useRemoveAccount();
   const signIn = useAddAccount();
@@ -340,7 +340,7 @@ function AccountEditor({ account }: { account: GmailAccount }) {
 
   const syncNow = () => {
     setSyncing(true);
-    void gmailApi
+    void mailApi
       .syncAccount(account.id)
       .catch(() => {})
       .finally(() => setTimeout(() => setSyncing(false), 700));
@@ -529,13 +529,13 @@ function AccountEditor({ account }: { account: GmailAccount }) {
 }
 
 /** An explicit server connection, separate from local desktop banners. */
-function MailboxNotifications({ account }: { account: GmailAccount }) {
+function MailboxNotifications({ account }: { account: MailAccount }) {
   const otter = useOtterAccount();
   const [busy, setBusy] = useState(false);
   const [confirmImap, setConfirmImap] = useState(false);
   const connections = useQuery({
     queryKey: ["notification-connections", otter?.user?.email],
-    queryFn: gmailApi.notificationConnections,
+    queryFn: mailApi.notificationConnections,
     enabled: Boolean(otter?.user),
     refetchInterval: otter?.user ? 5000 : false,
   });
@@ -548,7 +548,7 @@ function MailboxNotifications({ account }: { account: GmailAccount }) {
     setBusy(true);
     setConfirmImap(false);
     try {
-      const result = await gmailApi.connectNotifications(account.id);
+      const result = await mailApi.connectNotifications(account.id);
       if ("url" in result) await window.desktopBridge.openExternal(result.url);
       await connections.refetch();
     } catch (error) {
@@ -562,7 +562,7 @@ function MailboxNotifications({ account }: { account: GmailAccount }) {
   const disconnect = async () => {
     setBusy(true);
     try {
-      await gmailApi.disconnectNotifications(account.id);
+      await mailApi.disconnectNotifications(account.id);
       await connections.refetch();
     } catch {
       toast.error("Couldn't disconnect notifications", {
@@ -663,7 +663,7 @@ export function AccountsPane() {
   const [selectedId, setSelectedId] = useState<string | null>(takeRequestedMailbox);
   const current = accounts.find((a) => a.id === selectedId) ?? accounts[0];
   // Signatures live in Gmail: pick up edits made there.
-  useEffect(() => void gmailApi.refreshSignatures().catch(() => {}), []);
+  useEffect(() => void mailApi.refreshSignatures().catch(() => {}), []);
 
   return (
     <SettingsPageContainer

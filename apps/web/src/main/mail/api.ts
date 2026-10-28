@@ -7,10 +7,10 @@ import type { OpenRouterConnection } from "@otter-mail/contracts/openrouter";
 import type {
   ComposeAttachment,
   ContactSuggestion,
-  GmailAccount,
-  GmailLabel,
-  GmailMessageSummary,
-  GmailMessageDetail,
+  MailAccount,
+  MailLabel,
+  MessageSummary,
+  MessageDetail,
   MailView,
   SyncStatus,
   ViewRule,
@@ -24,7 +24,7 @@ export type ListMessagesParams = {
 };
 
 export type ListMessagesResult = {
-  messages: GmailMessageSummary[];
+  messages: MessageSummary[];
   nextPageToken?: string;
 };
 
@@ -75,8 +75,8 @@ export type CalendarInvite = {
 };
 
 /** One page of Gmail's own search (conversation rows, newest first). */
-export type GmailSearchResult = {
-  messages: GmailMessageSummary[];
+export type MailSearchResult = {
+  messages: MessageSummary[];
   /** Per-account cursors for the next page; undefined = no more results. */
   cursors?: Record<string, string | null>;
   /** Gmail's estimate of the total number of matches. */
@@ -438,7 +438,7 @@ export type AddImapAccountParams = {
   imap: ImapSettings;
 };
 
-export const gmailApi = {
+export const mailApi = {
   notificationConnections: (): Promise<{
     connections: NotificationConnection[];
     providers: Record<string, boolean>;
@@ -449,18 +449,18 @@ export const gmailApi = {
     ipc("otter:disconnectNotifications", { accountId }),
   saveSupportReport: (contents: string, filename?: "Otter Mail diagnostics.json") =>
     task<boolean>("support:saveReport", { contents, filename }),
-  listAccounts: (): Promise<GmailAccount[]> => ipc("gmail:listAccounts"),
+  listAccounts: (): Promise<MailAccount[]> => ipc("gmail:listAccounts"),
 
   /** Browser sign-in; `email` signs an existing account back in. */
   /** Resolves null when the sign-in was cancelled. */
-  addAccount: (email?: string): Promise<GmailAccount | null> =>
+  addAccount: (email?: string): Promise<MailAccount | null> =>
     ipc("gmail:addAccount", email ? { email } : undefined),
   /** Re-reads every account's signature from Gmail (answers at once; accounts-changed follows). */
   refreshSignatures: (): Promise<void> => ipc("gmail:refreshSignatures"),
   /** Stops waiting for the browser sign-in; the pending addAccount resolves null. */
   cancelAddAccount: (): Promise<void> => ipc("gmail:cancelAddAccount"),
   /** Microsoft's sign-in in the browser; `email` signs an Outlook mailbox back in. Null: cancelled. */
-  addOutlookAccount: (email?: string): Promise<GmailAccount | null> =>
+  addOutlookAccount: (email?: string): Promise<MailAccount | null> =>
     ipc("gmail:addOutlookAccount", email ? { email } : undefined),
   /** Which kinds of mailbox this app can add besides Gmail and IMAP. */
   mailProviders: (): Promise<{ outlook: boolean }> => ipc("gmail:mailProviders"),
@@ -469,7 +469,7 @@ export const gmailApi = {
   discoverImap: (email: string): Promise<ImapSettings | null> =>
     ipc("gmail:discoverImap", { email }),
   /** Adds an IMAP mailbox once its login and SMTP work; rejects with a readable message. */
-  addImapAccount: (params: AddImapAccountParams): Promise<GmailAccount> =>
+  addImapAccount: (params: AddImapAccountParams): Promise<MailAccount> =>
     ipc("gmail:addImapAccount", params),
   /** Signs an IMAP mailbox in on this device (its password never syncs). */
   signInImap: (accountId: string, password: string): Promise<void> =>
@@ -478,12 +478,12 @@ export const gmailApi = {
   removeAccount: (accountId: string): Promise<{ ok: boolean }> =>
     ipc("gmail:removeAccount", { accountId }),
 
-  updateAccount: (params: UpdateAccountParams): Promise<GmailAccount> =>
+  updateAccount: (params: UpdateAccountParams): Promise<MailAccount> =>
     ipc("gmail:updateAccount", params),
 
-  listLabels: (accountId: string): Promise<GmailLabel[]> => ipc("gmail:listLabels", { accountId }),
+  listLabels: (accountId: string): Promise<MailLabel[]> => ipc("gmail:listLabels", { accountId }),
 
-  createLabel: (accountId: string, name: string): Promise<GmailLabel> =>
+  createLabel: (accountId: string, name: string): Promise<MailLabel> =>
     ipc("gmail:createLabel", { accountId, name }),
 
   updateLabel: (params: {
@@ -536,7 +536,7 @@ export const gmailApi = {
     q: string;
     accountIds: string[];
     cursors?: Record<string, string | null>;
-  }): Promise<GmailSearchResult> => task("gmail:search", params),
+  }): Promise<MailSearchResult> => task("gmail:search", params),
 
   searchMessages: (params: SearchMessagesParams): Promise<ListMessagesResult> =>
     ipc("gmail:searchMessages", params),
@@ -544,7 +544,7 @@ export const gmailApi = {
   countCombinedMessages: (params: { rules: ViewRule[] }): Promise<CombinedCounts> =>
     ipc("gmail:countCombinedMessages", params),
 
-  getMessage: (accountId: string, messageId: string): Promise<GmailMessageDetail> =>
+  getMessage: (accountId: string, messageId: string): Promise<MessageDetail> =>
     ipc("gmail:getMessage", { accountId, messageId }),
 
   modifyMessage: (params: ModifyMessageParams): Promise<{ ok: boolean }> =>
@@ -553,7 +553,7 @@ export const gmailApi = {
   trashMessage: (accountId: string, messageId: string): Promise<{ ok: boolean }> =>
     ipc("gmail:trashMessage", { accountId, messageId }),
 
-  getThread: (accountId: string, threadId: string): Promise<GmailMessageSummary[]> =>
+  getThread: (accountId: string, threadId: string): Promise<MessageSummary[]> =>
     ipc("gmail:getThread", { accountId, threadId }),
 
   modifyThread: (params: ModifyThreadParams): Promise<{ ok: boolean }> =>
@@ -598,8 +598,7 @@ export const gmailApi = {
     accountId: string,
     draftId: string,
     messageId: string,
-  ): Promise<GmailMessageDetail> =>
-    ipc("gmail:loadDraftVersion", { accountId, draftId, messageId }),
+  ): Promise<MessageDetail> => ipc("gmail:loadDraftVersion", { accountId, draftId, messageId }),
 
   deleteDraft: (accountId: string, draftId: string): Promise<{ ok: boolean }> =>
     ipc("gmail:deleteDraft", { accountId, draftId }),

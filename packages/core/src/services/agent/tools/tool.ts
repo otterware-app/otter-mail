@@ -11,7 +11,7 @@ import { turnedOffMailboxes } from "../../mail-sync.js";
 import type { AgentAccess } from "@otter-mail/contracts/agent-tokens";
 import type { ChatChange } from "@otter-mail/contracts";
 
-import type { GmailAccount } from "../../../types.js";
+import type { MailAccount } from "../../../types.js";
 import type { Emit, RuntimeMode } from "../types.js";
 
 /** Files on this device, where the shell has them (the Mac app). */
@@ -113,12 +113,12 @@ export async function invoke<T>(channel: string, params: Record<string, unknown>
 }
 
 /** Every mailbox, with its capabilities (and `signedOut` when it can't be reached). */
-export function listMailboxes(): Promise<GmailAccount[]> {
-  return invoke<GmailAccount[]>("gmail:listAccounts", {});
+export function listMailboxes(): Promise<MailAccount[]> {
+  return invoke<MailAccount[]>("gmail:listAccounts", {});
 }
 
 /** The mailbox an argument names, by address (or id); optional when there's only one. */
-export async function mailbox(args: ToolArgs, key = "account"): Promise<GmailAccount> {
+export async function mailbox(args: ToolArgs, key = "account"): Promise<MailAccount> {
   const accounts = await listMailboxes();
   const wanted = optStr(args, key)?.toLowerCase();
   if (!wanted && accounts.length === 1) return accounts[0];
@@ -133,7 +133,7 @@ export async function mailbox(args: ToolArgs, key = "account"): Promise<GmailAcc
 }
 
 /** The mailboxes a list argument names; when it's left out, every one not turned off here. */
-export async function mailboxes(args: ToolArgs, key = "accounts"): Promise<GmailAccount[]> {
+export async function mailboxes(args: ToolArgs, key = "accounts"): Promise<MailAccount[]> {
   const wanted = strList(args, key);
   if (!wanted?.length) {
     const off = turnedOffMailboxes();

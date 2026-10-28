@@ -27,7 +27,7 @@ import {
 } from "../../protocols/index.js";
 import { hasPendingLabelWrites } from "../../services/pending-label-writes.js";
 import * as store from "../../services/mail-store.js";
-import type { GmailLabel, GmailMessageSummary } from "../../types.js";
+import type { MailLabel, MessageSummary } from "../../types.js";
 import type { SyncContext } from "../provider.js";
 import { FolderGone, inFolder, withImap } from "./connection.js";
 import {
@@ -99,11 +99,11 @@ export async function syncImap(accountId: string, ctx: SyncContext): Promise<voi
       : { phase: "incremental", synced: 0 },
   );
 
-  const newMail: GmailMessageSummary[] = [];
+  const newMail: MessageSummary[] = [];
   for (const folder of folders.synced) {
     if (relabelFolder(accountId, folder, state[folder.path])) ctx.bumpRevision();
     const run = new FolderSync(accountId, folder, ctx, state[folder.path]);
-    let added: GmailMessageSummary[];
+    let added: MessageSummary[];
     try {
       added = await run.sync(statuses.get(folder.path));
     } catch (err) {
@@ -124,8 +124,8 @@ export async function syncImap(accountId: string, ctx: SyncContext): Promise<voi
 
 // ── Labels ─────────────────────────────────────────────────────────────────
 
-function labelsOf(folders: Folders, statuses: Map<string, MailboxStatus>): GmailLabel[] {
-  const labels: GmailLabel[] = [];
+function labelsOf(folders: Folders, statuses: Map<string, MailboxStatus>): MailLabel[] {
+  const labels: MailLabel[] = [];
   for (const folder of folders.synced) {
     if (!folder.labelId) continue;
     const status = statuses.get(folder.path);
@@ -144,11 +144,11 @@ function labelsOf(folders: Folders, statuses: Map<string, MailboxStatus>): Gmail
 }
 
 /** Stores the labels; answers whether names or counts changed. */
-function writeLabels(accountId: string, labels: GmailLabel[]): boolean {
+function writeLabels(accountId: string, labels: MailLabel[]): boolean {
   const before = store.getLabels(accountId);
   store.upsertLabels(accountId, labels);
   store.recountLabels(accountId, ["STARRED", "UNREAD"]);
-  const key = (list: GmailLabel[]) =>
+  const key = (list: MailLabel[]) =>
     JSON.stringify(
       list
         .map((l) => [l.id, l.name, l.unread, l.total])
@@ -174,7 +174,7 @@ function readFolders(accountId: string) {
 }
 
 /** listLabels: the folders and their counts, straight from the server. */
-export async function readLabels(accountId: string): Promise<GmailLabel[]> {
+export async function readLabels(accountId: string): Promise<MailLabel[]> {
   const { folders, statuses } = await readFolders(accountId);
   return labelsOf(folders, statuses);
 }
@@ -267,7 +267,7 @@ class FolderSync {
   ) {}
 
   /** Brings the folder up to date; answers the new mail (none on its first sync). */
-  async sync(status: MailboxStatus | undefined): Promise<GmailMessageSummary[]> {
+  async sync(status: MailboxStatus | undefined): Promise<MessageSummary[]> {
     const prev = this.state;
     if (prev && prev.below === 0 && status && this.unchanged(prev, status)) return [];
 
@@ -329,8 +329,8 @@ class FolderSync {
   }
 
   /** Summaries of `uids`, fetched and stored a page at a time; answers them. */
-  private async fetchAndStore(uids: number[]): Promise<GmailMessageSummary[]> {
-    const stored: GmailMessageSummary[] = [];
+  private async fetchAndStore(uids: number[]): Promise<MessageSummary[]> {
+    const stored: MessageSummary[] = [];
     for (let end = uids.length; end > 0; end -= PAGE) {
       for (const summary of await this.fetchPage(uids.slice(Math.max(0, end - PAGE), end))) {
         stored.push(summary);
@@ -339,9 +339,9 @@ class FolderSync {
     return stored;
   }
 
-  private async fetchPage(uids: number[]): Promise<GmailMessageSummary[]> {
+  private async fetchPage(uids: number[]): Promise<MessageSummary[]> {
     const fetched = await this.run((client) => client.fetch(uids, SUMMARY_QUERY));
-    const summaries: GmailMessageSummary[] = [];
+    const summaries: MessageSummary[] = [];
     for (const message of fetched) {
       if (isDeleted(message)) continue;
       summaries.push(await toSummary(this.folder, this.state!.uidValidity, message));
@@ -391,7 +391,7 @@ class FolderSync {
       changed: FetchedMessage[];
     },
     qresynced: boolean,
-  ): Promise<GmailMessageSummary[]> {
+  ): Promise<MessageSummary[]> {
     const { accountId, folder } = this;
     const since = state.modseq !== undefined ? BigInt(state.modseq) : null;
 

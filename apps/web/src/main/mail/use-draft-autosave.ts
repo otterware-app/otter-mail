@@ -1,15 +1,15 @@
 import { useLatest } from "../use-latest";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { gmailApi } from "./api";
-import type { ComposeAttachment, GmailMessageDetail } from "./types";
+import { mailApi } from "./api";
+import type { ComposeAttachment, MessageDetail } from "./types";
 
 export type DraftSaveState = "idle" | "saving" | "saved" | "error";
 
 /** The draft changed outside this composer (Hermes, Gmail web, a phone). */
 export type DraftRemoteState =
   /** Edited elsewhere while this composer has unsaved edits: the user picks. */
-  | { kind: "conflict"; detail: GmailMessageDetail }
+  | { kind: "conflict"; detail: MessageDetail }
   /** Sent or deleted elsewhere. */
   | { kind: "gone" };
 
@@ -70,7 +70,7 @@ export function useDraftAutosave({
   initialMessageId?: string;
   initialRevision?: string;
   /** Loads another version into the composer's fields. */
-  onRemoteChange?: (detail: GmailMessageDetail) => void | Promise<void>;
+  onRemoteChange?: (detail: MessageDetail) => void | Promise<void>;
 }) {
   const qc = useQueryClient();
   const [saveState, setSaveState] = useState<DraftSaveState>("idle");
@@ -142,7 +142,7 @@ export function useDraftAutosave({
   const refreshRef = useLatest(refresh);
 
   /** Loads another version into the composer (no save for that change). */
-  const applyVersion = async (detail: GmailMessageDetail) => {
+  const applyVersion = async (detail: MessageDetail) => {
     pausedRef.current = true;
     try {
       await onRemoteChangeRef.current?.(detail);
@@ -161,7 +161,7 @@ export function useDraftAutosave({
     if (!account || !draftId) return;
     pausedRef.current = true;
     try {
-      const detail = await gmailApi.loadDraftVersion(account, draftId, messageId);
+      const detail = await mailApi.loadDraftVersion(account, draftId, messageId);
       const dirty = signalRef.current !== snapshotRef.current;
       console.log("[useDraftAutosave:remoteChange]", { draftId, dirty });
       if (dirty) {
@@ -196,7 +196,7 @@ export function useDraftAutosave({
       // The From account changed under an existing draft — move it over.
       if (draftIdRef.current && draftAccountRef.current && draftAccountRef.current !== account) {
         try {
-          await gmailApi.deleteDraft(draftAccountRef.current, draftIdRef.current);
+          await mailApi.deleteDraft(draftAccountRef.current, draftIdRef.current);
         } catch {
           // orphan gets reconciled by sync
         }
@@ -205,7 +205,7 @@ export function useDraftAutosave({
         messageIdRef.current = null;
         adoptedThreadRef.current = null;
       }
-      const res = await gmailApi.saveDraft({
+      const res = await mailApi.saveDraft({
         accountId: account,
         draftId: draftIdRef.current ?? undefined,
         sessionKey: sessionKeyRef.current,
@@ -275,7 +275,7 @@ export function useDraftAutosave({
       if (doneRef.current || pausedRef.current || savingRef.current) return;
       if (typeof document !== "undefined" && !document.hasFocus()) return;
       try {
-        const { messageId, revision } = await gmailApi.getDraftVersion(account, draftId);
+        const { messageId, revision } = await mailApi.getDraftVersion(account, draftId);
         // Re-check: a save of ours may have landed while we asked.
         if (doneRef.current || savingRef.current || pausedRef.current) return;
         if (messageId === null) markGoneForEffect.current();
@@ -351,7 +351,7 @@ export function useDraftAutosave({
     const account = draftAccountRef.current ?? accountRef.current;
     if (opts?.deleteDraft && account) {
       try {
-        await gmailApi.deleteSessionDraft(
+        await mailApi.deleteSessionDraft(
           account,
           sessionKeyRef.current,
           draftIdRef.current ?? undefined,

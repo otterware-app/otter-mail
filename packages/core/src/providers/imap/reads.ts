@@ -4,7 +4,7 @@
  */
 
 import { parseMessage, type FetchQuery, type FetchedMessage } from "../../protocols/index.js";
-import type { GmailMessageDetail, GmailMessageSummary } from "../../types.js";
+import type { MessageDetail, MessageSummary } from "../../types.js";
 import { FolderGone, inFolder } from "./connection.js";
 import { byFolder, foldersOf, parseMessageId, type Folder } from "./folders.js";
 import { DETAIL_QUERY, SUMMARY_QUERY, toDetail, toSummary } from "./messages.js";
@@ -51,11 +51,8 @@ async function fetchOne(
   }
 }
 
-export async function getSummaries(
-  accountId: string,
-  ids: string[],
-): Promise<GmailMessageSummary[]> {
-  const summaries: GmailMessageSummary[] = [];
+export async function getSummaries(accountId: string, ids: string[]): Promise<MessageSummary[]> {
+  const summaries: MessageSummary[] = [];
   for (const [path, refs] of byFolder(ids.map(currentId))) {
     await inFolder(accountId, path, async (client, mailbox) => {
       const folder = (await foldersOf(accountId, client)).get(path);
@@ -71,7 +68,7 @@ export async function getSummaries(
   return summaries;
 }
 
-export async function getMessage(accountId: string, id: string): Promise<GmailMessageDetail> {
+export async function getMessage(accountId: string, id: string): Promise<MessageDetail> {
   const { folder, message, uidValidity } = await fetchOne(accountId, id, DETAIL_QUERY);
   return toDetail(folder, uidValidity, message);
 }

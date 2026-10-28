@@ -4,10 +4,10 @@ import { describe, expect, it } from "vite-plus/test";
 import { summarizeLabelChange } from "./action-summary";
 import { archiveFrom } from "./archive";
 import { folderName } from "./label-names";
-import type { GmailLabel } from "./types";
+import type { MailLabel } from "./types";
 
-const folder = (id: string): GmailLabel => ({ id, name: id, type: "user" });
-const system = (id: string): GmailLabel => ({ id, name: id, type: "system" });
+const folder = (id: string): MailLabel => ({ id, name: id, type: "user" });
+const system = (id: string): MailLabel => ({ id, name: id, type: "system" });
 
 describe("What archiving takes off", () => {
   it("takes INBOX off, and offers Move to Inbox elsewhere, in Gmail", () => {

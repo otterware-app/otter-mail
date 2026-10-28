@@ -8,7 +8,7 @@
  */
 
 import { VIEW_COLORS, VIEW_ICON_KEYS } from "@otter-mail/shared/view-marks";
-import type { GmailAccount, MailView, ViewRule } from "../../../types.js";
+import type { MailAccount, MailView, ViewRule } from "../../../types.js";
 import { labelId, labelsOf } from "./mail.js";
 import {
   invoke,
@@ -33,7 +33,7 @@ const counts = (rules: ViewRule[]) =>
   invoke<{ total: number; unread: number }>("gmail:countCombinedMessages", { rules });
 
 /** A view as agents see it: mailboxes by address, labels by name, and what it finds now. */
-async function describe(view: MailView, accounts: GmailAccount[]) {
+async function describe(view: MailView, accounts: MailAccount[]) {
   const rules = view.rules ?? [];
   const mailboxes = [];
   for (const rule of rules) {

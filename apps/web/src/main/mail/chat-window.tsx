@@ -19,7 +19,7 @@ import {
 import { AgentIcon } from "./agent-icon";
 
 import { useChatProvider } from "./agent-providers";
-import { gmailApi, type ChatChange, type ChatSession } from "./api";
+import { mailApi, type ChatChange, type ChatSession } from "./api";
 import type { MailChatContext } from "./chat-context";
 import { HistoryList } from "./chat-history";
 import {
@@ -70,7 +70,7 @@ export function ChatWindow({
   const sessionsAvailable = Boolean(chat.provider?.sessions && chat.usable);
   const serverSessions = useQuery<ChatSession[]>({
     queryKey: ["agent-sessions", chat.kind],
-    queryFn: () => gmailApi.agentSessions(chat.kind, 40),
+    queryFn: () => mailApi.agentSessions(chat.kind, 40),
     enabled: historyOpen && sessionsAvailable,
     staleTime: 15_000,
   });

@@ -11,7 +11,7 @@ import {
   type MailProvider,
   type RsvpResponse,
 } from "../../../providers/provider.js";
-import type { GmailAccount } from "../../../types.js";
+import type { MailAccount } from "../../../types.js";
 import {
   mailbox,
   mailboxes,
@@ -28,7 +28,7 @@ type Calendar = NonNullable<MailProvider["calendar"]>;
 
 /** The mailbox's calendar; calls that it may not make say how to allow them. */
 async function calendarOf<T>(
-  account: GmailAccount,
+  account: MailAccount,
   work: (calendar: Calendar) => Promise<T>,
 ): Promise<T> {
   const calendar = account.capabilities?.calendar ? providerFor(account.id).calendar : undefined;

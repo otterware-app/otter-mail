@@ -6,7 +6,7 @@ import { LaptopIcon } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "~/components/ui/avatar";
 import { Dialog } from "~/components/ui/dialog";
 import { Text } from "~/components/ui/text";
-import { gmailApi } from "../mail/api";
+import { mailApi } from "../mail/api";
 import { useAccounts, useAddAccount } from "../mail/hooks";
 import { toast } from "../mail/toast";
 import { Btn, cn } from "../mail/ui";
@@ -60,7 +60,7 @@ function useOtterSignIn() {
       .then(async (state) => {
         const email = state?.user?.email.toLowerCase();
         if (!email) return;
-        const accounts = await gmailApi.listAccounts();
+        const accounts = await mailApi.listAccounts();
         if (accounts.some((a) => a.email.toLowerCase() === email && !a.signedOut)) return;
         setPending("mailbox");
         await addMailbox.mutateAsync(email).catch((err: unknown) => {
@@ -73,7 +73,7 @@ function useOtterSignIn() {
       .finally(() => setPending(null));
   };
   const cancel = () =>
-    void (pending === "mailbox" ? gmailApi.cancelAddAccount() : otterApi.cancelSignIn());
+    void (pending === "mailbox" ? mailApi.cancelAddAccount() : otterApi.cancelSignIn());
   return { pending, signIn, cancel };
 }
 

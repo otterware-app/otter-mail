@@ -50,7 +50,7 @@ import {
   useMessages,
   useCombinedMessages,
   useCombinedCounts,
-  useGmailSearch,
+  useMailSearch,
   useModifyMessage,
   useModifyThread,
   useTrashMessage,
@@ -86,13 +86,13 @@ import {
 import { Toggle, ToggleGroup } from "~/components/ui/toggle-group";
 import { decodeEntities } from "./text";
 import { parseAddressEntry, senderLabel, splitAddressList } from "./address";
-import type { GmailAccount, GmailLabel, GmailMessageSummary, ViewRule } from "./types";
+import type { MailAccount, MailLabel, MessageSummary, ViewRule } from "./types";
 import { pickAdvanceTarget } from "./advance-direction";
 import { beginUndoGroup, clearUndo } from "./undo";
 import { isMoveSourceLabel, setThreadDragImage, writeThreadDrag } from "./thread-drag";
 import { isModClick } from "../keybindings/keys";
 
-type ResolveLabel = (accountId: string | undefined, labelId: string) => GmailLabel | undefined;
+type ResolveLabel = (accountId: string | undefined, labelId: string) => MailLabel | undefined;
 
 /** A view's list: its rules across the mailboxes. */
 export type CombinedList = { viewId: string; name: string; rules: ViewRule[] };
@@ -117,7 +117,7 @@ type MessageListProps = {
   /** All connected account ids, for resolving label chips across accounts. */
   accountIds: string[];
   /** Connected accounts (name/color), for a view's mailbox-account line. */
-  accounts: GmailAccount[];
+  accounts: MailAccount[];
   selectedMessageId: string | null;
   /** A single message of the selected row's conversation shown on its own. */
   focusedMessageId: string | null;
@@ -134,7 +134,7 @@ type MessageListProps = {
   /** Reader actions (archive/trash) advance through here; false = no next row. */
   advanceRef: React.MutableRefObject<(fromMessageId: string) => boolean>;
   /** Reports the multi-selected rows so the chat panel can attach them. */
-  onSelectionChange?: (rows: GmailMessageSummary[]) => void;
+  onSelectionChange?: (rows: MessageSummary[]) => void;
   /** Opens the in-app agent chat panel. */
   onOpenChat?: () => void;
   /** Opens the Search mailbox prefilled with this mailbox (search icon, ⌘F). */
@@ -168,7 +168,7 @@ export type SearchMode = {
 
 /** A row's labels: rows are conversations, so the union over its messages
  *  (falls back to the message's own labels for message-level search rows). */
-function rowLabels(message: GmailMessageSummary): string[] {
+function rowLabels(message: MessageSummary): string[] {
   return message.threadLabelIds ?? message.labelIds;
 }
 
@@ -183,9 +183,9 @@ function ruleMailboxName(rule: ViewRule, resolveLabel: ResolveLabel): string | n
 }
 
 function resolveCombinedMeta(
-  message: GmailMessageSummary,
+  message: MessageSummary,
   combined: CombinedList | null,
-  accounts: GmailAccount[],
+  accounts: MailAccount[],
   resolveLabel: ResolveLabel,
 ): CombinedMeta | null {
   if (!combined || !message.accountId) return null;
@@ -242,9 +242,9 @@ function formatRelativeDate(timestamp: number): string {
   }
 }
 
-type MessageDay = { day: number; messages: GmailMessageSummary[] };
+type MessageDay = { day: number; messages: MessageSummary[] };
 
-function groupMessagesByDay(messages: GmailMessageSummary[]): MessageDay[] {
+function groupMessagesByDay(messages: MessageSummary[]): MessageDay[] {
   const days = new Map<number, MessageDay>();
   for (const message of messages) {
     const day = new Date(message.date).setHours(0, 0, 0, 0);
@@ -318,7 +318,7 @@ function MessageDayGroup({
 }
 
 type MessageRowProps = {
-  message: GmailMessageSummary;
+  message: MessageSummary;
   selected: boolean;
   /** Part of the cmd/shift multi-selection. */
   checked: boolean;
@@ -383,7 +383,7 @@ function MessageRow({
   const messageLabels = labelIds
     .filter((id) => !viewLabelIds.has(id))
     .map((id) => resolveLabel(ownerAccountId, id))
-    .filter((l): l is GmailLabel => l != null && l.type === "user");
+    .filter((l): l is MailLabel => l != null && l.type === "user");
   // At most two chips; the rest collapse into "+N".
   const MAX_CHIPS = 2;
   const shownLabels = messageLabels.slice(0, MAX_CHIPS);
@@ -762,7 +762,7 @@ function ThreadMessageRow({
   selected,
   onClick,
 }: {
-  message: GmailMessageSummary;
+  message: MessageSummary;
   selected: boolean;
   onClick: () => void;
 }) {
@@ -924,7 +924,7 @@ export function MessageList({
     combined?.viewId ?? "",
     isCombined && !searching,
   );
-  const gmailSearch = useGmailSearch(searchQuery, search?.accountIds ?? [], globalSearching);
+  const gmailSearch = useMailSearch(searchQuery, search?.accountIds ?? [], globalSearching);
   const messagesQuery = globalSearching
     ? gmailSearch
     : isCombined
@@ -975,8 +975,8 @@ export function MessageList({
 
   // Search pages are merged per account; a conversation seen on an earlier
   // page isn't repeated.
-  const allMessages: GmailMessageSummary[] = useMemo(() => {
-    const pages: { messages: GmailMessageSummary[] }[] = messagesQuery.data?.pages ?? [];
+  const allMessages: MessageSummary[] = useMemo(() => {
+    const pages: { messages: MessageSummary[] }[] = messagesQuery.data?.pages ?? [];
     const rows = pages.flatMap((p) => p.messages);
     if (!globalSearching) return rows;
     const seen = new Set<string>();
@@ -1021,7 +1021,7 @@ export function MessageList({
   const listTrashMessage = useTrashMessage();
   const listUntrashMessage = useUntrashMessage();
 
-  const selectForNavigation = (row: GmailMessageSummary, focusId?: string) => {
+  const selectForNavigation = (row: MessageSummary, focusId?: string) => {
     setCursor({ messageId: row.id, focusId });
     if (openMessageId || openMessagesWithArrows) {
       onSelectMessage(row.id, row.accountId ?? accountId, focusId, { autoFocusDraft: false });
@@ -1036,7 +1036,7 @@ export function MessageList({
   // Conversations opened up in place (Apple Mail), keyed `${owner}:${threadId}`;
   // cleared with the multi-selection when the view changes.
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
-  const threadKey = (m: GmailMessageSummary) => `${m.accountId ?? accountId}:${m.threadId || m.id}`;
+  const threadKey = (m: MessageSummary) => `${m.accountId ?? accountId}:${m.threadId || m.id}`;
   const expandedRows = visibleMessages.filter(
     (m) => (m.threadCount ?? 1) > 1 && expanded.has(threadKey(m)),
   );
@@ -1047,10 +1047,10 @@ export function MessageList({
     })),
   );
   /** An expanded row's messages, newest first (like the list); [] when collapsed. */
-  const threadMessagesOf = (m: GmailMessageSummary): GmailMessageSummary[] =>
+  const threadMessagesOf = (m: MessageSummary): MessageSummary[] =>
     expanded.has(threadKey(m)) ? (threadsByKey.get(threadKey(m)) ?? []).toReversed() : [];
   // What ↑/↓ walk through: every row, and the messages of expanded ones.
-  type NavItem = { row: GmailMessageSummary; focus: GmailMessageSummary | null };
+  type NavItem = { row: MessageSummary; focus: MessageSummary | null };
   const navItems: NavItem[] = visibleMessages.flatMap((row) => [
     { row, focus: null },
     ...threadMessagesOf(row).map((m) => ({ row, focus: m })),
@@ -1060,7 +1060,7 @@ export function MessageList({
 
   /** After the message open from `row`'s conversation leaves it: open its
       neighbor there, or the whole conversation when none is left. */
-  const advanceFocusIn = (row: GmailMessageSummary, focus: GmailMessageSummary) => {
+  const advanceFocusIn = (row: MessageSummary, focus: MessageSummary) => {
     const siblings = threadMessagesOf(row);
     const next = pickAdvanceTarget(
       siblings,
@@ -1069,7 +1069,7 @@ export function MessageList({
     selectForNavigation(row, next?.id);
   };
 
-  const setThreadExpanded = (row: GmailMessageSummary, open: boolean) => {
+  const setThreadExpanded = (row: MessageSummary, open: boolean) => {
     const key = threadKey(row);
     console.log("[MessageList:expandThread]", { key, open });
     setExpanded((prev) => {
@@ -1186,7 +1186,7 @@ export function MessageList({
     extentRef.current = id;
   };
 
-  const openMessage = (row: GmailMessageSummary, focus?: GmailMessageSummary) => {
+  const openMessage = (row: MessageSummary, focus?: MessageSummary) => {
     const owner = row.accountId ?? accountId;
     // Clicks read the conversation immediately; keyboard browsing stays debounced in the reader.
     if (focus ? focus.unread : (row.threadUnread ?? row.unread)) {
@@ -1208,7 +1208,7 @@ export function MessageList({
     onSelectMessage(row.id, owner, focus?.id);
   };
 
-  const handleRowClick = (e: React.MouseEvent, message: GmailMessageSummary) => {
+  const handleRowClick = (e: React.MouseEvent, message: MessageSummary) => {
     // ⌘-click (Ctrl-click off the Mac, or Option/Alt-click) adds/removes one
     // row, Finder-style. The open message counts as already selected, so the
     // first such click keeps it instead of starting over.
@@ -1250,7 +1250,7 @@ export function MessageList({
       undo per row; grouped, a single z restores the whole selection. */
   const bulk = (
     label: string,
-    run: (m: GmailMessageSummary) => void,
+    run: (m: MessageSummary) => void,
     { undoable = true }: { undoable?: boolean } = {},
   ) => {
     console.log("[MessageList:bulk]", { action: label, count: checkedRows.length });
@@ -1310,7 +1310,7 @@ export function MessageList({
       { undoable: false },
     );
   const listDeleteForever = useDeleteThreadsForever();
-  const [confirmDeleteRows, setConfirmDeleteRows] = useState<GmailMessageSummary[] | null>(null);
+  const [confirmDeleteRows, setConfirmDeleteRows] = useState<MessageSummary[] | null>(null);
   const handleDeleteForeverConfirm = () => {
     const rows = confirmDeleteRows ?? [];
     setConfirmDeleteRows(null);
@@ -1460,15 +1460,15 @@ export function MessageList({
   const rowCommand =
     (
       fn: (ctx: {
-        rows: GmailMessageSummary[];
+        rows: MessageSummary[];
         idx: number;
-        row: GmailMessageSummary | undefined;
+        row: MessageSummary | undefined;
         owner: string;
         threadId: string;
-        select: (m: GmailMessageSummary) => void;
+        select: (m: MessageSummary) => void;
         advance: () => void;
         /** The single message open from an expanded conversation, if any. */
-        focus: GmailMessageSummary | null;
+        focus: MessageSummary | null;
         /** After `focus` is archived/trashed: open its neighbor in the
             conversation, or the whole conversation when it was the only one. */
         advanceFocus: () => void;
@@ -1489,7 +1489,7 @@ export function MessageList({
       if (rows.length === 0 && !openRow) return false;
       const idx = rows.findIndex((m) => m.id === selId);
       const row = idx >= 0 ? rows[idx] : (openRow ?? undefined);
-      const select = (m: GmailMessageSummary) => selectForNavigation(m);
+      const select = (m: MessageSummary) => selectForNavigation(m);
       return fn({
         rows,
         idx,
@@ -1828,7 +1828,7 @@ export function MessageList({
 
   // Dragging a row onto a sidebar label: the whole multi-selection when the
   // row is part of it, else just that row.
-  const handleRowDragStart = (e: React.DragEvent, message: GmailMessageSummary) => {
+  const handleRowDragStart = (e: React.DragEvent, message: MessageSummary) => {
     const rows = checked.has(message.id) ? checkedRows : [message];
     console.log("[MessageList:dragStart]", { count: rows.length });
     writeThreadDrag(e.dataTransfer, {
@@ -1849,7 +1849,7 @@ export function MessageList({
     );
   };
 
-  const renderMessage = (message: GmailMessageSummary) => (
+  const renderMessage = (message: MessageSummary) => (
     <div className="message-list-group" key={`${message.accountId ?? accountId}:${message.id}`}>
       <MessageRow
         viewLabelIds={viewLabelIdsFor(message.accountId ?? accountId)}

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useAccounts } from "./mail/hooks";
-import type { GmailAccount } from "./mail/types";
+import type { MailAccount } from "./mail/types";
 import { setSyncedPreference } from "./synced-preferences";
 
 /**
@@ -54,10 +54,10 @@ export function useMailboxArrangement(): MailboxArrangement {
 
 /** Accounts in the user's order (turned-off ones included). */
 export function arrangeAccounts(
-  accounts: GmailAccount[],
+  accounts: MailAccount[],
   { order }: MailboxArrangement,
-): GmailAccount[] {
-  const rank = (a: GmailAccount) => {
+): MailAccount[] {
+  const rank = (a: MailAccount) => {
     const i = order.indexOf(a.email);
     return i === -1 ? order.length : i;
   };
@@ -69,7 +69,7 @@ export function arrangeAccounts(
 
 /** The mailboxes the app shows: turned-on accounts in the user's order. */
 export function useMailboxes(): {
-  accounts: GmailAccount[];
+  accounts: MailAccount[];
   isLoading: boolean;
 } {
   const query = useAccounts();

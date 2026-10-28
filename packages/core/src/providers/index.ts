@@ -6,7 +6,7 @@
 import type { MailCapabilities, MailProviderKind } from "@otter-mail/contracts";
 
 import { imapHostOf, providerKindOf } from "../services/account-store.js";
-import type { GmailAccount } from "../types.js";
+import type { MailAccount } from "../types.js";
 import { gmailProvider } from "./gmail/index.js";
 import { imapProvider } from "./imap/index.js";
 import { outlookProvider } from "./outlook/index.js";
@@ -22,13 +22,13 @@ const providers: Record<MailProviderKind, MailProvider | null> = {
 const UNAVAILABLE = "This kind of mailbox isn't available in this app.";
 
 /** The account's provider; null when this build can't reach its kind of mailbox yet. */
-export function findProvider(account: GmailAccount | string): MailProvider | null {
+export function findProvider(account: MailAccount | string): MailProvider | null {
   return providers[
     typeof account === "string" ? providerKindOf(account) : (account.provider ?? "gmail")
   ];
 }
 
-export function providerFor(account: GmailAccount | string): MailProvider {
+export function providerFor(account: MailAccount | string): MailProvider {
   const provider = findProvider(account);
   if (!provider) throw new Error(UNAVAILABLE);
   return provider;
@@ -42,7 +42,7 @@ const GMAIL_IMAP_HOSTS = new Set(["imap.gmail.com", "imap.googlemail.com"]);
  * reached over IMAP is still Gmail: its archive is All Mail, not a folder,
  * and its \Flagged is the star (imap/folders.ts).
  */
-export function capabilitiesOf(account: GmailAccount | string): MailCapabilities | null {
+export function capabilitiesOf(account: MailAccount | string): MailCapabilities | null {
   const capabilities = findProvider(account)?.capabilities ?? null;
   const host = typeof account === "string" ? imapHostOf(account) : account.imap?.imap.host;
   return capabilities && host && GMAIL_IMAP_HOSTS.has(host.toLowerCase())
@@ -51,13 +51,13 @@ export function capabilitiesOf(account: GmailAccount | string): MailCapabilities
 }
 
 /** Whether this device can reach the account's mail now. */
-export function isSignedIn(account: GmailAccount | string): boolean {
+export function isSignedIn(account: MailAccount | string): boolean {
   return (
     findProvider(account)?.isSignedIn(typeof account === "string" ? account : account.id) ?? false
   );
 }
 
 /** Why it can't, for the status line. */
-export function signedOutMessage(account: GmailAccount | string): string {
+export function signedOutMessage(account: MailAccount | string): string {
   return findProvider(account)?.signedOutMessage ?? UNAVAILABLE;
 }

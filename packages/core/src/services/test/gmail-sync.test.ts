@@ -16,10 +16,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 
 import type { Platform, SqlDatabase } from "../../platform.ts";
 import { FakeStream, tagOf } from "../../protocols/test/fake-stream.ts";
-import type { GmailAccount } from "../../types.ts";
+import type { MailAccount } from "../../types.ts";
 
 const GMAIL = "gmail.googleapis.com";
-const account: GmailAccount = { id: "me@gmail.test", email: "me@gmail.test", name: "Me" };
+const account: MailAccount = { id: "me@gmail.test", email: "me@gmail.test", name: "Me" };
 
 // ── The pretend Gmail ───────────────────────────────────────────────────────
 

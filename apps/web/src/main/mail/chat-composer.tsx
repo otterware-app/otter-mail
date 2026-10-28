@@ -11,7 +11,7 @@ import { CheckIcon, CornerUpRightIcon, ListPlusIcon, PlusIcon, QuoteIcon } from 
 import { IconBtn, HintTooltip, cn } from "./ui";
 import { COMPOSER_SURFACE } from "./composer-kit";
 import {
-  gmailApi,
+  mailApi,
   type AgentSettingsPatch,
   type ApprovalDecision,
   type ProviderKind,
@@ -111,7 +111,7 @@ export function ChatComposer({
   // Skills for the "/" picker, from whichever provider this chat uses.
   const skillsQuery = useQuery<Skill[]>({
     queryKey: ["agent-skills", providerKind],
-    queryFn: () => gmailApi.agentSkills(providerKind),
+    queryFn: () => mailApi.agentSkills(providerKind),
     enabled: usable,
     staleTime: 5 * 60_000,
   });

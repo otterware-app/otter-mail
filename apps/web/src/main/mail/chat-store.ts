@@ -29,7 +29,7 @@ import { ipc } from "~/lib/ipc";
 import { closeChatPages } from "../browser/store";
 import { isProviderUsable, useAgentProviders } from "./agent-providers";
 import {
-  gmailApi,
+  mailApi,
   type ApprovalDecision,
   type ApprovalRequest,
   type ChatAttachment,
@@ -525,7 +525,7 @@ function startTurn(msg: Outgoing, intent?: ChatTurn["intent"]): void {
   }));
   appendExchange(msg.convoId, msg, requestId, intent);
   // Returns at once; the turn streams as chat events (incl. the new session id).
-  gmailApi
+  mailApi
     .agentSend({
       provider: kind,
       requestId,
@@ -570,7 +570,7 @@ function steer(msg: Outgoing, intent: "steer" | "promoted" = "steer"): void {
     set((s) => ({ queue: [msg, ...s.queue] }));
     startQueued();
   };
-  gmailApi
+  mailApi
     .agentSteer(target.provider, target.requestId, msg.input)
     .then(({ accepted }) => !accepted && refused(), refused);
 }
@@ -639,7 +639,7 @@ export function setEditingQueued(id: string | null): void {
 /** Interrupts the chat's run; the queue stays and its next message starts (Otter Code). */
 export function stopRun(convoId: string): void {
   const run = get().runs[convoId];
-  if (run) void gmailApi.agentCancel(run.provider, run.requestId);
+  if (run) void mailApi.agentCancel(run.provider, run.requestId);
 }
 
 export async function respondApproval(
@@ -653,7 +653,7 @@ export async function respondApproval(
   const { provider: kind, requestId } = owner;
   console.log("[AgentChat:approval]", { kind, decision });
   try {
-    await gmailApi.agentRespondApproval({ provider: kind, requestId, approvalId, decision });
+    await mailApi.agentRespondApproval({ provider: kind, requestId, approvalId, decision });
     set((s) => ({ approvals: s.approvals.filter((a) => a.approval.id !== approvalId) }));
   } catch (error) {
     console.log("[AgentChat:approval] failed", { error: String(error) });
@@ -671,7 +671,7 @@ export async function answerQuestion(
   if (!owner) return;
   console.log("[AgentChat:question]", { kind: owner.provider, skipped: answers === null });
   try {
-    await gmailApi.agentAnswerQuestion({
+    await mailApi.agentAnswerQuestion({
       provider: owner.provider,
       requestId: owner.requestId,
       questionId,
@@ -829,14 +829,14 @@ export function newChat(provider: ProviderKind): string {
 export function deleteConversation(id: string, provider: ProviderKind): void {
   const running = get().runs[id];
   if (running) {
-    void gmailApi.agentCancel(running.provider, running.requestId);
+    void mailApi.agentCancel(running.provider, running.requestId);
     endRun(running.requestId);
   }
   // Sessions this app created go with the chat; ones opened from the provider only unlink.
   const target = get().conversations.find((c) => c.id === id);
   if (!target) return;
   if (target.sessionId && target.sessionOwned) {
-    void gmailApi.agentDeleteSession(target.provider, target.sessionId).catch(() => {});
+    void mailApi.agentDeleteSession(target.provider, target.sessionId).catch(() => {});
   }
   if (!isBlank(target)) void chatsApi.delete(id).catch(() => {});
   closeChatPages(id);
@@ -890,7 +890,7 @@ export function openServerSession(
     activeId: convo.id,
     hydrating: convo.id,
   }));
-  gmailApi
+  mailApi
     .agentSessionMessages(provider, session.id)
     .then(
       (messages) => {
@@ -935,7 +935,7 @@ export function resumeRuns(providers: ProviderSnapshot[]): void {
         runs: { ...s.runs, [c.id]: { requestId, convoId: c.id, provider: c.provider } },
       }));
       try {
-        const { resumed } = await gmailApi.agentResume({
+        const { resumed } = await mailApi.agentResume({
           provider: c.provider,
           requestId,
           sessionId,

@@ -15,7 +15,7 @@ import { useLabels, useMessage } from "./mail/hooks";
 import { isBlank, useChats } from "./mail/chat-store";
 import { folderName, labelDisplayName } from "./mail/label-names";
 import { capabilitiesOf } from "./mail/capabilities";
-import type { GmailAccount, MailView } from "./mail/types";
+import type { MailAccount, MailView } from "./mail/types";
 import type { SettingsPane } from "./mail/api";
 import { SETTINGS_SECTION_LABELS } from "./settings/settings-search";
 
@@ -126,7 +126,7 @@ export function useRecordRecentlyViewed({
   label: string;
   messageId: string | null;
   readerAccount: string | null;
-  accounts: GmailAccount[];
+  accounts: MailAccount[];
   views: MailView[];
 }): void {
   const inSettings = settingsPane !== null;

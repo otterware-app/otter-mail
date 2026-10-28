@@ -10,7 +10,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
 
 import { utf8Decode, utf8Encode } from "../../bytes.ts";
 import { addImapAccount, signInImap } from "../../handlers/imap-accounts.ts";
-import { removeLocalAccount } from "../../handlers/gmail.ts";
+import { removeLocalAccount } from "../../handlers/mail.ts";
 import { setPlatform, type Platform } from "../../platform.ts";
 import { getAccount } from "../../services/account-store.ts";
 import { getImapPassword, loadImapPasswords } from "../../services/imap-passwords.ts";

@@ -15,10 +15,10 @@ import { refreshProfiles } from "../services/google-profile.js";
 import { accountAdded } from "../services/linked-accounts.js";
 import * as mailSync from "../services/mail-sync.js";
 import { syncedSignature } from "../services/preferences.js";
-import type { GmailAccount } from "../types.js";
+import type { MailAccount } from "../types.js";
 
 /** Signs in with Microsoft; answers the mailbox, or null when the user cancelled. */
-export async function addOutlookAccount(params: unknown): Promise<GmailAccount | null> {
+export async function addOutlookAccount(params: unknown): Promise<MailAccount | null> {
   const auth = platform().microsoft;
   if (!auth || !(await auth.available())) throw new Error("This app can't sign in to Outlook.");
   const email = (params as { email?: unknown } | undefined)?.email;
@@ -33,14 +33,14 @@ export async function addOutlookAccount(params: unknown): Promise<GmailAccount |
 }
 
 /** After a Microsoft sign-in: saves the mailbox, links it, syncs it. */
-export async function saveOutlookAccount(signIn: MicrosoftSignIn): Promise<GmailAccount> {
+export async function saveOutlookAccount(signIn: MicrosoftSignIn): Promise<MailAccount> {
   const auth = platform().microsoft!;
   const existing = await accountStore.getAccount(signIn.email);
   if (existing && existing.provider !== "outlook") {
     await auth.removeTokens(signIn.email);
     throw new Error(`${signIn.email} is already added.`);
   }
-  const account: GmailAccount = {
+  const account: MailAccount = {
     ...existing,
     id: signIn.email,
     email: signIn.email,

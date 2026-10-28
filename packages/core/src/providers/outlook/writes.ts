@@ -13,7 +13,7 @@ import { ARCHIVE_LABEL_ID, OTHER_LABEL_ID, SNOOZED_LABEL_ID } from "@otter-mail/
 
 import * as store from "../../services/mail-store.js";
 import { renamePendingLabel } from "../../services/pending-label-writes.js";
-import type { GmailLabel, GmailMessageSummary } from "../../types.js";
+import type { MailLabel, MessageSummary } from "../../types.js";
 import type { LabelChange } from "../provider.js";
 import {
   categoryLabel,
@@ -169,7 +169,7 @@ export const trashThread = (accountId: string, threadId: string) =>
   modifyThread(accountId, threadId, { addLabelIds: ["TRASH"] });
 
 /** Back from Deleted Items: received mail to the inbox, your own to Sent Items. */
-async function untrash(accountId: string, messages: ApiMessage[]): Promise<GmailMessageSummary[]> {
+async function untrash(accountId: string, messages: ApiMessage[]): Promise<MessageSummary[]> {
   const trashed = messages.filter((m) => folderLabel(accountId, m.parentFolderId) === "TRASH");
   await apply(accountId, trashed, { removeLabelIds: ["TRASH"] }, false);
   const ids = trashed.map((m) => m.id);
@@ -234,7 +234,7 @@ async function masterCategories(accountId: string): Promise<MasterCategory[]> {
 }
 
 /** A new label is a category (Outlook's colored labels). */
-export async function createLabel(accountId: string, name: string): Promise<GmailLabel> {
+export async function createLabel(accountId: string, name: string): Promise<MailLabel> {
   const created = await graph<MasterCategory>(accountId, "/me/outlook/masterCategories", {
     method: "POST",
     body: { displayName: name, color: "preset7" },

@@ -8,7 +8,7 @@
 import type { ImapSettings } from "@otter-mail/contracts";
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
 
-import { searchGmail } from "../../../handlers/search.ts";
+import { searchMail } from "../../../handlers/search.ts";
 import { connectImap, type ImapClient } from "../../../protocols/index.ts";
 import { nodeConnect } from "../../../protocols/test/node-stream.ts";
 import {
@@ -20,7 +20,7 @@ import {
 import * as accounts from "../../../services/account-store.ts";
 import { setImapPassword } from "../../../services/imap-passwords.ts";
 import * as store from "../../../services/mail-store.ts";
-import type { GmailMessageSummary } from "../../../types.ts";
+import type { MessageSummary } from "../../../types.ts";
 import type { SyncContext } from "../../provider.ts";
 import { imapProvider } from "../index.ts";
 import { threadIdOf } from "../messages.ts";
@@ -75,8 +75,8 @@ function mail(opts: {
   return { id, raw };
 }
 
-async function sync(accountId: string): Promise<GmailMessageSummary[]> {
-  const newMail: GmailMessageSummary[] = [];
+async function sync(accountId: string): Promise<MessageSummary[]> {
+  const newMail: MessageSummary[] = [];
   const ctx: SyncContext = {
     update: () => {},
     bumpRevision: () => {},
@@ -209,7 +209,7 @@ function providerScenario(
 
   it("searches the local index with Gmail's operators", async () => {
     const subjects = async (q: string) =>
-      (await searchGmail(q, [accountId])).messages.map((m) => m.subject).sort();
+      (await searchMail(q, [accountId])).messages.map((m) => m.subject).sort();
     expect(await subjects("report")).toEqual(["Old report", "Report"]);
     expect(await subjects("in:inbox report")).toEqual([]);
     expect(await subjects("label:work old")).toEqual(["Old report"]);
@@ -497,7 +497,7 @@ function providerScenario(
     expect(sent).toMatchObject({ subject, unread: false, labelIds: ["SENT"] });
     expect((await provider.getMessage(accountId, messageId!)).bcc).toBe("bob@example.com");
 
-    let arrived: GmailMessageSummary | undefined;
+    let arrived: MessageSummary | undefined;
     for (let i = 0; i < 50 && !arrived; i++) {
       await sync(accountId);
       arrived = store

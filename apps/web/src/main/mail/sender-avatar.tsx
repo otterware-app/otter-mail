@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { gmailApi } from "./api";
+import { mailApi } from "./api";
 
 /** Deterministic hue per sender so people keep a stable identity color. */
 function hueFor(seed: string): number {
@@ -30,7 +30,7 @@ export function SenderAvatar({
   const normalizedEmail = email.trim().toLowerCase();
   const photoQuery = useQuery({
     queryKey: ["gmail:senderAvatar", normalizedEmail],
-    queryFn: () => gmailApi.getSenderAvatar(accountId!, normalizedEmail),
+    queryFn: () => mailApi.getSenderAvatar(accountId!, normalizedEmail),
     enabled: !!accountId && normalizedEmail.includes("@"),
     staleTime: Infinity,
     gcTime: 60 * 60 * 1000,

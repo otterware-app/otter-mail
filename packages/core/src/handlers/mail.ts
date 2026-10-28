@@ -40,7 +40,7 @@ import { proxyRemoteImage } from "../services/image-proxy.js";
 import { deleteImapPassword } from "../services/imap-passwords.js";
 import { MAX_ATTACHMENT_TOTAL_BYTES, pickComposeAttachments } from "../services/outgoing.js";
 import * as mailStore from "../services/mail-store.js";
-import { IPC_WRITE_BUDGET_MS, atMost, runAsTask, settleGmailWrite, sleep } from "./ipc-budget.js";
+import { IPC_WRITE_BUDGET_MS, atMost, runAsTask, settleWrite, sleep } from "./ipc-budget.js";
 import { forgetLiveCursors, pageWithLiveFill, reconcileUnread } from "./live-paging.js";
 import { trackLabelWrite } from "../services/pending-label-writes.js";
 import {
@@ -166,7 +166,7 @@ function settleLabelWrite(
   const tracked = trackLabelWrite(accountId, messageIds, add, remove, landing);
   const running = afterEarlierWrites(accountId, messageIds, write);
   running.then(tracked.settled, tracked.dropped);
-  return settleGmailWrite(channel, running, revert);
+  return settleWrite(channel, running, revert);
 }
 
 function parseRules(raw: unknown): ViewRule[] {
@@ -229,7 +229,7 @@ function parseAttachments(raw: unknown): ComposeAttachment[] | undefined {
 
 // ── Registration ──────────────────────────────────────────────────────────────
 
-export function registerGmailHandlers(): void {
+export function registerMailHandlers(): void {
   handle("gmail:listSchedules", () => listSchedules());
   handle("gmail:scheduleMessage", (params: unknown) => {
     const p = params as Record<string, unknown>;
@@ -399,7 +399,7 @@ export function registerGmailHandlers(): void {
       // Mirror first, answer inside the IPC budget; the full label refresh
       // (one request per label) runs after Gmail confirms.
       const revert = mailStore.editLabelLocally(accountId, labelId, { name, color });
-      return await settleGmailWrite(
+      return await settleWrite(
         "gmail:updateLabel",
         providerFor(accountId)
           .updateLabel(accountId, { labelId, name, color })
@@ -426,7 +426,7 @@ export function registerGmailHandlers(): void {
         provider.capabilities.foldersAndCategories && labelId.startsWith("folder:")
           ? () => {}
           : mailStore.removeLabelLocally(accountId, labelId);
-      return await settleGmailWrite(
+      return await settleWrite(
         "gmail:deleteLabel",
         provider.deleteLabel(accountId, labelId).then(() => refreshLabels(accountId)),
         revert,

@@ -6,7 +6,7 @@
 
 import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { gmailApi, type ProviderKind, type ProviderSnapshot, type ProvidersState } from "./api";
+import { mailApi, type ProviderKind, type ProviderSnapshot, type ProvidersState } from "./api";
 import { cn } from "./ui";
 import hermesIconUrl from "../assets/hermes-agent-icon.png";
 
@@ -24,7 +24,7 @@ export function useAgentProviders() {
   );
   return useQuery({
     queryKey: PROVIDERS_KEY,
-    queryFn: () => gmailApi.agentProviders(),
+    queryFn: () => mailApi.agentProviders(),
     staleTime: 30_000,
   });
 }

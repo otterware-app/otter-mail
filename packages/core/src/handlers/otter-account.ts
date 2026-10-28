@@ -36,7 +36,7 @@ import {
 import { forgetSyncedPreferences, pullPreferences } from "../services/preferences.js";
 import { pullChats } from "../services/chats.js";
 import { getRealtimeState, startRealtime, stopRealtime } from "../services/realtime.js";
-import { removeLocalAccount } from "./gmail.js";
+import { removeLocalAccount } from "./mail.js";
 
 const REFRESH_EVERY_MS = 60 * 60_000;
 let refreshTimer: ReturnType<typeof setInterval> | null = null;

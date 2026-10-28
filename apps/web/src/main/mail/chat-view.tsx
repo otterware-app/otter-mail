@@ -10,7 +10,7 @@ import { MessageScroller } from "@shadcn/react/message-scroller";
 import { ArrowDownIcon, MailIcon } from "lucide-react";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { buttonClass, cn } from "./ui";
-import { gmailApi, type AgentSettingsPatch, type ChatChange, type ProviderKind } from "./api";
+import { mailApi, type AgentSettingsPatch, type ChatChange, type ProviderKind } from "./api";
 import {
   ProviderIcon,
   providerSummary,
@@ -38,7 +38,7 @@ function useChatImageLoader(provider?: ProviderKind, sessionId?: string | null) 
   return useCallback(
     async (href: string) => {
       if (!provider) throw new Error("Open the image from its chat.");
-      const file = await gmailApi.agentReadFile(provider, sessionId ?? "", href);
+      const file = await mailApi.agentReadFile(provider, sessionId ?? "", href);
       const preview = attachmentPreview(file.name, file.mimeType);
       if (preview?.kind !== "image") throw new Error("This file isn't an image.");
       return `data:${preview.mimeType};base64,${file.data}`;
@@ -80,7 +80,7 @@ export function ChatView({
   const setProvidersState = useSetProvidersState();
   const updateSettings = (patch: AgentSettingsPatch) => {
     console.log("[AgentChat:updateSettings]", patch);
-    gmailApi.updateAgentSettings(patch).then(setProvidersState, () => {});
+    mailApi.updateAgentSettings(patch).then(setProvidersState, () => {});
   };
 
   const files = useChatAttachments();
@@ -113,7 +113,7 @@ export function ChatView({
   const loadChatImage = useChatImageLoader(convo?.provider, convo?.sessionId);
   const previewChatFile = (href: string) => {
     if (!convo) return;
-    void gmailApi
+    void mailApi
       .agentReadFile(convo.provider, convo.sessionId ?? "", href)
       .then((file) => {
         if (!attachmentPreview(file.name, file.mimeType))
@@ -159,7 +159,7 @@ export function ChatView({
           <div className="mt-1 flex items-center gap-2">
             <button
               type="button"
-              onClick={() => void gmailApi.openSettings({ pane: "agents" })}
+              onClick={() => void mailApi.openSettings({ pane: "agents" })}
               className={buttonClass("outline", "sm")}
             >
               Open Settings

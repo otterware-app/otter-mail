@@ -4,13 +4,13 @@ import { getAccountColor, getAccountDisplayName } from "./account-style";
 import { parseAddressEntry, splitAddressList } from "./address";
 import { useAccounts, useMessage } from "./hooks";
 import { SenderAvatar } from "./sender-avatar";
-import type { GmailMessageDetail, GmailMessageSummary } from "./types";
+import type { MessageDetail, MessageSummary } from "./types";
 import { HintTooltip, cn } from "./ui";
 import { UnsubscribeLink } from "./unsubscribe-link";
 import { openLink } from "../browser/store";
 import { isModClick } from "../keybindings/keys";
 
-type OpenFile = (messageId: string, attachment: GmailMessageDetail["attachments"][number]) => void;
+type OpenFile = (messageId: string, attachment: MessageDetail["attachments"][number]) => void;
 
 /**
  * A conversation at a glance (Codex's pinned summary): where it lives and
@@ -29,7 +29,7 @@ export function ConversationSummary({
 }: {
   accountId: string;
   threadId: string;
-  rows: GmailMessageSummary[];
+  rows: MessageSummary[];
   onComposeTo?: (email: string) => void;
   onSearchSender?: (email: string) => void;
   onOpenFile: OpenFile;
@@ -225,7 +225,7 @@ function MessageFiles({
 type Person = { name: string; email: string; sent: number; seenAt: number };
 
 /** Everyone on the conversation but you: who wrote (most first), then who was written to. */
-function participants(rows: GmailMessageSummary[], self?: string): Person[] {
+function participants(rows: MessageSummary[], self?: string): Person[] {
   const me = self?.toLowerCase();
   const people = new Map<string, Person>();
   const add = (name: string, email: string, wrote: boolean, at: number) => {

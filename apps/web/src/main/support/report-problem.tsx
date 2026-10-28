@@ -39,7 +39,7 @@ import { Field } from "~/components/ui/field";
 import { Input } from "~/components/ui/input";
 import { features } from "../features";
 import { Btn } from "../mail/ui";
-import { gmailApi } from "../mail/api";
+import { mailApi } from "../mail/api";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../mail/select";
 import {
   DropdownMenu,
@@ -322,7 +322,7 @@ export function ReportProblemDialog() {
     });
   const save = (contents = body) =>
     run("save", async () => {
-      const saved = await gmailApi.saveSupportReport(
+      const saved = await mailApi.saveSupportReport(
         buildSupportPrompt(`# ${describedReport().title}\n\n${contents}`, false, describedReport()),
       );
       if (saved) toast.success("Report saved. Open it in your coding agent to investigate.");
@@ -330,7 +330,7 @@ export function ReportProblemDialog() {
   const saveDiagnostics = () =>
     run("save", async () => {
       if (!reportDiagnostics) return;
-      const saved = await gmailApi.saveSupportReport(
+      const saved = await mailApi.saveSupportReport(
         JSON.stringify(reportDiagnostics, null, 2),
         "Otter Mail diagnostics.json",
       );

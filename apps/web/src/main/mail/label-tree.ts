@@ -1,9 +1,9 @@
-import type { GmailLabel } from "./types";
+import type { MailLabel } from "./types";
 
 export type LabelTreeNode = {
   key: string;
   segment: string;
-  label?: GmailLabel;
+  label?: MailLabel;
   children: LabelTreeNode[];
 };
 
@@ -13,11 +13,11 @@ export type LabelTreeNode = {
 export const PENDING_LABEL_PREFIX = "pending:";
 
 /** User labels that can be applied to mail right now (not still being created). */
-export function isAssignableLabel(label: GmailLabel): boolean {
+export function isAssignableLabel(label: MailLabel): boolean {
   return label.type === "user" && !label.id.startsWith(PENDING_LABEL_PREFIX);
 }
 
-export function buildLabelTree(labels: GmailLabel[]): LabelTreeNode[] {
+export function buildLabelTree(labels: MailLabel[]): LabelTreeNode[] {
   const root: LabelTreeNode[] = [];
   const nodesByPath = new Map<string, LabelTreeNode>();
 

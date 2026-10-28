@@ -3,7 +3,7 @@ import { Switch } from "~/components/ui/switch";
 import { toast } from "../mail/toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { PlusIcon, StarIcon, XIcon } from "lucide-react";
-import { gmailApi, type TranslationSettings } from "../mail/api";
+import { mailApi, type TranslationSettings } from "../mail/api";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -29,7 +29,7 @@ export function TranslationSection() {
   const save = async (patch: Partial<TranslationSettings>) => {
     console.log("[Settings:setTranslation]", patch);
     try {
-      const saved = await gmailApi.setTranslationSettings(patch);
+      const saved = await mailApi.setTranslationSettings(patch);
       queryClient.setQueryData(["translation-settings"], saved);
     } catch (error) {
       toast.error(`Failed to save translation settings: ${error}`);

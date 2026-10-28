@@ -10,7 +10,7 @@ import {
 import { landLabelChange } from "@otter-mail/contracts";
 import { toast } from "./toast";
 import {
-  gmailApi,
+  mailApi,
   type AddImapAccountParams,
   type ModifyMessageParams,
   type ModifyThreadParams,
@@ -20,15 +20,15 @@ import { ALL_MAIL_LABEL_ID } from "./label-names";
 import { PENDING_LABEL_PREFIX } from "./label-tree";
 import type {
   ContactSuggestion,
-  GmailAccount,
-  GmailLabel,
-  GmailMessageDetail,
-  GmailMessageSummary,
+  MailAccount,
+  MailLabel,
+  MessageDetail,
+  MessageSummary,
   MailView,
   SyncStatus,
   ViewRule,
 } from "./types";
-import type { GmailSearchResult, ListMessagesResult } from "./api";
+import type { MailSearchResult, ListMessagesResult } from "./api";
 import { resolveRules } from "./custom-views";
 import { registerUndo, clearUndo, isPureMarkRead, isQuiet, type ActionSummary } from "./undo";
 import { summarizeLabelChange } from "./action-summary";
@@ -39,7 +39,7 @@ const STALE_TIME = 30_000;
  *  grant surfaces as an OAuth 401 with no other symptom (the row/badge just
  *  never updates), so calling that out specifically saves a confusing "why
  *  didn't this save" round trip. */
-function describeGmailWriteError(err: unknown): string {
+function describeWriteError(err: unknown): string {
   const raw = err instanceof Error ? err.message : String(err);
   // The IPC bridge wraps handler errors as "Error invoking remote method
   // 'gmail:x': <reason>" — only the reason is useful to the user.
@@ -78,12 +78,12 @@ function invalidateMailCaches(qc: ReturnType<typeof useQueryClient>): void {
 /** Surfaces label writes that failed after the backend had already answered
  *  (finished in the background past the IPC budget) and refetches so the
  *  reverted local state shows. Mount once, in the main window. */
-export function useGmailWriteFailureToasts(): void {
+export function useWriteFailureToasts(): void {
   const qc = useQueryClient();
   useEffect(() => {
     const offWrite = window.desktopBridge.on("gmail:write-failed", (params: unknown) => {
       const p = params as { message?: string } | undefined;
-      toast.error(describeGmailWriteError(new Error(p?.message ?? "Unknown error")));
+      toast.error(describeWriteError(new Error(p?.message ?? "Unknown error")));
       invalidateMailCaches(qc);
     });
     // A send that outlasted the IPC budget and then failed: the backend put
@@ -149,11 +149,11 @@ export function useAccounts() {
     return unsubscribe;
   }, [qc]);
 
-  return useQuery<GmailAccount[]>({
+  return useQuery<MailAccount[]>({
     queryKey: queryKeys.accounts(),
     queryFn: () => {
       console.log("[hooks:useAccounts] fetching accounts");
-      return gmailApi.listAccounts();
+      return mailApi.listAccounts();
     },
     staleTime: STALE_TIME,
   });
@@ -169,12 +169,12 @@ export function useUpdateAccount() {
       signature?: string;
     }) => {
       console.log("[hooks:useUpdateAccount] updating account", params);
-      return gmailApi.updateAccount(params);
+      return mailApi.updateAccount(params);
     },
     onMutate: async (params) => {
       await qc.cancelQueries({ queryKey: queryKeys.accounts() });
-      const prev = qc.getQueryData<GmailAccount[]>(queryKeys.accounts());
-      qc.setQueryData<GmailAccount[]>(queryKeys.accounts(), (accounts) =>
+      const prev = qc.getQueryData<MailAccount[]>(queryKeys.accounts());
+      qc.setQueryData<MailAccount[]>(queryKeys.accounts(), (accounts) =>
         (accounts ?? []).map((a) =>
           a.id === params.accountId
             ? {
@@ -199,11 +199,11 @@ export function useUpdateAccount() {
 
 // ---- Labels ----
 export function useLabels(accountId: string | null) {
-  return useQuery<GmailLabel[]>({
+  return useQuery<MailLabel[]>({
     queryKey: queryKeys.labels(accountId ?? ""),
     queryFn: () => {
       console.log("[hooks:useLabels] fetching labels", { accountId });
-      return gmailApi.listLabels(accountId!);
+      return mailApi.listLabels(accountId!);
     },
     enabled: accountId != null,
     staleTime: STALE_TIME,
@@ -215,14 +215,14 @@ export function useCreateLabel() {
   return useMutation({
     mutationFn: ({ accountId, name }: { accountId: string; name: string }) => {
       console.log("[hooks:useCreateLabel] creating label", { accountId, name });
-      return gmailApi.createLabel(accountId, name);
+      return mailApi.createLabel(accountId, name);
     },
     // Optimistic: the label shows up in the sidebar instantly under a pending
     // id; reconciliation swaps in the real id.
     onMutate: async ({ accountId, name }) => {
       await qc.cancelQueries({ queryKey: queryKeys.labels(accountId) });
-      const prev = qc.getQueryData<GmailLabel[]>(queryKeys.labels(accountId));
-      qc.setQueryData<GmailLabel[]>(queryKeys.labels(accountId), (old) => [
+      const prev = qc.getQueryData<MailLabel[]>(queryKeys.labels(accountId));
+      qc.setQueryData<MailLabel[]>(queryKeys.labels(accountId), (old) => [
         ...(old ?? []),
         { id: `${PENDING_LABEL_PREFIX}${name}`, name, type: "user" },
       ]);
@@ -247,14 +247,14 @@ export function useUpdateLabel() {
       color?: { backgroundColor: string; textColor: string };
     }) => {
       console.log("[hooks:useUpdateLabel]", params);
-      return gmailApi.updateLabel(params);
+      return mailApi.updateLabel(params);
     },
     // Optimistic: rename/recolor in the labels cache immediately, cascading
     // renames to nested labels the way the backend does.
     onMutate: async ({ accountId, labelId, name, color }) => {
       await qc.cancelQueries({ queryKey: queryKeys.labels(accountId) });
-      const prev = qc.getQueryData<GmailLabel[]>(queryKeys.labels(accountId));
-      qc.setQueryData<GmailLabel[]>(queryKeys.labels(accountId), (old) => {
+      const prev = qc.getQueryData<MailLabel[]>(queryKeys.labels(accountId));
+      qc.setQueryData<MailLabel[]>(queryKeys.labels(accountId), (old) => {
         if (!old) return old;
         const source = old.find((l) => l.id === labelId);
         if (!source) return old;
@@ -284,12 +284,12 @@ export function useDeleteLabel() {
   return useMutation({
     mutationFn: ({ accountId, labelId }: { accountId: string; labelId: string }) => {
       console.log("[hooks:useDeleteLabel]", { accountId, labelId });
-      return gmailApi.deleteLabel(accountId, labelId);
+      return mailApi.deleteLabel(accountId, labelId);
     },
     onMutate: async ({ accountId, labelId }) => {
       await qc.cancelQueries({ queryKey: queryKeys.labels(accountId) });
-      const prev = qc.getQueryData<GmailLabel[]>(queryKeys.labels(accountId));
-      qc.setQueryData<GmailLabel[]>(queryKeys.labels(accountId), (old) =>
+      const prev = qc.getQueryData<MailLabel[]>(queryKeys.labels(accountId));
+      qc.setQueryData<MailLabel[]>(queryKeys.labels(accountId), (old) =>
         old?.filter((l) => l.id !== labelId),
       );
       return { prev };
@@ -308,7 +308,7 @@ export function useDeleteLabel() {
 export function usePruneThreadRows() {
   const qc = useQueryClient();
   return (accountId: string, threadId: string) => {
-    const inThread = (m: GmailMessageSummary) =>
+    const inThread = (m: MessageSummary) =>
       (m.threadId || m.id) === threadId && (m.accountId ?? accountId) === accountId;
     const prune = (old: InfiniteData<ListMessagesResult> | undefined) =>
       removeMessagesFromInfiniteData(old, inThread);
@@ -337,7 +337,7 @@ export function useMessages(accountId: string | null, labelId?: string) {
         labelId,
         pageToken: pageParam,
       });
-      return gmailApi.listMessages({
+      return mailApi.listMessages({
         accountId: accountId!,
         labelIds: labelId ? [labelId] : undefined,
         pageToken: pageParam,
@@ -404,7 +404,7 @@ export function useSearchMessages(
         scope,
         pageToken: pageParam,
       });
-      return gmailApi.searchMessages({
+      return mailApi.searchMessages({
         q,
         accountId: accountId ?? undefined,
         labelId: scope?.labelId,
@@ -429,22 +429,22 @@ export function useSearchMessages(
  * Each page is conversations newest first; a conversation seen on an earlier
  * page isn't repeated.
  */
-export function useGmailSearch(q: string, accountIds: string[], enabled = true) {
+export function useMailSearch(q: string, accountIds: string[], enabled = true) {
   return useInfiniteQuery<
-    GmailSearchResult,
+    MailSearchResult,
     Error,
-    InfiniteData<GmailSearchResult>,
+    InfiniteData<MailSearchResult>,
     readonly unknown[],
     Record<string, string | null> | undefined
   >({
     queryKey: ["gmail-search", q, [...accountIds].sort().join(",")],
     queryFn: ({ pageParam }) => {
-      console.log("[hooks:useGmailSearch]", {
+      console.log("[hooks:useMailSearch]", {
         q,
         accounts: accountIds.length,
         paged: Boolean(pageParam),
       });
-      return gmailApi.gmailSearch({ q, accountIds, cursors: pageParam });
+      return mailApi.gmailSearch({ q, accountIds, cursors: pageParam });
     },
     initialPageParam: undefined,
     getNextPageParam: (last) => last.cursors,
@@ -474,7 +474,7 @@ export function useCombinedMessages(rules: ViewRule[], viewId: string, enabled =
         ruleCount: rules.length,
         pageToken: pageParam,
       });
-      return gmailApi.listCombinedMessages({
+      return mailApi.listCombinedMessages({
         rules,
         pageToken: pageParam,
         maxResults: 50,
@@ -491,7 +491,7 @@ export function useCombinedMessages(rules: ViewRule[], viewId: string, enabled =
 export function useCombinedCounts(rules: ViewRule[], viewId: string, enabled = true) {
   return useQuery({
     queryKey: queryKeys.combinedCounts(viewId, rules),
-    queryFn: () => gmailApi.countCombinedMessages({ rules }),
+    queryFn: () => mailApi.countCombinedMessages({ rules }),
     enabled: enabled && rules.length > 0,
     staleTime: STALE_TIME,
   });
@@ -500,14 +500,14 @@ export function useCombinedCounts(rules: ViewRule[], viewId: string, enabled = t
 /** Unread count per view id, for the sidebar's Views. */
 export function useViewUnreadCounts(
   views: MailView[],
-  accounts: GmailAccount[],
+  accounts: MailAccount[],
 ): Record<string, number> {
   const results = useQueries({
     queries: views.map((view) => {
       const rules = resolveRules(view, accounts);
       return {
         queryKey: queryKeys.combinedCounts(view.id, rules),
-        queryFn: () => gmailApi.countCombinedMessages({ rules }),
+        queryFn: () => mailApi.countCombinedMessages({ rules }),
         enabled: rules.length > 0,
         staleTime: STALE_TIME,
       };
@@ -520,42 +520,42 @@ export function useViewUnreadCounts(
 export function useAllAccountLabels(
   accountIds: string[],
   enabled = true,
-): { accountId: string; labels: GmailLabel[]; isLoading: boolean }[] {
+): { accountId: string; labels: MailLabel[]; isLoading: boolean }[] {
   const results = useQueries({
     queries: accountIds.map((id) => ({
       queryKey: queryKeys.labels(id),
-      queryFn: () => gmailApi.listLabels(id),
+      queryFn: () => mailApi.listLabels(id),
       enabled,
       staleTime: STALE_TIME,
     })),
   });
   return accountIds.map((id, i) => ({
     accountId: id,
-    labels: (results[i]?.data as GmailLabel[] | undefined) ?? [],
+    labels: (results[i]?.data as MailLabel[] | undefined) ?? [],
     isLoading: results[i]?.isLoading ?? false,
   }));
 }
 
 /**
- * Resolves a message's label id back to its GmailLabel across accounts.
+ * Resolves a message's label id back to its MailLabel across accounts.
  * Fetches labels for each account and returns a lookup keyed by
  * `${accountId}:${labelId}` (label ids differ per account).
  */
 export function useLabelResolver(
   accountIds: string[],
-): (accountId: string | undefined, labelId: string) => GmailLabel | undefined {
+): (accountId: string | undefined, labelId: string) => MailLabel | undefined {
   const results = useQueries({
     queries: accountIds.map((id) => ({
       queryKey: queryKeys.labels(id),
-      queryFn: () => gmailApi.listLabels(id),
+      queryFn: () => mailApi.listLabels(id),
       staleTime: STALE_TIME,
     })),
   });
 
-  const map = new Map<string, GmailLabel>();
+  const map = new Map<string, MailLabel>();
   results.forEach((r, i) => {
     const acc = accountIds[i];
-    for (const label of (r.data as GmailLabel[] | undefined) ?? []) {
+    for (const label of (r.data as MailLabel[] | undefined) ?? []) {
       map.set(`${acc}:${label.id}`, label);
     }
   });
@@ -567,9 +567,9 @@ export function useLabelResolver(
 
 /** All messages of a thread from the local store, oldest first. */
 export function useThread(accountId: string | null, threadId: string | null) {
-  return useQuery<GmailMessageSummary[]>({
+  return useQuery<MessageSummary[]>({
     queryKey: queryKeys.thread(accountId ?? "", threadId ?? ""),
-    queryFn: () => gmailApi.getThread(accountId!, threadId!),
+    queryFn: () => mailApi.getThread(accountId!, threadId!),
     enabled: accountId != null && threadId != null,
     staleTime: STALE_TIME,
   });
@@ -578,17 +578,17 @@ export function useThread(accountId: string | null, threadId: string | null) {
 /** Several threads at once (the list's expanded conversations), each oldest first. */
 export function useThreads(
   threads: { accountId: string; threadId: string }[],
-): Map<string, GmailMessageSummary[]> {
+): Map<string, MessageSummary[]> {
   const results = useQueries({
     queries: threads.map((t) => ({
       queryKey: queryKeys.thread(t.accountId, t.threadId),
-      queryFn: () => gmailApi.getThread(t.accountId, t.threadId),
+      queryFn: () => mailApi.getThread(t.accountId, t.threadId),
       staleTime: STALE_TIME,
     })),
   });
-  const byKey = new Map<string, GmailMessageSummary[]>();
+  const byKey = new Map<string, MessageSummary[]>();
   threads.forEach((t, i) => {
-    const data = results[i]?.data as GmailMessageSummary[] | undefined;
+    const data = results[i]?.data as MessageSummary[] | undefined;
     if (data) byKey.set(`${t.accountId}:${t.threadId}`, data);
   });
   return byKey;
@@ -596,14 +596,14 @@ export function useThreads(
 
 // ---- Message Detail ----
 export function useMessage(accountId: string | null, messageId: string | null) {
-  return useQuery<GmailMessageDetail>({
+  return useQuery<MessageDetail>({
     queryKey: queryKeys.message(accountId ?? "", messageId ?? ""),
     queryFn: () => {
       console.log("[hooks:useMessage] fetching message", {
         accountId,
         messageId,
       });
-      return gmailApi.getMessage(accountId!, messageId!);
+      return mailApi.getMessage(accountId!, messageId!);
     },
     enabled: accountId != null && messageId != null,
     staleTime: STALE_TIME,
@@ -660,9 +660,9 @@ function computeLabelCountDeltas(
 }
 
 function applyLabelCountDeltas(
-  labels: GmailLabel[] | undefined,
+  labels: MailLabel[] | undefined,
   deltas: Map<string, LabelCountDelta>,
-): GmailLabel[] | undefined {
+): MailLabel[] | undefined {
   if (!labels || deltas.size === 0) return labels;
   return labels.map((l) => {
     const delta = deltas.get(l.id);
@@ -677,14 +677,14 @@ function applyLabelCountDeltas(
 
 function messagesFromInfiniteData(
   data: InfiniteData<ListMessagesResult> | undefined,
-): GmailMessageSummary[] {
+): MessageSummary[] {
   return data?.pages.flatMap((p) => p.messages) ?? [];
 }
 
 function patchMessagesInInfiniteData(
   data: InfiniteData<ListMessagesResult> | undefined,
-  match: (m: GmailMessageSummary) => boolean,
-  patch: (m: GmailMessageSummary) => GmailMessageSummary,
+  match: (m: MessageSummary) => boolean,
+  patch: (m: MessageSummary) => MessageSummary,
 ): InfiniteData<ListMessagesResult> | undefined {
   if (!data) return data;
   return {
@@ -698,7 +698,7 @@ function patchMessagesInInfiniteData(
 
 function removeMessagesFromInfiniteData(
   data: InfiniteData<ListMessagesResult> | undefined,
-  match: (m: GmailMessageSummary) => boolean,
+  match: (m: MessageSummary) => boolean,
 ): InfiniteData<ListMessagesResult> | undefined {
   if (!data) return data;
   return {
@@ -718,7 +718,7 @@ function removeMessagesFromInfiniteData(
  * messages, so the union keeps it until the server refresh).
  */
 /** `archiveFolder`: the change lands as it does where Archive is a folder (landLabelChange). */
-function applyLabelPatch<T extends GmailMessageSummary>(
+function applyLabelPatch<T extends MessageSummary>(
   m: T,
   addLabelIds: string[],
   removeLabelIds: string[],
@@ -757,7 +757,7 @@ function archiveFolderOf(
   qc: ReturnType<typeof useQueryClient>,
   accountId: string,
 ): boolean | undefined {
-  return qc.getQueryData<GmailAccount[]>(queryKeys.accounts())?.find((a) => a.id === accountId)
+  return qc.getQueryData<MailAccount[]>(queryKeys.accounts())?.find((a) => a.id === accountId)
     ?.capabilities?.archiveFolder;
 }
 
@@ -772,9 +772,7 @@ export function useAddAccount(provider: "gmail" | "outlook" = "gmail") {
   return useMutation({
     mutationFn: (email?: string) => {
       console.log("[hooks:useAddAccount] adding account", { provider, email });
-      return provider === "outlook"
-        ? gmailApi.addOutlookAccount(email)
-        : gmailApi.addAccount(email);
+      return provider === "outlook" ? mailApi.addOutlookAccount(email) : mailApi.addAccount(email);
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: queryKeys.accounts() });
@@ -786,7 +784,7 @@ export function useAddAccount(provider: "gmail" | "outlook" = "gmail") {
 export function useMailProviders() {
   return useQuery({
     queryKey: ["gmail:mailProviders"],
-    queryFn: () => gmailApi.mailProviders(),
+    queryFn: () => mailApi.mailProviders(),
     staleTime: Infinity,
   });
 }
@@ -796,7 +794,7 @@ export function useAddImapAccount() {
   return useMutation({
     mutationFn: (params: AddImapAccountParams) => {
       console.log("[hooks:useAddImapAccount] adding account", { email: params.email });
-      return gmailApi.addImapAccount(params);
+      return mailApi.addImapAccount(params);
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: queryKeys.accounts() });
@@ -809,7 +807,7 @@ export function useSignInImap() {
   return useMutation({
     mutationFn: (params: { accountId: string; password: string }) => {
       console.log("[hooks:useSignInImap] signing in", { accountId: params.accountId });
-      return gmailApi.signInImap(params.accountId, params.password);
+      return mailApi.signInImap(params.accountId, params.password);
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: queryKeys.accounts() });
@@ -822,12 +820,12 @@ export function useRemoveAccount() {
   return useMutation({
     mutationFn: (accountId: string) => {
       console.log("[hooks:useRemoveAccount] removing account", { accountId });
-      return gmailApi.removeAccount(accountId);
+      return mailApi.removeAccount(accountId);
     },
     onMutate: async (accountId) => {
       await qc.cancelQueries({ queryKey: queryKeys.accounts() });
-      const prev = qc.getQueryData<GmailAccount[]>(queryKeys.accounts());
-      qc.setQueryData<GmailAccount[]>(queryKeys.accounts(), (accounts) =>
+      const prev = qc.getQueryData<MailAccount[]>(queryKeys.accounts());
+      qc.setQueryData<MailAccount[]>(queryKeys.accounts(), (accounts) =>
         (accounts ?? []).filter((a) => a.id !== accountId),
       );
       return { prev };
@@ -847,7 +845,7 @@ function labelChangeSummary(
   params: { accountId: string; addLabelIds?: string[]; removeLabelIds?: string[] },
   noun: ActionSummary["noun"],
 ): ActionSummary | undefined {
-  const labels = qc.getQueryData<GmailLabel[]>(queryKeys.labels(params.accountId)) ?? [];
+  const labels = qc.getQueryData<MailLabel[]>(queryKeys.labels(params.accountId)) ?? [];
   const nameOf = (id: string) => labels.find((l) => l.id === id && l.type === "user")?.name;
   return summarizeLabelChange(
     params.addLabelIds ?? [],
@@ -863,7 +861,7 @@ export function useModifyMessage() {
   return useMutation({
     mutationFn: (params: ModifyMessageParams) => {
       console.log("[hooks:useModifyMessage] modifying message", params);
-      return gmailApi.modifyMessage(params);
+      return mailApi.modifyMessage(params);
     },
     onMutate: async (params) => {
       const { accountId, messageId, addLabelIds = [], removeLabelIds = [] } = params;
@@ -894,7 +892,7 @@ export function useModifyMessage() {
         qc.cancelQueries({ queryKey: labelsKey }),
       ]);
 
-      const prevMessage = qc.getQueryData<GmailMessageDetail>(messageKey);
+      const prevMessage = qc.getQueryData<MessageDetail>(messageKey);
       const prevMessagesQueries = qc.getQueriesData<InfiniteData<ListMessagesResult>>({
         queryKey: ["gmail:messages", accountId],
       });
@@ -904,10 +902,10 @@ export function useModifyMessage() {
       const prevSearchQueries = qc.getQueriesData<InfiniteData<ListMessagesResult>>({
         queryKey: ["gmail:searchMessages"],
       });
-      const prevThreadQueries = qc.getQueriesData<GmailMessageSummary[]>({
+      const prevThreadQueries = qc.getQueriesData<MessageSummary[]>({
         queryKey: threadsKey,
       });
-      const prevLabels = qc.getQueryData<GmailLabel[]>(labelsKey);
+      const prevLabels = qc.getQueryData<MailLabel[]>(labelsKey);
 
       const priorLabelIds =
         prevMessage?.labelIds ??
@@ -920,8 +918,8 @@ export function useModifyMessage() {
         [];
 
       const archiveFolder = archiveFolderOf(qc, accountId);
-      const isTarget = (m: GmailMessageSummary) => m.id === messageId;
-      const applyPatch = (m: GmailMessageSummary) =>
+      const isTarget = (m: MessageSummary) => m.id === messageId;
+      const applyPatch = (m: MessageSummary) =>
         applyLabelPatch(m, addLabelIds, removeLabelIds, "message", archiveFolder);
 
       if (prevMessage) qc.setQueryData(messageKey, applyPatch(prevMessage));
@@ -946,7 +944,7 @@ export function useModifyMessage() {
         (old: InfiniteData<ListMessagesResult> | undefined) =>
           patchMessagesInInfiniteData(old, isTarget, applyPatch),
       );
-      qc.setQueriesData({ queryKey: threadsKey }, (old: GmailMessageSummary[] | undefined) =>
+      qc.setQueriesData({ queryKey: threadsKey }, (old: MessageSummary[] | undefined) =>
         old?.map((m) => (isTarget(m) ? applyPatch(m) : m)),
       );
 
@@ -954,7 +952,7 @@ export function useModifyMessage() {
         archiveFolder,
       });
       const deltas = computeLabelCountDeltas(priorLabelIds, landed.add, landed.remove);
-      qc.setQueryData<GmailLabel[]>(labelsKey, (old) => applyLabelCountDeltas(old, deltas));
+      qc.setQueryData<MailLabel[]>(labelsKey, (old) => applyLabelCountDeltas(old, deltas));
 
       return {
         messageKey,
@@ -973,7 +971,7 @@ export function useModifyMessage() {
         invalidateMailCaches(qc);
         return;
       }
-      toast.error(describeGmailWriteError(err));
+      toast.error(describeWriteError(err));
       if (!context) return;
       if (context.prevMessage) qc.setQueryData(context.messageKey, context.prevMessage);
       for (const [key, data] of context.prevMessagesQueries) qc.setQueryData(key, data);
@@ -1011,7 +1009,7 @@ export function useTrashMessage() {
         accountId,
         messageId,
       });
-      return gmailApi.trashMessage(accountId, messageId);
+      return mailApi.trashMessage(accountId, messageId);
     },
     onMutate: async (params) => {
       const { accountId, messageId } = params;
@@ -1042,9 +1040,9 @@ export function useTrashMessage() {
       const prevSearchQueries = qc.getQueriesData<InfiniteData<ListMessagesResult>>({
         queryKey: ["gmail:searchMessages"],
       });
-      const prevLabels = qc.getQueryData<GmailLabel[]>(labelsKey);
-      const prevMessage = qc.getQueryData<GmailMessageDetail>(messageKey);
-      const prevThreadQueries = qc.getQueriesData<GmailMessageSummary[]>({
+      const prevLabels = qc.getQueryData<MailLabel[]>(labelsKey);
+      const prevMessage = qc.getQueryData<MessageDetail>(messageKey);
+      const prevThreadQueries = qc.getQueriesData<MessageSummary[]>({
         queryKey: threadsKey,
       });
 
@@ -1056,12 +1054,12 @@ export function useTrashMessage() {
           .flatMap(([, data]) => messagesFromInfiniteData(data))
           .find((m) => m.id === messageId);
 
-      const isTarget = (m: GmailMessageSummary) => m.id === messageId;
+      const isTarget = (m: MessageSummary) => m.id === messageId;
       // An open reader keeps rendering the conversation — mark it trashed there.
-      const trashPatch = <T extends GmailMessageSummary>(m: T): T =>
+      const trashPatch = <T extends MessageSummary>(m: T): T =>
         applyLabelPatch(m, ["TRASH"], ["INBOX"]) as T;
       if (prevMessage) qc.setQueryData(messageKey, trashPatch(prevMessage));
-      qc.setQueriesData({ queryKey: threadsKey }, (old: GmailMessageSummary[] | undefined) =>
+      qc.setQueriesData({ queryKey: threadsKey }, (old: MessageSummary[] | undefined) =>
         old?.map((m) => (isTarget(m) ? trashPatch(m) : m)),
       );
       qc.setQueriesData(
@@ -1093,7 +1091,7 @@ export function useTrashMessage() {
             { total: -1, unread: priorMessage.unread ? -1 : 0 },
           ]),
         );
-        qc.setQueryData<GmailLabel[]>(labelsKey, (old) => applyLabelCountDeltas(old, deltas));
+        qc.setQueryData<MailLabel[]>(labelsKey, (old) => applyLabelCountDeltas(old, deltas));
       }
 
       return {
@@ -1113,7 +1111,7 @@ export function useTrashMessage() {
         invalidateMailCaches(qc);
         return;
       }
-      toast.error(describeGmailWriteError(err));
+      toast.error(describeWriteError(err));
       if (!context) return;
       if (context.prevMessage) qc.setQueryData(context.messageKey, context.prevMessage);
       for (const [key, data] of context.prevThreadQueries) qc.setQueryData(key, data);
@@ -1139,7 +1137,7 @@ export function useModifyThread() {
   return useMutation({
     mutationFn: (params: ModifyThreadParams) => {
       console.log("[hooks:useModifyThread] modifying thread", params);
-      return gmailApi.modifyThread(params);
+      return mailApi.modifyThread(params);
     },
     onMutate: async (params) => {
       const { accountId, threadId, addLabelIds = [], removeLabelIds = [] } = params;
@@ -1160,7 +1158,7 @@ export function useModifyThread() {
       const threadKey = queryKeys.thread(accountId, threadId);
       const labelsKey = queryKeys.labels(accountId);
       const messagesKey = ["gmail:message", accountId];
-      const inThread = (m: GmailMessageSummary) =>
+      const inThread = (m: MessageSummary) =>
         (m.threadId || m.id) === threadId && (m.accountId ?? accountId) === accountId;
 
       await Promise.all([
@@ -1182,17 +1180,17 @@ export function useModifyThread() {
       const prevSearchQueries = qc.getQueriesData<InfiniteData<ListMessagesResult>>({
         queryKey: ["gmail:searchMessages"],
       });
-      const prevGmailSearchQueries = qc.getQueriesData<InfiniteData<ListMessagesResult>>({
+      const prevMailSearchQueries = qc.getQueriesData<InfiniteData<ListMessagesResult>>({
         queryKey: ["gmail-search"],
       });
       const prevMessageQueries = qc
-        .getQueriesData<GmailMessageDetail>({ queryKey: messagesKey })
+        .getQueriesData<MessageDetail>({ queryKey: messagesKey })
         .filter(([, message]) => message && inThread(message));
-      const prevThread = qc.getQueryData<GmailMessageSummary[]>(threadKey);
-      const prevLabels = qc.getQueryData<GmailLabel[]>(labelsKey);
+      const prevThread = qc.getQueryData<MessageSummary[]>(threadKey);
+      const prevLabels = qc.getQueryData<MailLabel[]>(labelsKey);
 
       const archiveFolder = archiveFolderOf(qc, accountId);
-      const applyPatch = (m: GmailMessageSummary) =>
+      const applyPatch = (m: MessageSummary) =>
         applyLabelPatch(m, addLabelIds, removeLabelIds, "thread", archiveFolder);
 
       for (const [key, message] of prevMessageQueries) {
@@ -1220,7 +1218,7 @@ export function useModifyThread() {
         (old: InfiniteData<ListMessagesResult> | undefined) =>
           patchMessagesInInfiniteData(old, inThread, applyPatch),
       );
-      qc.setQueryData<GmailMessageSummary[]>(threadKey, (old) => old?.map(applyPatch));
+      qc.setQueryData<MessageSummary[]>(threadKey, (old) => old?.map(applyPatch));
 
       // Thread-scoped removals also drop the row from lists the thread can no
       // longer match, so archive/move/junk clear the view instantly like trash.
@@ -1274,7 +1272,7 @@ export function useModifyThread() {
             merged.set(lid, { total: cur.total + d.total, unread: cur.unread + d.unread });
           }
         }
-        qc.setQueryData<GmailLabel[]>(labelsKey, (old) => applyLabelCountDeltas(old, merged));
+        qc.setQueryData<MailLabel[]>(labelsKey, (old) => applyLabelCountDeltas(old, merged));
       }
 
       return {
@@ -1283,7 +1281,7 @@ export function useModifyThread() {
         prevMessagesQueries,
         prevCombinedQueries,
         prevSearchQueries,
-        prevGmailSearchQueries,
+        prevMailSearchQueries,
         prevMessageQueries,
         prevThread,
         prevLabels,
@@ -1295,12 +1293,12 @@ export function useModifyThread() {
         invalidateMailCaches(qc);
         return;
       }
-      toast.error(describeGmailWriteError(err));
+      toast.error(describeWriteError(err));
       if (!context) return;
       for (const [key, data] of context.prevMessagesQueries) qc.setQueryData(key, data);
       for (const [key, data] of context.prevCombinedQueries) qc.setQueryData(key, data);
       for (const [key, data] of context.prevSearchQueries) qc.setQueryData(key, data);
-      for (const [key, data] of context.prevGmailSearchQueries) qc.setQueryData(key, data);
+      for (const [key, data] of context.prevMailSearchQueries) qc.setQueryData(key, data);
       for (const [key, data] of context.prevMessageQueries) qc.setQueryData(key, data);
       if (context.prevThread) qc.setQueryData(context.threadKey, context.prevThread);
       if (context.prevLabels) qc.setQueryData(context.labelsKey, context.prevLabels);
@@ -1322,7 +1320,7 @@ export function useTrashThread() {
   return useMutation({
     mutationFn: ({ accountId, threadId }: { accountId: string; threadId: string }) => {
       console.log("[hooks:useTrashThread] trashing thread", { accountId, threadId });
-      return gmailApi.trashThread(accountId, threadId);
+      return mailApi.trashThread(accountId, threadId);
     },
     onMutate: async (params) => {
       const { accountId, threadId } = params;
@@ -1352,20 +1350,18 @@ export function useTrashThread() {
       const prevSearchQueries = qc.getQueriesData<InfiniteData<ListMessagesResult>>({
         queryKey: ["gmail:searchMessages"],
       });
-      const prevThread = qc.getQueryData<GmailMessageSummary[]>(threadKey);
-      const prevLabels = qc.getQueryData<GmailLabel[]>(labelsKey);
+      const prevThread = qc.getQueryData<MessageSummary[]>(threadKey);
+      const prevLabels = qc.getQueryData<MailLabel[]>(labelsKey);
 
-      const inThread = (m: GmailMessageSummary) =>
+      const inThread = (m: MessageSummary) =>
         (m.threadId || m.id) === threadId && (m.accountId ?? accountId) === accountId;
-      const prevDetailQueries = qc.getQueriesData<GmailMessageDetail>({
+      const prevDetailQueries = qc.getQueriesData<MessageDetail>({
         queryKey: ["gmail:message", accountId],
       });
       // An open reader keeps rendering the conversation — mark it trashed there.
-      const threadTrashPatch = <T extends GmailMessageSummary>(m: T): T =>
+      const threadTrashPatch = <T extends MessageSummary>(m: T): T =>
         applyLabelPatch(m, ["TRASH"], ["INBOX"], "thread") as T;
-      qc.setQueryData(threadKey, (old: GmailMessageSummary[] | undefined) =>
-        old?.map(threadTrashPatch),
-      );
+      qc.setQueryData(threadKey, (old: MessageSummary[] | undefined) => old?.map(threadTrashPatch));
       for (const [key, detail] of prevDetailQueries) {
         if (detail && (detail.threadId || detail.id) === threadId) {
           qc.setQueryData(key, threadTrashPatch(detail));
@@ -1402,7 +1398,7 @@ export function useTrashThread() {
             merged.set(lid, { total: cur.total - 1, unread: cur.unread - (msg.unread ? 1 : 0) });
           }
         }
-        qc.setQueryData<GmailLabel[]>(labelsKey, (old) => applyLabelCountDeltas(old, merged));
+        qc.setQueryData<MailLabel[]>(labelsKey, (old) => applyLabelCountDeltas(old, merged));
       }
 
       return {
@@ -1422,7 +1418,7 @@ export function useTrashThread() {
         invalidateMailCaches(qc);
         return;
       }
-      toast.error(describeGmailWriteError(err));
+      toast.error(describeWriteError(err));
       if (!context) return;
       for (const [key, data] of context.prevMessagesQueries) qc.setQueryData(key, data);
       for (const [key, data] of context.prevCombinedQueries) qc.setQueryData(key, data);
@@ -1450,7 +1446,7 @@ export function useSendMessage() {
         to: params.to,
         subject: params.subject,
       });
-      return gmailApi.sendMessage(params);
+      return mailApi.sendMessage(params);
     },
     onSuccess: (_data, params) => {
       void qc.invalidateQueries({
@@ -1470,7 +1466,7 @@ export function useSendMessage() {
 export function useSuggestContacts(q: string, enabled = true) {
   return useQuery<ContactSuggestion[]>({
     queryKey: ["gmail:suggestContacts", q],
-    queryFn: () => gmailApi.suggestContacts({ q }),
+    queryFn: () => mailApi.suggestContacts({ q }),
     enabled: enabled && q.trim().length > 0,
     staleTime: STALE_TIME,
     placeholderData: (prev) => prev,
@@ -1496,7 +1492,7 @@ export function useAccountSync(accountId: string | null): SyncStatus | null {
 
   const statusQuery = useQuery<SyncStatus>({
     queryKey: ["gmail:syncStatus", accountId],
-    queryFn: () => gmailApi.getSyncStatus(accountId!),
+    queryFn: () => mailApi.getSyncStatus(accountId!),
     enabled: accountId != null,
     // Idle poll (vs false) so timer-driven backend syncs are still noticed.
     refetchInterval: (query) => syncStatusPollMs(query.state.data),
@@ -1506,7 +1502,7 @@ export function useAccountSync(accountId: string | null): SyncStatus | null {
   useEffect(() => {
     if (!accountId) return;
     console.log("[hooks:useAccountSync] starting sync", { accountId });
-    void gmailApi.syncAccount(accountId).then(() => {
+    void mailApi.syncAccount(accountId).then(() => {
       void qc.invalidateQueries({ queryKey: ["gmail:syncStatus", accountId] });
     });
   }, [accountId, qc]);
@@ -1581,7 +1577,7 @@ export function useGlobalSyncStatus(accountIds: string[]): { syncing: boolean; l
   const results = useQueries({
     queries: accountIds.map((id) => ({
       queryKey: ["gmail:syncStatus", id],
-      queryFn: () => gmailApi.getSyncStatus(id),
+      queryFn: () => mailApi.getSyncStatus(id),
       refetchInterval: (query: { state: { data?: SyncStatus } }) =>
         syncStatusPollMs(query.state.data),
     })),
@@ -1612,7 +1608,7 @@ export function useSyncAccountLabels(accountIds: string[], enabled: boolean): vo
   const results = useQueries({
     queries: accountIds.map((id) => ({
       queryKey: ["gmail:syncStatus", id],
-      queryFn: () => gmailApi.getSyncStatus(id),
+      queryFn: () => mailApi.getSyncStatus(id),
       enabled,
       refetchInterval: (query: { state: { data?: SyncStatus } }) =>
         syncStatusPollMs(query.state.data),
@@ -1623,7 +1619,7 @@ export function useSyncAccountLabels(accountIds: string[], enabled: boolean): vo
   useEffect(() => {
     if (!enabled) return;
     for (const id of accountIdsKey ? accountIdsKey.split(",") : []) {
-      void gmailApi.syncAccount(id);
+      void mailApi.syncAccount(id);
     }
   }, [enabled, accountIdsKey]);
 
@@ -1673,18 +1669,17 @@ function useUntrashInvalidation() {
     decides which labels come back. */
 function useUntrashOptimism() {
   const qc = useQueryClient();
-  return async (accountId: string, match: (m: GmailMessageSummary) => boolean) => {
+  return async (accountId: string, match: (m: MessageSummary) => boolean) => {
     const threadsKey = ["gmail:thread", accountId];
     const detailKey = ["gmail:message", accountId];
     await Promise.all([
       qc.cancelQueries({ queryKey: threadsKey }),
       qc.cancelQueries({ queryKey: detailKey }),
     ]);
-    const prevThreadQueries = qc.getQueriesData<GmailMessageSummary[]>({ queryKey: threadsKey });
-    const prevDetailQueries = qc.getQueriesData<GmailMessageDetail>({ queryKey: detailKey });
-    const patch = <T extends GmailMessageSummary>(m: T): T =>
-      applyLabelPatch(m, [], ["TRASH"]) as T;
-    qc.setQueriesData({ queryKey: threadsKey }, (old: GmailMessageSummary[] | undefined) =>
+    const prevThreadQueries = qc.getQueriesData<MessageSummary[]>({ queryKey: threadsKey });
+    const prevDetailQueries = qc.getQueriesData<MessageDetail>({ queryKey: detailKey });
+    const patch = <T extends MessageSummary>(m: T): T => applyLabelPatch(m, [], ["TRASH"]) as T;
+    qc.setQueriesData({ queryKey: threadsKey }, (old: MessageSummary[] | undefined) =>
       old?.map((m) => (match(m) ? patch(m) : m)),
     );
     for (const [key, detail] of prevDetailQueries) {
@@ -1705,7 +1700,7 @@ function rollbackUntrash(
     invalidateMailCaches(qc);
     return;
   }
-  toast.error(describeGmailWriteError(err));
+  toast.error(describeWriteError(err));
   if (!context) return;
   for (const [key, data] of context.prevThreadQueries) qc.setQueryData(key, data);
   for (const [key, data] of context.prevDetailQueries) qc.setQueryData(key, data);
@@ -1718,7 +1713,7 @@ export function useDeleteThreadsForever() {
   return useMutation({
     mutationFn: ({ accountId, threadIds }: { accountId: string; threadIds: string[] }) => {
       console.log("[hooks:useDeleteThreadsForever]", { accountId, count: threadIds.length });
-      return gmailApi.deleteThreadsForever(accountId, threadIds);
+      return mailApi.deleteThreadsForever(accountId, threadIds);
     },
     onMutate: async ({ accountId, threadIds }) => {
       const idSet = new Set(threadIds);
@@ -1743,12 +1738,12 @@ export function useDeleteThreadsForever() {
         (threadId) =>
           [
             queryKeys.thread(accountId, threadId),
-            qc.getQueryData<GmailMessageSummary[]>(queryKeys.thread(accountId, threadId)),
+            qc.getQueryData<MessageSummary[]>(queryKeys.thread(accountId, threadId)),
           ] as const,
       );
-      const prevLabels = qc.getQueryData<GmailLabel[]>(labelsKey);
+      const prevLabels = qc.getQueryData<MailLabel[]>(labelsKey);
 
-      const inThreads = (m: GmailMessageSummary) =>
+      const inThreads = (m: MessageSummary) =>
         idSet.has(m.threadId || m.id) && (m.accountId ?? accountId) === accountId;
       qc.setQueriesData(
         { queryKey: ["gmail:messages", accountId] },
@@ -1783,7 +1778,7 @@ export function useDeleteThreadsForever() {
         qc.setQueryData(key, []);
       }
       if (merged.size > 0) {
-        qc.setQueryData<GmailLabel[]>(labelsKey, (old) => applyLabelCountDeltas(old, merged));
+        qc.setQueryData<MailLabel[]>(labelsKey, (old) => applyLabelCountDeltas(old, merged));
       }
 
       return {
@@ -1801,7 +1796,7 @@ export function useDeleteThreadsForever() {
         invalidateMailCaches(qc);
         return;
       }
-      toast.error(describeGmailWriteError(err));
+      toast.error(describeWriteError(err));
       if (!context) return;
       for (const [key, data] of context.prevMessagesQueries) qc.setQueryData(key, data);
       for (const [key, data] of context.prevCombinedQueries) qc.setQueryData(key, data);
@@ -1834,7 +1829,7 @@ export function useEmptyFolder() {
       labelId: "SPAM" | "TRASH";
     }) => {
       console.log("[hooks:useEmptyFolder]", { accountId, labelId });
-      return (await gmailApi.emptyFolder(accountId, labelId)).deleted;
+      return (await mailApi.emptyFolder(accountId, labelId)).deleted;
     },
     onSuccess: (deleted, { labelId }) => {
       clearUndo();
@@ -1846,7 +1841,7 @@ export function useEmptyFolder() {
           : `Deleted ${deleted.toLocaleString()} message${deleted === 1 ? "" : "s"} from ${where}`,
       );
     },
-    onError: (err) => toast.error(`Couldn't empty it: ${describeGmailWriteError(err)}`),
+    onError: (err) => toast.error(`Couldn't empty it: ${describeWriteError(err)}`),
   });
 }
 
@@ -1857,7 +1852,7 @@ export function useUntrashThread() {
   return useMutation({
     mutationFn: (params: { accountId: string; threadId: string }) => {
       console.log("[hooks:useUntrashThread]", params);
-      return gmailApi.untrashThread(params.accountId, params.threadId);
+      return mailApi.untrashThread(params.accountId, params.threadId);
     },
     onMutate: ({ accountId, threadId }) =>
       optimism(accountId, (m) => (m.threadId || m.id) === threadId),
@@ -1873,7 +1868,7 @@ export function useUntrashMessage() {
   return useMutation({
     mutationFn: (params: { accountId: string; messageId: string }) => {
       console.log("[hooks:useUntrashMessage]", params);
-      return gmailApi.untrashMessage(params.accountId, params.messageId);
+      return mailApi.untrashMessage(params.accountId, params.messageId);
     },
     onMutate: ({ accountId, messageId }) => optimism(accountId, (m) => m.id === messageId),
     onError: (err, _vars, context) => rollbackUntrash(qc, err, context),
@@ -1893,7 +1888,7 @@ export function useGetAttachment() {
       console.log("[hooks:useGetAttachment] downloading attachment", {
         filename: params.filename,
       });
-      return gmailApi.getAttachment(params);
+      return mailApi.getAttachment(params);
     },
   });
 }

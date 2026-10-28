@@ -1,7 +1,7 @@
 import { useRef, useState, type DragEvent } from "react";
 import { toast } from "./toast";
 import { PaperclipIcon, XIcon } from "lucide-react";
-import { gmailApi } from "./api";
+import { mailApi } from "./api";
 import { AttachmentPreview, attachmentPreview } from "./attachment-preview";
 import type { ComposeAttachment } from "./types";
 
@@ -27,7 +27,7 @@ export async function loadMessageAttachments(
 ): Promise<ComposeAttachment[]> {
   const out: ComposeAttachment[] = [];
   for (const att of attachments) {
-    const data = await gmailApi.getAttachmentData({ accountId, messageId, attachmentId: att.id });
+    const data = await mailApi.getAttachmentData({ accountId, messageId, attachmentId: att.id });
     out.push({
       key: att.id,
       name: att.filename,
@@ -45,7 +45,7 @@ export async function pickComposeAttachments(
 ): Promise<ComposeAttachment[]> {
   const existingBytes = existing.reduce((sum, a) => sum + attachmentBytes(a), 0);
   try {
-    const res = await gmailApi.pickAttachments(existingBytes);
+    const res = await mailApi.pickAttachments(existingBytes);
     if (res.error) toast.error(res.error);
     return (res.attachments ?? []).map((attachment) => ({
       ...attachment,
@@ -194,7 +194,7 @@ export function AttachmentChips({
   const [previewing, setPreviewing] = useState<ComposeAttachment | null>(null);
   if (!attachments || attachments.length === 0) return null;
   const openInApp = (att: ComposeAttachment) => {
-    void gmailApi
+    void mailApi
       .openComposeAttachment({ name: att.name, base64: att.base64 })
       .catch(() => toast.error("Could not open attachment"));
   };

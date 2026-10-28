@@ -12,7 +12,7 @@ import {
   broadcast,
   SIGNED_OUT_MESSAGE,
   SignInCancelledError,
-  type GmailAccount,
+  type MailAccount,
   type GoogleAuth,
   type Platform,
 } from "@otter-mail/core";
@@ -80,7 +80,7 @@ export function webGoogleAuth(deps: {
   }
 
   /** A sign-in from the relay: its tokens, then the account, kept under the address. */
-  async function keep(result: GoogleSignInResult): Promise<GmailAccount> {
+  async function keep(result: GoogleSignInResult): Promise<MailAccount> {
     tokens.set(result.email, {
       sealed: result.sealed,
       accessToken: result.accessToken,
@@ -88,7 +88,7 @@ export function webGoogleAuth(deps: {
     });
     await save();
     const existing = await accountStore.getAccount(result.email);
-    const account: GmailAccount = {
+    const account: MailAccount = {
       ...existing,
       id: result.email,
       email: result.email,

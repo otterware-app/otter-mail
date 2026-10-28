@@ -15,7 +15,7 @@ import { ARCHIVE_LABEL_ID } from "@otter-mail/contracts";
 import { getAccount } from "../../services/account-store.js";
 import * as store from "../../services/mail-store.js";
 import type { ImapClient } from "../../protocols/index.js";
-import type { GmailLabel, GmailMessageSummary } from "../../types.js";
+import type { MailLabel, MessageSummary } from "../../types.js";
 import type { LabelChange } from "../provider.js";
 import { findByMessageId, FolderGone, selectFolder, withImap } from "./connection.js";
 import {
@@ -322,7 +322,7 @@ export async function trashThread(accountId: string, threadId: string) {
   await changeLabels(accountId, threadRows(accountId, threadId), { addLabelIds: ["TRASH"] }, true);
 }
 
-async function untrash(accountId: string, rows: Row[]): Promise<GmailMessageSummary[]> {
+async function untrash(accountId: string, rows: Row[]): Promise<MessageSummary[]> {
   const moved = await changeLabels(accountId, rows, { removeLabelIds: ["TRASH"] }, false);
   return getSummaries(accountId, [...moved.values()]);
 }
@@ -378,7 +378,7 @@ export async function emptyFolder(
 
 // ── Folders as labels ──────────────────────────────────────────────────────
 
-export async function createLabel(accountId: string, name: string): Promise<GmailLabel> {
+export async function createLabel(accountId: string, name: string): Promise<MailLabel> {
   return withImap(accountId, async (client) => {
     const path = (await listFolders(accountId, client)).pathFor(name);
     await client.createMailbox(path);

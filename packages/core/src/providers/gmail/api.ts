@@ -14,7 +14,7 @@ import { platform } from "../../platform.js";
 import { mapPool } from "../../pool.js";
 import { getAccount } from "../../services/account-store.js";
 import { buildMime, formatAddress } from "../../services/outgoing.js";
-import type { GmailLabel, GmailMessageSummary, GmailMessageDetail } from "../../types.js";
+import type { MailLabel, MessageSummary, MessageDetail } from "../../types.js";
 import type { DraftSave, ErrorKind, OutgoingMail } from "../provider.js";
 import {
   acquireQuota,
@@ -30,7 +30,7 @@ const BASE_URL = "https://gmail.googleapis.com/gmail/v1/users/me";
 /**
  * Retries after a rate-limit error. Gmail's quota window is a minute, so the
  * user's own requests wait it out too (writes already answer the UI early and
- * finish in the background, see settleGmailWrite); sync work backs off longer.
+ * finish in the background, see settleWrite); sync work backs off longer.
  * The quota is per user and per Google project, shared with every other app
  * signed in through the same project, so this app alone can't stay under it.
  */
@@ -246,7 +246,7 @@ export async function listLabelNames(
   return data.labels ?? [];
 }
 
-export async function listLabels(accountId: string): Promise<GmailLabel[]> {
+export async function listLabels(accountId: string): Promise<MailLabel[]> {
   const rawLabels = await listLabelNames(accountId);
 
   // labels.list omits message counts and color — only labels.get returns them,
@@ -282,7 +282,7 @@ export async function listLabels(accountId: string): Promise<GmailLabel[]> {
 
 // ── createLabel ──────────────────────────────────────────────────────────────
 
-export async function createLabel(accountId: string, name: string): Promise<GmailLabel> {
+export async function createLabel(accountId: string, name: string): Promise<MailLabel> {
   const data = (await gmailFetch(accountId, "/labels", {
     method: "POST",
     body: JSON.stringify({
@@ -423,7 +423,7 @@ export interface RawMessageMetadata {
   };
 }
 
-export function mapMessageSummary(msg: RawMessageMetadata): GmailMessageSummary {
+export function mapMessageSummary(msg: RawMessageMetadata): MessageSummary {
   const headers = msg.payload?.headers ?? [];
   const from = getHeaderValue(headers, "From");
   const { fromName, fromEmail } = parseFrom(from);
@@ -457,7 +457,7 @@ export function mapMessageSummary(msg: RawMessageMetadata): GmailMessageSummary 
 export async function fetchMetadataForIds(
   accountId: string,
   ids: string[],
-): Promise<GmailMessageSummary[]> {
+): Promise<MessageSummary[]> {
   // messages.get costs 5 quota units; quota.ts paces the calls, so the
   // pool only bounds sockets in flight.
   const fetched = await mapPool(ids, 6, async (id) => {
@@ -487,7 +487,7 @@ export async function fetchMetadataForIds(
 export async function fetchMessagesForIds(
   accountId: string,
   ids: string[],
-): Promise<GmailMessageDetail[]> {
+): Promise<MessageDetail[]> {
   const fetched = await mapPool(ids, 6, async (id) => {
     try {
       return await getMessage(accountId, id);
@@ -497,7 +497,7 @@ export async function fetchMessagesForIds(
       throw err;
     }
   });
-  return fetched.filter((m): m is GmailMessageDetail => m !== null);
+  return fetched.filter((m): m is MessageDetail => m !== null);
 }
 
 // ── Sync primitives ───────────────────────────────────────────────────────────
@@ -543,7 +543,7 @@ export async function listMessageIdsPage(
  * web search box). Spam and Trash are left out unless the query asks for them,
  * like Gmail does.
  */
-export async function searchGmailPage(
+export async function searchMailPage(
   accountId: string,
   q: string,
   pageToken?: string,
@@ -676,10 +676,7 @@ interface RawMessageFull extends RawMessageMetadata {
   };
 }
 
-export async function getMessage(
-  accountId: string,
-  messageId: string,
-): Promise<GmailMessageDetail> {
+export async function getMessage(accountId: string, messageId: string): Promise<MessageDetail> {
   return detailOf(
     (await gmailFetch(accountId, `/messages/${messageId}?format=full`)) as RawMessageFull,
   );
@@ -689,17 +686,14 @@ export async function getMessage(
  * Every message of a thread, whole: one threads.get (40 units) where each
  * message on its own costs 20, so it's cheaper from two messages up.
  */
-export async function getThread(
-  accountId: string,
-  threadId: string,
-): Promise<GmailMessageDetail[]> {
+export async function getThread(accountId: string, threadId: string): Promise<MessageDetail[]> {
   const thread = (await gmailFetch(accountId, `/threads/${threadId}?format=full`)) as {
     messages?: RawMessageFull[];
   };
   return (thread.messages ?? []).map(detailOf);
 }
 
-function detailOf(msg: RawMessageFull): GmailMessageDetail {
+function detailOf(msg: RawMessageFull): MessageDetail {
   const summary = mapMessageSummary(msg);
   const headers = msg.payload?.headers ?? [];
 
@@ -791,7 +785,7 @@ export async function trashThread(accountId: string, threadId: string): Promise<
 export async function untrashThread(
   accountId: string,
   threadId: string,
-): Promise<GmailMessageSummary[]> {
+): Promise<MessageSummary[]> {
   const res = (await gmailFetch(accountId, `/threads/${threadId}/untrash`, {
     method: "POST",
   })) as { messages?: { id: string }[] };
@@ -822,7 +816,7 @@ export async function deleteThreadPermanently(
 export async function untrashMessage(
   accountId: string,
   messageId: string,
-): Promise<GmailMessageSummary[]> {
+): Promise<MessageSummary[]> {
   await gmailFetch(accountId, `/messages/${messageId}/untrash`, { method: "POST" });
   return fetchMetadataForIds(accountId, [messageId]);
 }

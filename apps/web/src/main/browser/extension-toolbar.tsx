@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 
 import { ipc } from "~/lib/ipc";
-import { gmailApi } from "../mail/api";
+import { mailApi } from "../mail/api";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -195,7 +195,7 @@ export function ExtensionToolbar() {
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       icon={<PuzzleIcon className="size-4" />}
-                      onSelect={() => void gmailApi.openSettings({ pane: "browser" })}
+                      onSelect={() => void mailApi.openSettings({ pane: "browser" })}
                     >
                       Manage extension
                     </DropdownMenuItem>
@@ -204,7 +204,7 @@ export function ExtensionToolbar() {
               );
             })}
             <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={() => void gmailApi.openSettings({ pane: "browser" })}>
+            <DropdownMenuItem onSelect={() => void mailApi.openSettings({ pane: "browser" })}>
               <span className="flex items-center justify-between gap-2">
                 Manage extensions
                 <ArrowUpRightIcon className="size-4 text-muted-foreground" />

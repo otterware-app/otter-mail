@@ -17,7 +17,7 @@ import {
 } from "react";
 import { FileTextIcon, ImageIcon, LoaderCircleIcon, PaperclipIcon, XIcon } from "lucide-react";
 import { toast } from "./toast";
-import { gmailApi, type ChatAttachment } from "./api";
+import { mailApi, type ChatAttachment } from "./api";
 import { cn } from "./ui";
 
 /** Otter Code's image types, 10 MB per image, 50 MB per file. */
@@ -128,7 +128,7 @@ export function useChatAttachments() {
           };
           const [thumb, result] = await Promise.all([
             previewUrl ? thumbnail(previewUrl) : Promise.resolve(undefined),
-            gmailApi.agentStageAttachments([item]),
+            mailApi.agentStageAttachments([item]),
           ]);
           const staged = result.attachments[0];
           if (!staged) throw new Error(result.errors[0] ?? `'${name}' could not be attached.`);

@@ -17,7 +17,7 @@
 import { ARCHIVE_LABEL_ID, OTHER_LABEL_ID, SNOOZED_LABEL_ID } from "@otter-mail/contracts";
 
 import * as store from "../../services/mail-store.js";
-import type { GmailLabel } from "../../types.js";
+import type { MailLabel } from "../../types.js";
 import { graph, graphAll, graphBatch, ok } from "./graph.js";
 
 export const FOLDER_PREFIX = "folder:";
@@ -305,8 +305,8 @@ export function nearestPreset(hex: string): string {
 // ── Labels ──────────────────────────────────────────────────────────────────
 
 /** Every label, as the sidebar lists them: folders with Outlook's counts, categories with ours. */
-export function labelsOf(accountId: string, mailbox: Mailbox): GmailLabel[] {
-  const labels: GmailLabel[] = [];
+export function labelsOf(accountId: string, mailbox: Mailbox): MailLabel[] {
+  const labels: MailLabel[] = [];
   const seen = new Set<string>();
   for (const folder of mailbox.folders) {
     if (!folder.labelId) continue;

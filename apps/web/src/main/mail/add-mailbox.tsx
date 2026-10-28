@@ -6,12 +6,12 @@ import { Button } from "~/components/ui/button";
 import { Dialog } from "~/components/ui/dialog";
 import { Field } from "~/components/ui/field";
 import { Input } from "~/components/ui/input";
-import { gmailApi } from "./api";
+import { mailApi } from "./api";
 import { useAddAccount, useAddImapAccount, useMailProviders, useSignInImap } from "./hooks";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./select";
 import { toast } from "./toast";
-import type { GmailAccount } from "./types";
+import type { MailAccount } from "./types";
 import { cn } from "./ui";
 
 /**
@@ -27,7 +27,7 @@ export function readableError(err: unknown): string {
 }
 
 /** Adds an Outlook mailbox; answers it (null when cancelled), or toasts why it couldn't. */
-export function useAddOutlook(onAdded?: (account: GmailAccount) => void) {
+export function useAddOutlook(onAdded?: (account: MailAccount) => void) {
   const add = useAddAccount("outlook");
   const start = () =>
     void add.mutateAsync(undefined).then(
@@ -49,7 +49,7 @@ export function AddMailboxMenu({
 }: {
   onGmail: () => void;
   /** The Outlook or IMAP mailbox just added. */
-  onAdded?: (account: GmailAccount) => void;
+  onAdded?: (account: MailAccount) => void;
   align?: "start" | "end";
   /** The trigger (rendered via asChild). */
   children: ReactNode;
@@ -131,7 +131,7 @@ export function ImapAccountDialog({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onAdded?: (account: GmailAccount) => void;
+  onAdded?: (account: MailAccount) => void;
 }) {
   const add = useAddImapAccount();
   const [email, setEmail] = useState("");
@@ -157,7 +157,7 @@ export function ImapAccountDialog({
     if (discovery?.email === address && settings) return settings;
     setDiscovery({ email: address, state: "looking" });
     setError(null);
-    const found = await gmailApi.discoverImap(address).catch(() => null);
+    const found = await mailApi.discoverImap(address).catch(() => null);
     const next = found ?? guessSettings(address);
     setSettings(next);
     setDiscovery({ email: address, state: found ? "found" : "none" });
@@ -372,7 +372,7 @@ export function ImapPasswordForm({
   size = "small",
   className,
 }: {
-  account: GmailAccount;
+  account: MailAccount;
   size?: "small" | "default";
   className?: string;
 }) {

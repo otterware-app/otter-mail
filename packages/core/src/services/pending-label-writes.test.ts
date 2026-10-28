@@ -1,7 +1,7 @@
 import { landLabelChange } from "@otter-mail/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import type { GmailMessageSummary } from "../types.ts";
+import type { MessageSummary } from "../types.ts";
 import { trackLabelWrite, withPendingLabels } from "./pending-label-writes.ts";
 
 describe("How a label change lands", () => {
@@ -73,7 +73,7 @@ describe("How a label change lands", () => {
 });
 
 describe("Pending label writes", () => {
-  const message = (id: string, labelIds: string[]): GmailMessageSummary => ({
+  const message = (id: string, labelIds: string[]): MessageSummary => ({
     id,
     threadId: id,
     fromName: "",

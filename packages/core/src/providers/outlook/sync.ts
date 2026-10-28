@@ -18,7 +18,7 @@ import { OTHER_LABEL_ID } from "@otter-mail/contracts";
 
 import { logger } from "../../logger.js";
 import * as store from "../../services/mail-store.js";
-import type { GmailMessageSummary } from "../../types.js";
+import type { MessageSummary } from "../../types.js";
 import type { SyncContext } from "../provider.js";
 import {
   FOLDER_PREFIX,
@@ -199,7 +199,7 @@ export async function syncOutlook(accountId: string, ctx: SyncContext): Promise<
 
   ctx.update({ phase: "incremental", synced: 0 });
   const delta = readDelta(accountId);
-  const added: GmailMessageSummary[] = [];
+  const added: MessageSummary[] = [];
   let changed = false;
   for (const folder of mailbox.folders) {
     const state = delta[folder.id];
@@ -243,7 +243,7 @@ async function followDelta(
   folder: Folder,
   link: string,
   ctx: SyncContext,
-): Promise<{ added: GmailMessageSummary[]; changed: boolean }> {
+): Promise<{ added: MessageSummary[]; changed: boolean }> {
   const present: ApiMessage[] = [];
   const removed: string[] = [];
   let next: string | undefined = link;
@@ -295,7 +295,7 @@ async function followDelta(
     const found = new Map((await getApiMessages(accountId, gone)).map((m) => [m.id, m]));
     ctx.assertActive();
     const ops: store.HistoryOp[] = [];
-    const moved: GmailMessageSummary[] = [];
+    const moved: MessageSummary[] = [];
     for (const id of gone) {
       const message = found.get(id);
       // Deleted, or somewhere not synced (the Outbox): out of the cache.

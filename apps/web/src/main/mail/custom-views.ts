@@ -11,11 +11,11 @@
 import { useCallback, useEffect } from "react";
 import { toast } from "./toast";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { gmailApi, type SaveViewParams } from "./api";
-import type { GmailAccount, MailView, ViewRule } from "./types";
+import { mailApi, type SaveViewParams } from "./api";
+import type { MailAccount, MailView, ViewRule } from "./types";
 
 /** A view's rules, pruned to accounts that still exist. */
-export function resolveRules(view: MailView, accounts: GmailAccount[]): ViewRule[] {
+export function resolveRules(view: MailView, accounts: MailAccount[]): ViewRule[] {
   const accountIds = new Set(accounts.map((a) => a.id));
   return view.rules.filter((r) => accountIds.has(r.accountId));
 }
@@ -38,7 +38,7 @@ export function useMailViews() {
 
   const query = useQuery<MailView[]>({
     queryKey: VIEWS_QUERY_KEY,
-    queryFn: () => gmailApi.listViews(),
+    queryFn: () => mailApi.listViews(),
     staleTime: 30_000,
     placeholderData: [],
   });
@@ -63,7 +63,7 @@ export function useMailViews() {
   };
 
   const saveMutation = useMutation({
-    mutationFn: (input: SaveViewParams) => gmailApi.saveView(input),
+    mutationFn: (input: SaveViewParams) => mailApi.saveView(input),
     onMutate: (input) =>
       patchViews((views) =>
         input.id
@@ -105,7 +105,7 @@ export function useMailViews() {
     onSettled: invalidate,
   });
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => gmailApi.deleteView(id),
+    mutationFn: (id: string) => mailApi.deleteView(id),
     onMutate: (id) => patchViews((views) => views.filter((v) => v.id !== id)),
     onError: (_err, _vars, context) => {
       rollback(context);

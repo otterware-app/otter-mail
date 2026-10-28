@@ -1,6 +1,6 @@
 import { createContext, useContext, useState } from "react";
 import { ChevronDownIcon, LanguagesIcon, LoaderCircleIcon } from "lucide-react";
-import type { GmailMessageDetail } from "./types";
+import type { MessageDetail } from "./types";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./menu";
 import { buttonClass, IconBtn } from "./ui";
 import {
@@ -37,10 +37,7 @@ function useConversationTranslation(): ConversationTranslation {
 }
 
 /** Whether a message is in a language the user doesn't read. */
-export function useIsForeignMessage(
-  accountId: string,
-  detail: GmailMessageDetail | undefined,
-): boolean {
+export function useIsForeignMessage(accountId: string, detail: MessageDetail | undefined): boolean {
   const { readLanguages } = useTranslationSettings();
   const language = useMessageLanguage(accountId, detail);
   return language != null && !readLanguages.some((l) => sameLanguage(l, language));
@@ -50,7 +47,7 @@ export function useIsForeignMessage(
  * A message's translation state: its language, the banner to show above it,
  * and the body to render — translated in place once ready, else the original.
  */
-export function useMessageTranslation(accountId: string, detail: GmailMessageDetail | undefined) {
+export function useMessageTranslation(accountId: string, detail: MessageDetail | undefined) {
   const { readLanguages } = useTranslationSettings();
   const conversation = useConversationTranslation();
   const language = useMessageLanguage(accountId, detail);

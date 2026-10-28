@@ -10,7 +10,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "./toast";
 import { useCapabilities } from "./capabilities";
 import { CalendarIcon, CheckIcon, ExternalLinkIcon, MapPinIcon } from "lucide-react";
-import { gmailApi, type CalendarInvite, type RsvpResponse } from "./api";
+import { mailApi, type CalendarInvite, type RsvpResponse } from "./api";
 import { HintTooltip, IconBtn, cn } from "./ui";
 import { openLink } from "../browser/store";
 import { isModClick } from "../keybindings/keys";
@@ -75,14 +75,13 @@ export function InviteCard({ accountId, messageId }: { accountId: string; messag
   const { calendar } = useCapabilities(accountId);
   const query = useQuery({
     queryKey: inviteKey(accountId, messageId),
-    queryFn: () => gmailApi.getCalendarInvite(accountId, messageId),
+    queryFn: () => mailApi.getCalendarInvite(accountId, messageId),
     staleTime: 60_000,
   });
   const invite = query.data;
 
   const respond = useMutation({
-    mutationFn: (response: RsvpResponse) =>
-      gmailApi.respondToInvite(accountId, messageId, response),
+    mutationFn: (response: RsvpResponse) => mailApi.respondToInvite(accountId, messageId, response),
     onMutate: async (response) => {
       // Optimistic: the chosen answer shows at once.
       await qc.cancelQueries({ queryKey: inviteKey(accountId, messageId) });

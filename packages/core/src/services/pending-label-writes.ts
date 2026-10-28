@@ -13,7 +13,7 @@
 
 import { landLabelChange, type Landing } from "@otter-mail/contracts";
 
-import type { GmailMessageSummary } from "../types.js";
+import type { MessageSummary } from "../types.js";
 
 /** How long a landed write keeps overriding what Gmail reports. */
 const SETTLED_GRACE_MS = 30_000;
@@ -94,10 +94,7 @@ export function hasPendingLabelWrites(accountId: string): boolean {
 }
 
 /** Messages read from Gmail, with this app's pending label changes re-applied. */
-export function withPendingLabels<T extends GmailMessageSummary>(
-  accountId: string,
-  messages: T[],
-): T[] {
+export function withPendingLabels<T extends MessageSummary>(accountId: string, messages: T[]): T[] {
   if (pending.size === 0) return messages;
   const now = Date.now();
   return messages.map((m) => {

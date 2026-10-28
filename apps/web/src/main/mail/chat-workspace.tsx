@@ -30,7 +30,7 @@ import {
 import { features } from "../features";
 import { useCommandHandlers } from "../keybindings/dispatch";
 import { useLatest } from "../use-latest";
-import { gmailApi, type ChatChange } from "./api";
+import { mailApi, type ChatChange } from "./api";
 import { useMailChatContext } from "./chat-context";
 import {
   closeChatTab,
@@ -64,12 +64,12 @@ function useTabMessage(ref: ChatTabRef | undefined) {
     queryFn: async () => {
       if (!mail) return null;
       if (mail.kind === "draft") {
-        const version = await gmailApi.getDraftVersion(mail.accountId, mail.id);
+        const version = await mailApi.getDraftVersion(mail.accountId, mail.id);
         if (!version.messageId) throw new Error("This draft was sent or deleted.");
-        await gmailApi.loadDraftVersion(mail.accountId, mail.id, version.messageId);
+        await mailApi.loadDraftVersion(mail.accountId, mail.id, version.messageId);
         return version.messageId;
       }
-      const messages = await gmailApi.getThread(mail.accountId, mail.id);
+      const messages = await mailApi.getThread(mail.accountId, mail.id);
       const last = messages.at(-1);
       if (!last) throw new Error("This conversation is no longer available.");
       return last.id;
@@ -356,7 +356,7 @@ function FileTab({ chatId, href }: { chatId: string; href: string }) {
     queryKey: ["chat-file", convo?.provider, convo?.sessionId, href],
     enabled: Boolean(convo),
     retry: false,
-    queryFn: () => gmailApi.agentReadFile(convo!.provider, convo!.sessionId ?? "", href),
+    queryFn: () => mailApi.agentReadFile(convo!.provider, convo!.sessionId ?? "", href),
   });
   if (file.error)
     return (

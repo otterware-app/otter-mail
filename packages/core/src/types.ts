@@ -1,12 +1,12 @@
 /**
  * Shared mail types — used by backend services/handlers. They are shaped like
  * Gmail's (labels, threads) for every provider: see contracts' mail.ts.
- * The frontend duplicates these; keep names exact.
+ * The frontend duplicates these (apps/web/src/main/mail/types.ts); keep names exact.
  */
 
 import type { ImapSettings, MailCapabilities, MailProviderKind } from "@otter-mail/contracts";
 
-export interface GmailAccount {
+export interface MailAccount {
   id: string;
   email: string;
   name: string;
@@ -29,7 +29,7 @@ export interface GmailAccount {
   signedOut?: boolean;
 }
 
-export interface GmailLabel {
+export interface MailLabel {
   id: string;
   name: string;
   type: "system" | "user";
@@ -38,7 +38,7 @@ export interface GmailLabel {
   color?: { backgroundColor: string; textColor: string };
 }
 
-export interface GmailMessageSummary {
+export interface MessageSummary {
   id: string;
   /** Owning account — populated on reads so combined (cross-account) views can route. */
   accountId?: string;
@@ -65,7 +65,7 @@ export interface GmailMessageSummary {
   referencesHeader?: string;
 }
 
-export interface GmailMessageDetail extends GmailMessageSummary {
+export interface MessageDetail extends MessageSummary {
   /** Provider revision of this cached draft body (Outlook keeps its message ID). */
   draftRevision?: string;
   bodyHtml: string | null;

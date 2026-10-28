@@ -38,7 +38,7 @@ import {
   useModifyThread,
   useEmptyFolder,
 } from "./hooks";
-import type { GmailLabel } from "./types";
+import type { MailLabel } from "./types";
 import { ALL_MAIL_LABEL_ID, ARCHIVE_LABEL_ID, SNOOZED_LABEL_ID } from "./label-names";
 import { buildLabelTree, type LabelTreeNode } from "./label-tree";
 import {
@@ -162,7 +162,7 @@ export function SearchRow({
   );
 }
 
-function labelIcon(label?: GmailLabel): ReactNode {
+function labelIcon(label?: MailLabel): ReactNode {
   if (label?.id.startsWith("folder:")) return <FolderIcon className="size-4" />;
   const color = label?.color?.backgroundColor;
   if (color) {
@@ -174,16 +174,16 @@ function labelIcon(label?: GmailLabel): ReactNode {
 type LabelActions = {
   /** "label", or "folder" in a mailbox whose mail sits in one folder (IMAP). */
   noun: string;
-  onRename: (label: GmailLabel) => void;
+  onRename: (label: MailLabel) => void;
   /** Absent when the mailbox's labels have no colors. */
-  onRecolor?: (label: GmailLabel) => void;
-  onDelete: (label: GmailLabel) => void;
+  onRecolor?: (label: MailLabel) => void;
+  onDelete: (label: MailLabel) => void;
   onMove: (source: LabelDragPayload, targetParentName: string | null) => void;
   /** Conversations dropped from the message list; `keep` = ⌥ held (label only). */
-  onDropThreads: (payload: ThreadDragPayload, label: GmailLabel, keep: boolean) => void;
-  onEditShortcut: (label: GmailLabel) => void;
+  onDropThreads: (payload: ThreadDragPayload, label: MailLabel, keep: boolean) => void;
+  onEditShortcut: (label: MailLabel) => void;
   /** The label's own move shortcut, formatted (⌘⇧1), if it has one. */
-  shortcutFor: (label: GmailLabel) => string | undefined;
+  shortcutFor: (label: MailLabel) => string | undefined;
 };
 
 function LabelNode({
@@ -371,10 +371,10 @@ export function MailboxFolders({
   const [newLabelName, setNewLabelName] = useState("");
   const updateLabel = useUpdateLabel();
   const deleteLabelMutation = useDeleteLabel();
-  const [renameTarget, setRenameTarget] = useState<GmailLabel | null>(null);
+  const [renameTarget, setRenameTarget] = useState<MailLabel | null>(null);
   const [renameValue, setRenameValue] = useState("");
-  const [colorTarget, setColorTarget] = useState<GmailLabel | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<GmailLabel | null>(null);
+  const [colorTarget, setColorTarget] = useState<MailLabel | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<MailLabel | null>(null);
   const [rootDropActive, setRootDropActive] = useState(false);
   const [shortcutTarget, setShortcutTarget] = useState<string | null>(null);
   // Empty Junk / Empty Trash, waiting for its confirmation.
@@ -383,7 +383,7 @@ export function MailboxFolders({
   const modifyThread = useModifyThread();
   const { rules: keybindingRules } = useKeybindingsState();
 
-  const labels: GmailLabel[] = labelsQuery.data ?? [];
+  const labels: MailLabel[] = labelsQuery.data ?? [];
 
   // All Mail isn't a Gmail label (archived mail just lacks INBOX), so it's
   // listed without one — and, like Gmail, without an unread badge. Where the
@@ -393,7 +393,7 @@ export function MailboxFolders({
   const shown = (id: string) =>
     (id !== "IMPORTANT" || capabilities.categories) &&
     id !== (capabilities.archiveFolder ? ALL_MAIL_LABEL_ID : ARCHIVE_LABEL_ID);
-  const systemLabels = SIDEBAR_SYSTEM_ORDER.filter(shown).flatMap((id): GmailLabel[] => {
+  const systemLabels = SIDEBAR_SYSTEM_ORDER.filter(shown).flatMap((id): MailLabel[] => {
     const label = labels.find((l) => l.id === id);
     if (label) return [label];
     return id === ALL_MAIL_LABEL_ID || id === ARCHIVE_LABEL_ID
@@ -487,7 +487,7 @@ export function MailboxFolders({
 
   // Labels here belong to the open account, so only its conversations can
   // take them (a search may list other accounts' mail too).
-  const handleDropThreads = (payload: ThreadDragPayload, label: GmailLabel, keep: boolean) => {
+  const handleDropThreads = (payload: ThreadDragPayload, label: MailLabel, keep: boolean) => {
     const threads = payload.threads.filter((t) => t.accountId === mailboxId);
     if (threads.length === 0) {
       toast.error("Those conversations belong to another account");

@@ -8,7 +8,7 @@ only when the user explicitly creates an email task (title, entered notes and co
 
 - `apps/web/src/main/integrations/todoist/`: all Todoist renderer UI and its API client.
   `index.ts` is the app-facing entry point: dialogs, email capture, browsing, settings.
-  `api.ts` sends only `todoist:*` IPC calls; Todoist methods do not live in `gmailApi`.
+  `api.ts` sends only `todoist:*` IPC calls; Todoist methods do not live in `mailApi`.
 - `packages/contracts/src/todoist.ts` and the `./todoist` package export: input schemas and types.
 - `packages/core/src/handlers/todoist.ts`: the feature's complete IPC registration.
 - `packages/core/src/services/todoist.ts`, `todoist-auth.ts`, and their tests: API, safe

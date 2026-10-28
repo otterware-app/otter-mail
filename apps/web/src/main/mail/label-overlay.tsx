@@ -19,7 +19,7 @@ import { useCapabilities } from "./capabilities";
 import { useLabels } from "./hooks";
 import { buildLabelTree, flattenLabelTree, isAssignableLabel } from "./label-tree";
 import { labelDisplayName } from "./label-names";
-import type { GmailLabel } from "./types";
+import type { MailLabel } from "./types";
 
 export type LabelOverlayMode = "label" | "move";
 
@@ -62,7 +62,7 @@ export function LabelOverlay({
     buildLabelTree((labelsQuery.data ?? []).filter(isAssignableLabel)),
   )
     .map(({ node }) => node.label)
-    .filter((l): l is GmailLabel => l != null);
+    .filter((l): l is MailLabel => l != null);
 
   const choices: { id: string; name: string; color?: string }[] = [];
   if ((mode === "move" && currentLabelId !== "INBOX") || (mode === "label" && folders)) {

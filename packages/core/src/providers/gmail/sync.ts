@@ -23,7 +23,7 @@
 import { logger } from "../../logger.js";
 import { platform } from "../../platform.js";
 import * as store from "../../services/mail-store.js";
-import type { GmailMessageSummary } from "../../types.js";
+import type { MessageSummary } from "../../types.js";
 import { SyncCancelled, type SyncContext } from "../provider.js";
 import {
   describeError,
@@ -119,8 +119,8 @@ async function fetchAndStore(
   ids: string[],
   ctx: SyncContext,
   skipCached = false,
-): Promise<GmailMessageSummary[]> {
-  const uncached = <T extends GmailMessageSummary>(fetched: T[]): T[] => {
+): Promise<MessageSummary[]> {
+  const uncached = <T extends MessageSummary>(fetched: T[]): T[] => {
     if (!skipCached) return fetched;
     const unknown = new Set(
       store.filterUnknownIds(
@@ -431,7 +431,7 @@ async function incrementalSync(
   accountId: string,
   historyId: string,
   ctx: SyncContext,
-): Promise<{ added: GmailMessageSummary[]; changed: boolean }> {
+): Promise<{ added: MessageSummary[]; changed: boolean }> {
   ctx.update({ phase: "incremental", synced: 0 });
 
   const replay = store.getKv(replayKey(accountId)) || null;
@@ -484,7 +484,7 @@ async function incrementalSync(
   // its changes.
   let ids = [...new Set([...addedIds, ...unknownIds])];
   if (replay) ids = store.filterUnknownIds(accountId, ids);
-  let added: GmailMessageSummary[] = [];
+  let added: MessageSummary[] = [];
   if (ids.length > 0) {
     const fetched = await fetchAndStore(accountId, ids, ctx);
     store.recountLabels(

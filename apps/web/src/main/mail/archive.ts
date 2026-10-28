@@ -1,5 +1,5 @@
 import type { MailCapabilities } from "@otter-mail/contracts";
-import type { GmailLabel } from "./types";
+import type { MailLabel } from "./types";
 
 /**
  * What archiving takes off a conversation carrying `labelIds`, from the list
@@ -10,7 +10,7 @@ import type { GmailLabel } from "./types";
  */
 export function archiveFrom(
   labelIds: readonly string[],
-  listLabel: GmailLabel | undefined,
+  listLabel: MailLabel | undefined,
   capabilities: MailCapabilities,
 ): string | null {
   if (

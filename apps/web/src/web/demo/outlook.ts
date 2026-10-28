@@ -15,7 +15,7 @@ import {
   accountStore,
   fromBase64,
   toBase64,
-  type GmailAccount,
+  type MailAccount,
   type MicrosoftAuth,
   type Platform,
 } from "@otter-mail/core";
@@ -1526,7 +1526,7 @@ export async function installFakeOutlook(demoFiles: Platform["files"]): Promise<
 
 // ── Sign-in ──────────────────────────────────────────────────────────────────
 
-function demoAccount(seed: OutlookSeedAccount): GmailAccount {
+function demoAccount(seed: OutlookSeedAccount): MailAccount {
   return {
     id: seed.email,
     email: seed.email,

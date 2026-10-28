@@ -8,7 +8,7 @@ import type { DraftRemoteState, DraftSaveState } from "./use-draft-autosave";
 import { normalizeAddressList } from "./address";
 import { diffText } from "./text-diff";
 import { htmlToText } from "./text";
-import type { GmailMessageDetail } from "./types";
+import type { MessageDetail } from "./types";
 
 /**
  * Shared building blocks for every composer (new message, inline reply /
@@ -213,7 +213,7 @@ export function DraftRemoteBanner({
 
 /** What "Keep mine" would change in their version: fields, then the text. */
 /* oxlint-disable react/no-array-index-key -- Stateless spans represent an ordered diff snapshot. */
-function DraftDiff({ theirs, mine }: { theirs: GmailMessageDetail; mine: DraftVersionText }) {
+function DraftDiff({ theirs, mine }: { theirs: MessageDetail; mine: DraftVersionText }) {
   const theirBody = theirs.bodyText ?? (theirs.bodyHtml ? htmlToText(theirs.bodyHtml) : "");
   const fields = [
     { label: "Subject", theirs: theirs.subject ?? "", mine: mine.subject },

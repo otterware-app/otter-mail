@@ -7,7 +7,7 @@
 
 import { parseMessage } from "../../protocols/index.js";
 import { getMessageLabelIds } from "../../services/mail-store.js";
-import type { GmailMessageDetail, GmailMessageSummary } from "../../types.js";
+import type { MessageDetail, MessageSummary } from "../../types.js";
 import { formatAddresses, snippetOf } from "../imap/messages.js";
 import { labelsFor } from "./folders.js";
 import { graph, graphBatch, graphBytes, isNotFound, ok, batchError } from "./graph.js";
@@ -72,7 +72,7 @@ const addresses = (recipients: Recipient[] | undefined) =>
       .map((r) => ({ name: r.emailAddress?.name ?? "", address: r.emailAddress!.address! })),
   );
 
-export function toSummary(accountId: string, message: ApiMessage): GmailMessageSummary {
+export function toSummary(accountId: string, message: ApiMessage): MessageSummary {
   const from = (message.from ?? message.sender)?.emailAddress;
   const labelIds = labelsFor(accountId, message);
   // Drafts and sent mail are dated when written; received mail when it arrived.
@@ -121,10 +121,7 @@ export async function getApiMessages(
   return messages;
 }
 
-export async function getSummaries(
-  accountId: string,
-  ids: string[],
-): Promise<GmailMessageSummary[]> {
+export async function getSummaries(accountId: string, ids: string[]): Promise<MessageSummary[]> {
   return (await getApiMessages(accountId, ids)).map((m) => toSummary(accountId, m));
 }
 
@@ -133,7 +130,7 @@ async function source(accountId: string, id: string) {
   return parseMessage(await graphBytes(accountId, `${messagePath(id)}/$value`));
 }
 
-export async function getMessage(accountId: string, id: string): Promise<GmailMessageDetail> {
+export async function getMessage(accountId: string, id: string): Promise<MessageDetail> {
   const path = `${messagePath(id)}?$select=${SUMMARY_FIELDS},ccRecipients,bccRecipients,changeKey`;
   const knownDraft = getMessageLabelIds(accountId, id)?.includes("DRAFT");
   let [message, parsed] = await Promise.all([

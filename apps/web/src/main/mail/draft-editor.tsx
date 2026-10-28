@@ -6,7 +6,7 @@ import { toast } from "./toast";
 import { useQuery } from "@tanstack/react-query";
 import { XIcon } from "lucide-react";
 import { useGetAttachment, usePruneThreadRows, useSendMessage } from "./hooks";
-import { gmailApi } from "./api";
+import { mailApi } from "./api";
 import { RichTextArea, textToHtml, type RichTextRef } from "./rich-text";
 import { RecipientInput } from "./recipient-input";
 import { useDraftAutosave } from "./use-draft-autosave";
@@ -39,7 +39,7 @@ import {
   useComposeFileDrop,
   loadMessageAttachments,
 } from "./compose-attachments";
-import type { ComposeAttachment, GmailMessageDetail, GmailMessageSummary } from "./types";
+import type { ComposeAttachment, MessageDetail, MessageSummary } from "./types";
 
 /**
  * Resume editing a Gmail draft in the composer pane. Autosaves over the same
@@ -56,8 +56,8 @@ export function DraftEditor({
   titleLeading,
 }: {
   accountId: string;
-  detail: GmailMessageDetail;
-  threadMessages: GmailMessageSummary[];
+  detail: MessageDetail;
+  threadMessages: MessageSummary[];
   autoFocus?: boolean;
   onDone: () => void;
   /** Right end of the window's title band (panel toggle). */
@@ -153,7 +153,7 @@ export function DraftEditor({
   // Which Gmail draft owns this message row (known locally; Gmail as fallback).
   const draftIdQuery = useQuery({
     queryKey: ["gmail:draftId", accountId, detail.id],
-    queryFn: () => gmailApi.getDraftForMessage(accountId, detail.id, detail.threadId),
+    queryFn: () => mailApi.getDraftForMessage(accountId, detail.id, detail.threadId),
     staleTime: Infinity,
     retry: false,
   });

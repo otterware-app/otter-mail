@@ -7,8 +7,8 @@
 
 import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { gmailApi, type TranslationStatus } from "./api";
-import type { GmailMessageDetail } from "./types";
+import { mailApi, type TranslationStatus } from "./api";
+import type { MessageDetail } from "./types";
 import { features } from "../features";
 
 /** Languages Apple's translator offers (LanguageAvailability.supportedLanguages). */
@@ -82,7 +82,7 @@ export function useTranslationSettings(): ResolvedTranslationSettings {
   const queryClient = useQueryClient();
   const query = useQuery({
     queryKey: SETTINGS_KEY,
-    queryFn: () => gmailApi.getTranslationSettings(),
+    queryFn: () => mailApi.getTranslationSettings(),
     staleTime: Infinity,
     enabled: features.translation,
   });
@@ -112,7 +112,7 @@ function parseHtml(html: string): Document {
 }
 
 /** The first few thousand characters of what the message says. */
-function sampleText(detail: GmailMessageDetail): string {
+function sampleText(detail: MessageDetail): string {
   let text = detail.bodyText ?? "";
   if (detail.bodyHtml) {
     const doc = parseHtml(detail.bodyHtml);
@@ -128,7 +128,7 @@ const MIN_CONFIDENCE = 0.6;
 /** The message's language (BCP-47), or null while unknown or undetermined. */
 export function useMessageLanguage(
   accountId: string,
-  detail: GmailMessageDetail | undefined,
+  detail: MessageDetail | undefined,
 ): string | null {
   const query = useQuery({
     queryKey: ["message-language", accountId, detail?.id],
@@ -136,7 +136,7 @@ export function useMessageLanguage(
       const sample = sampleText(detail!);
       // A one-liner ("Danke!") says too little to be sure of.
       if (sample.length < 12) return null;
-      const detection = await gmailApi.detectLanguage(sample);
+      const detection = await mailApi.detectLanguage(sample);
       console.log("[translation:detect]", { messageId: detail!.id, ...detection });
       return detection.confidence >= MIN_CONFIDENCE ? detection.language : null;
     },
@@ -247,7 +247,7 @@ function collectSlots(root: Element, slots: Slot[]): void {
 async function fillSlots(slots: Slot[], source: string, target: string): Promise<void> {
   const unique = [...new Set(slots.map((s) => s.text))];
   if (unique.length === 0) return;
-  const result = await gmailApi.translate({ segments: unique, source, target });
+  const result = await mailApi.translate({ segments: unique, source, target });
   if (result.status !== "ok") throw new TranslationUnavailableError(result.status);
   const byText = new Map(unique.map((text, i) => [text, result.texts[i] ?? text]));
   for (const slot of slots) slot.apply(byText.get(slot.text) ?? slot.text);
@@ -280,7 +280,7 @@ export type TranslatedBody = { bodyHtml: string | null; bodyText: string | null 
 /** The message's body in `target`, same markup — fetched while `enabled`. */
 export function useTranslatedBody(
   accountId: string,
-  detail: GmailMessageDetail | undefined,
+  detail: MessageDetail | undefined,
   source: string | null,
   target: string,
   enabled: boolean,

@@ -76,7 +76,7 @@ import {
   useLabels,
   useSendMessage,
 } from "./hooks";
-import { gmailApi } from "./api";
+import { mailApi } from "./api";
 import { CategoryChip, InboxChip, LabelChip, isCategoryLabelId } from "./label-chip";
 import { SenderAvatar } from "./sender-avatar";
 import { ConversationSummary } from "./conversation-summary";
@@ -128,12 +128,7 @@ import {
 import type { QuoteContext } from "./chat-context";
 import { DraftEditor } from "./draft-editor";
 import { useDraftAutosave } from "./use-draft-autosave";
-import type {
-  ComposeAttachment,
-  GmailLabel,
-  GmailMessageDetail,
-  GmailMessageSummary,
-} from "./types";
+import type { ComposeAttachment, MailLabel, MessageDetail, MessageSummary } from "./types";
 import { features } from "../features";
 import { openLink } from "../browser/store";
 import { AttachmentPreview, attachmentPreview, type PreviewFile } from "./attachment-preview";
@@ -661,7 +656,7 @@ function HtmlBody({
         // Don't bother proxying 1×1 tracking beacons.
         if (img.getAttribute("width") === "1" && img.getAttribute("height") === "1") return;
         img.dataset.otterProxied = "1";
-        void gmailApi
+        void mailApi
           .proxyImage(src)
           .then((res) => {
             if (!res?.dataUrl) return;
@@ -680,7 +675,7 @@ function HtmlBody({
         const attachment = source.byCid.get(decodeURIComponent(src.slice(4)).toLowerCase());
         if (!attachment) return;
         img.dataset.otterProxied = "1";
-        void gmailApi
+        void mailApi
           .getAttachmentData({
             accountId: source.accountId,
             messageId: source.messageId,
@@ -958,7 +953,7 @@ function MessageBody({
   return <span className="text-sm text-muted-foreground">(No message body)</span>;
 }
 
-type MessageAttachment = GmailMessageDetail["attachments"][number];
+type MessageAttachment = MessageDetail["attachments"][number];
 
 const MAX_THUMBNAIL_FETCHES = 3;
 let activeThumbnailFetches = 0;
@@ -989,10 +984,10 @@ function previewFile(
     name: attachment.filename,
     mimeType: attachment.mimeType,
     size: attachment.size,
-    load: async () => (await gmailApi.getAttachmentData(params)).base64,
+    load: async () => (await mailApi.getAttachmentData(params)).base64,
     onSave,
     onOpen: () => {
-      void gmailApi
+      void mailApi
         .openAttachment({ ...params, filename: attachment.filename })
         .catch(() => toast.error("Could not open attachment"));
     },
@@ -1026,7 +1021,7 @@ function useAttachmentActions(
     setOpening(true);
     void (async () => {
       try {
-        await gmailApi.openAttachment(params);
+        await mailApi.openAttachment(params);
       } catch {
         toast.error("Could not open attachment");
       } finally {
@@ -1072,7 +1067,7 @@ function useAttachmentActions(
         messageId,
         filename: attachment.filename,
       });
-      void gmailApi.dragAttachment(params).catch(() => {
+      void mailApi.dragAttachment(params).catch(() => {
         toast.error("Could not export attachment");
       });
     },
@@ -1109,7 +1104,7 @@ function ImageAttachmentTile({
     void (async () => {
       try {
         const data = await withThumbnailSlot(() =>
-          gmailApi.getAttachmentData({ accountId, messageId, attachmentId: attachment.id }),
+          mailApi.getAttachmentData({ accountId, messageId, attachmentId: attachment.id }),
         );
         const bytes = Uint8Array.from(atob(data.base64), (c) => c.charCodeAt(0));
         const blobUrl = URL.createObjectURL(new Blob([bytes], { type: attachment.mimeType }));
@@ -1253,7 +1248,7 @@ function AttachmentList({
 }: {
   accountId: string;
   messageId: string;
-  attachments: GmailMessageDetail["attachments"];
+  attachments: MessageDetail["attachments"];
   onDownload: DownloadAttachment;
 }) {
   if (attachments.length === 0) return null;
@@ -1320,7 +1315,7 @@ export function CollapsedRow({
   onExpand,
 }: {
   accountId: string;
-  summary: GmailMessageSummary;
+  summary: MessageSummary;
   onExpand: () => void;
   /** Kept for callers; every row is now a flat, hairline-separated row. */
   standalone?: boolean;
@@ -1395,7 +1390,7 @@ export function ExpandedRow({
   onSearchSender,
 }: {
   accountId: string;
-  summary: GmailMessageSummary;
+  summary: MessageSummary;
   /** Absent for single-message conversations, which always stay expanded. */
   onCollapse?: () => void;
   onDownload: DownloadAttachment;
@@ -1603,7 +1598,7 @@ function RecipientList({
 
 /** Reply-all recipients for the latest message, from this account's viewpoint. */
 function computeReplyAll(
-  last: GmailMessageSummary & { cc?: string },
+  last: MessageSummary & { cc?: string },
   ownEmail: string,
 ): { to: string; cc: string | undefined } {
   const own = ownEmail.toLowerCase();
@@ -1642,12 +1637,12 @@ const INLINE_MODE_LABEL: Record<InlineMode, string> = {
 
 /** Reply-to-sender recipients for the latest message. */
 /** "Name <email>" for the sender, so replies show who they're going to. */
-function senderAddress(m: GmailMessageSummary): string {
+function senderAddress(m: MessageSummary): string {
   return formatAddressEntry(m.fromName, m.fromEmail);
 }
 
 function computeReply(
-  last: GmailMessageSummary,
+  last: MessageSummary,
   ownEmail: string,
 ): { to: string; cc: string | undefined } {
   const fromSelf = last.fromEmail.toLowerCase() === ownEmail.toLowerCase();
@@ -1662,7 +1657,7 @@ function prefixSubject(prefix: "Re" | "Fwd", subject: string): string {
 }
 
 function forwardBlock(
-  source: GmailMessageSummary & { bodyText?: string | null; bodyHtml?: string | null },
+  source: MessageSummary & { bodyText?: string | null; bodyHtml?: string | null },
 ): string {
   const fromDisplay = source.fromName
     ? `${source.fromName} <${source.fromEmail}>`
@@ -1731,7 +1726,7 @@ function InlineComposer({
   mode: InlineMode;
   /** Switches Reply / Reply all / Forward in place (the text is kept). */
   onModeChange: (mode: InlineMode) => void;
-  lastMessage: GmailMessageSummary;
+  lastMessage: MessageSummary;
   baseSubject: string;
   threadId: string;
   onClose: () => void;
@@ -1808,7 +1803,7 @@ function InlineComposer({
       try {
         const out: ComposeAttachment[] = [];
         for (const att of lastDetail.attachments) {
-          const data = await gmailApi.getAttachmentData({
+          const data = await mailApi.getAttachmentData({
             accountId,
             messageId: lastMessage.id,
             attachmentId: att.id,
@@ -2320,8 +2315,7 @@ export function MessageReader({
 
   // From here on the conversation is renderable — a thread of one message
   // falls back to the opened message itself.
-  const rows: GmailMessageSummary[] =
-    !single && threadMessages.length > 0 ? threadMessages : [message];
+  const rows: MessageSummary[] = !single && threadMessages.length > 0 ? threadMessages : [message];
   // Reply/forward target the last real message — never your own saved draft.
   const sentRows = rows.filter((m) => !m.labelIds.includes("DRAFT"));
   const lastRow = sentRows[sentRows.length - 1] ?? rows[rows.length - 1];
@@ -2334,7 +2328,7 @@ export function MessageReader({
   const labelsById = new Map((labelsQuery.data ?? []).map((l) => [l.id, l]));
   const messageLabels = conversationLabelIds
     .map((id) => labelsById.get(id))
-    .filter((l): l is GmailLabel => l != null && l.type === "user");
+    .filter((l): l is MailLabel => l != null && l.type === "user");
 
   const toggleExpanded = (id: string) => {
     setExpandedIds((prev) => {
@@ -2928,8 +2922,8 @@ export function MessageReader({
               // (one grouped card per run; long runs fold to "N more").
               type Segment =
                 | { kind: "day"; ts: number }
-                | { kind: "open"; m: GmailMessageSummary }
-                | { kind: "closed"; ms: GmailMessageSummary[] };
+                | { kind: "open"; m: MessageSummary }
+                | { kind: "closed"; ms: MessageSummary[] };
               const segments: Segment[] = [];
               rows.forEach((m, i) => {
                 const prev = rows[i - 1];

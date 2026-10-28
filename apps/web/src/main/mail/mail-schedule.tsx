@@ -9,7 +9,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from "~/components/ui/dialog";
-import { gmailApi } from "./api";
+import { mailApi } from "./api";
 import { HintTooltip, IconBtn } from "./ui";
 import { NewRow } from "./sidebar-ui";
 import { toast } from "./toast";
@@ -141,7 +141,7 @@ function TimePickerDialog({
 }
 
 async function snooze(accountId: string, threadId: string, time: number): Promise<void> {
-  await gmailApi.snoozeThread(accountId, threadId, time);
+  await mailApi.snoozeThread(accountId, threadId, time);
   toast.success("Snoozed", {
     description: `Returns to your inbox ${new Date(time).toLocaleString()}.`,
   });
@@ -185,7 +185,7 @@ export function ScheduledMailButton() {
   const qc = useQueryClient();
   const query = useQuery({
     queryKey: ["gmail:schedules"],
-    queryFn: gmailApi.listSchedules,
+    queryFn: mailApi.listSchedules,
     refetchInterval: 15_000,
   });
   useEffect(
@@ -244,7 +244,7 @@ export function ScheduledMailButton() {
                   disabled={busy !== null || entry.state === "running"}
                   onClick={() => {
                     setBusy(entry.id);
-                    void gmailApi
+                    void mailApi
                       .cancelSchedule(entry.id)
                       .then(
                         () =>

@@ -18,7 +18,7 @@ import { ViewIconPicker, ViewMark } from "./view-icon";
 import { useAllAccountLabels, useCombinedCounts } from "./hooks";
 import { getAccountColor, getAccountDisplayName } from "./account-style";
 import { SYSTEM_LABEL_NAMES, SYSTEM_LABEL_ORDER, labelDisplayName } from "./label-names";
-import type { GmailAccount, GmailLabel, MailView, ViewRule } from "./types";
+import type { MailAccount, MailLabel, MailView, ViewRule } from "./types";
 
 /**
  * Making a view, or changing one, in a dialog over the mail (Smart
@@ -28,7 +28,7 @@ import type { GmailAccount, GmailLabel, MailView, ViewRule } from "./types";
 type ViewEditorProps = {
   /** The view being edited; null when making one. */
   view: MailView | null;
-  accounts: GmailAccount[];
+  accounts: MailAccount[];
   onSave: (input: {
     id?: string;
     name: string;
@@ -56,7 +56,7 @@ function picksToRules(picks: Picks): ViewRule[] {
     .map(([accountId, p]) => ({ accountId, allOf: p.allOf, noneOf: p.noneOf }));
 }
 
-function sortSystemLabels(labels: GmailLabel[]): GmailLabel[] {
+function sortSystemLabels(labels: MailLabel[]): MailLabel[] {
   return labels
     .filter((l) => l.type === "system")
     .sort((a, b) => {
@@ -66,7 +66,7 @@ function sortSystemLabels(labels: GmailLabel[]): GmailLabel[] {
     });
 }
 
-function chipName(label: GmailLabel | undefined, labelId: string): string {
+function chipName(label: MailLabel | undefined, labelId: string): string {
   if (!label) return SYSTEM_LABEL_NAMES[labelId] ?? labelId;
   const display = labelDisplayName(label);
   return label.type === "user" ? (display.split("/").pop() ?? display) : display;
@@ -81,7 +81,7 @@ function RuleChip({
   excluded,
   onRemove,
 }: {
-  label: GmailLabel | undefined;
+  label: MailLabel | undefined;
   labelId: string;
   excluded?: boolean;
   onRemove: () => void;
@@ -111,7 +111,7 @@ function AddLabelMenu({
   usedIds,
   onPick,
 }: {
-  labels: GmailLabel[];
+  labels: MailLabel[];
   usedIds: Set<string>;
   onPick: (labelId: string) => void;
 }) {
@@ -162,9 +162,9 @@ function Clause({
   onChange,
   onRemove,
 }: {
-  account: GmailAccount;
+  account: MailAccount;
   picks: AccountPicks;
-  labels: GmailLabel[];
+  labels: MailLabel[];
   loading: boolean;
   onChange: (picks: AccountPicks) => void;
   onRemove: () => void;
@@ -229,8 +229,8 @@ function Clause({
 /** The view in words: "Receipts in Personal, or Finance and not Unread in Work". */
 function sentence(
   picks: Picks,
-  accounts: GmailAccount[],
-  labelsOf: (accountId: string) => GmailLabel[],
+  accounts: MailAccount[],
+  labelsOf: (accountId: string) => MailLabel[],
 ): string {
   return Object.entries(picks)
     .filter(([, p]) => p.allOf.length + p.noneOf.length > 0)

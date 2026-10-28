@@ -12,10 +12,10 @@ import { providerFor } from "../../../providers/index.js";
 import {
   ALL_MAIL_LABEL_ID,
   type ComposeAttachment,
-  type GmailAccount,
-  type GmailLabel,
-  type GmailMessageDetail,
-  type GmailMessageSummary,
+  type MailAccount,
+  type MailLabel,
+  type MessageDetail,
+  type MessageSummary,
 } from "../../../types.js";
 import { getAttachmentBytes } from "../../attachment-cache.js";
 import * as mailStore from "../../mail-store.js";
@@ -66,12 +66,12 @@ const LABEL_ALIASES: Record<string, string> = {
   archive: ALL_MAIL_LABEL_ID,
 };
 
-export function labelsOf(account: GmailAccount): Promise<GmailLabel[]> {
-  return invoke<GmailLabel[]>("gmail:listLabels", { accountId: account.id });
+export function labelsOf(account: MailAccount): Promise<MailLabel[]> {
+  return invoke<MailLabel[]>("gmail:listLabels", { accountId: account.id });
 }
 
 /** A label's id from its name, id or alias. */
-export function labelId(account: GmailAccount, labels: GmailLabel[], ref: string): string {
+export function labelId(account: MailAccount, labels: MailLabel[], ref: string): string {
   const wanted = ref.trim().toLowerCase();
   // Outlook's and IMAP's Archive is a folder; Gmail's archived mail is in All Mail.
   if (wanted === "archive" && labels.some((l) => l.id === ARCHIVE_LABEL_ID)) {
@@ -91,7 +91,7 @@ export function labelId(account: GmailAccount, labels: GmailLabel[], ref: string
 // ── Rows ─────────────────────────────────────────────────────────────────────
 
 /** One conversation in a list, as agents get it. */
-function threadRow(m: GmailMessageSummary, account: GmailAccount, labels: GmailLabel[]) {
+function threadRow(m: MessageSummary, account: MailAccount, labels: MailLabel[]) {
   const names = new Map(labels.map((l) => [l.id, l.name]));
   const labelIds = (m.threadLabelIds ?? m.labelIds).filter(
     (id) => id !== "UNREAD" && id !== "STARRED",
@@ -114,9 +114,9 @@ function threadRow(m: GmailMessageSummary, account: GmailAccount, labels: GmailL
 }
 
 /** Rows from several mailboxes (each row carries its accountId). */
-async function threadRows(accounts: GmailAccount[], messages: GmailMessageSummary[]) {
+async function threadRows(accounts: MailAccount[], messages: MessageSummary[]) {
   const byId = new Map(accounts.map((a) => [a.id, a]));
-  const labels = new Map<string, GmailLabel[]>();
+  const labels = new Map<string, MailLabel[]>();
   for (const id of new Set(messages.map((m) => m.accountId ?? ""))) {
     const account = byId.get(id);
     if (account) labels.set(id, await labelsOf(account));
@@ -134,7 +134,7 @@ function clip(text: string, limit: number): string {
 }
 
 /** The subjects of some conversations, for approvals. */
-function subjects(account: GmailAccount, threadIds: string[]): string {
+function subjects(account: MailAccount, threadIds: string[]): string {
   const shown = threadIds.slice(0, 5).map((id) => {
     const first = mailStore.getThreadMessages(account.id, id)[0];
     return first ? `“${first.subject || "(no subject)"}”` : id;
@@ -143,7 +143,7 @@ function subjects(account: GmailAccount, threadIds: string[]): string {
 }
 
 /** The conversations an argument names, each one known on this device. */
-function threads(args: ToolArgs, account: GmailAccount): string[] {
+function threads(args: ToolArgs, account: MailAccount): string[] {
   const ids = strList(args, "threadIds");
   if (!ids?.length) throw new Error(`"threadIds" is required.`);
   for (const id of ids) {
@@ -172,7 +172,7 @@ type Composed = {
 const emailOf = (entry: string) => (entry.match(/<([^>]+)>/)?.[1] ?? entry).trim().toLowerCase();
 
 /** Who a reply goes to, as the reader's Reply and Reply all work it out. */
-function replyRecipients(source: GmailMessageDetail, ownEmail: string, all: boolean) {
+function replyRecipients(source: MessageDetail, ownEmail: string, all: boolean) {
   const own = ownEmail.toLowerCase();
   const sender = address(source.fromName, source.fromEmail);
   // Replying to your own message goes to its recipients instead.
@@ -239,13 +239,13 @@ const mimeTypeOf = (name: string) =>
  * carries the message and its attachments; the account's signature follows
  * the body.
  */
-async function compose(args: ToolArgs, account: GmailAccount, ctx: ToolContext): Promise<Composed> {
+async function compose(args: ToolArgs, account: MailAccount, ctx: ToolContext): Promise<Composed> {
   const replyTo = optStr(args, "replyTo");
   const forward = optStr(args, "forward");
   if (replyTo && forward) throw new Error(`Use "replyTo" or "forward", not both.`);
   const sourceId = replyTo ?? forward;
   const source = sourceId
-    ? await invoke<GmailMessageDetail>("gmail:getMessage", {
+    ? await invoke<MessageDetail>("gmail:getMessage", {
         accountId: account.id,
         messageId: sourceId,
       })
@@ -331,7 +331,7 @@ async function compose(args: ToolArgs, account: GmailAccount, ctx: ToolContext):
 }
 
 /** The message as the approval shows it. */
-function describeMail(account: GmailAccount, mail: Composed, body: string): string {
+function describeMail(account: MailAccount, mail: Composed, body: string): string {
   return [
     `From: ${account.email}`,
     `To: ${mail.to || "(nobody yet)"}`,
@@ -471,7 +471,7 @@ export const mailTools: AgentTool[] = [
           noneOf: all ? ["SPAM", "TRASH"] : [],
         });
       }
-      const page = await invoke<{ messages: GmailMessageSummary[]; nextPageToken?: string }>(
+      const page = await invoke<{ messages: MessageSummary[]; nextPageToken?: string }>(
         "gmail:listCombinedMessages",
         { rules, maxResults: optInt(args, "limit", 100) ?? 25, pageToken: optStr(args, "cursor") },
       );
@@ -501,7 +501,7 @@ export const mailTools: AgentTool[] = [
       const accounts = await mailboxes(args);
       const cursor = optStr(args, "cursor");
       const result = await invoke<{
-        messages: GmailMessageSummary[];
+        messages: MessageSummary[];
         cursors?: Record<string, string | null>;
         estimate: number;
         offline?: boolean;
@@ -550,7 +550,7 @@ export const mailTools: AgentTool[] = [
       const labels = await labelsOf(account);
       const messages = await Promise.all(
         summaries.map(async (m) => {
-          const d = await invoke<GmailMessageDetail>("gmail:getMessage", {
+          const d = await invoke<MessageDetail>("gmail:getMessage", {
             accountId: account.id,
             messageId: m.id,
           });
@@ -623,7 +623,7 @@ export const mailTools: AgentTool[] = [
       const account = await mailbox(args);
       const messageId = str(args, "messageId");
       const attachmentId = str(args, "attachmentId");
-      const detail = await invoke<GmailMessageDetail>("gmail:getMessage", {
+      const detail = await invoke<MessageDetail>("gmail:getMessage", {
         accountId: account.id,
         messageId,
       });
@@ -782,7 +782,7 @@ export const mailTools: AgentTool[] = [
       const account = await mailbox(args);
       const name = str(args, "name");
       await ctx.confirm(`Create the label “${name}” in ${account.email}`);
-      const label = await invoke<GmailLabel>("gmail:createLabel", { accountId: account.id, name });
+      const label = await invoke<MailLabel>("gmail:createLabel", { accountId: account.id, name });
       ctx.changed?.({
         action: "created",
         title: label.name,

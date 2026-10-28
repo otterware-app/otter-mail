@@ -59,7 +59,7 @@ import {
   useAccounts,
   useAccountSync,
   useGlobalSyncStatus,
-  useGmailWriteFailureToasts,
+  useWriteFailureToasts,
   useExternalMailChanges,
   useModifyMessage,
   useModifyThread,
@@ -78,9 +78,9 @@ import {
   type UndoAction,
 } from "./mail/undo";
 import { getAccountColor, getAccountContrastColor } from "./mail/account-style";
-import { gmailApi, type ChatChange, type MailtoTarget, type SettingsPane } from "./mail/api";
+import { mailApi, type ChatChange, type MailtoTarget, type SettingsPane } from "./mail/api";
 import type { QuoteContext } from "./mail/chat-context";
-import type { GmailAccount, GmailMessageSummary, MailView } from "./mail/types";
+import type { MailAccount, MessageSummary, MailView } from "./mail/types";
 import {
   useMailViews,
   resolveRules,
@@ -179,7 +179,7 @@ function savedLoc(): MailLoc {
  * not there at all) gives way to the first mailbox, at its inbox. Views count
  * as there until they're known (`views` null).
  */
-function placeFor(loc: MailLoc, accounts: GmailAccount[], views: MailView[] | null): MailLoc {
+function placeFor(loc: MailLoc, accounts: MailAccount[], views: MailView[] | null): MailLoc {
   const there =
     views === null && isViewSpaceId(loc.mailbox)
       ? true
@@ -443,7 +443,7 @@ function MailHome() {
   useEffect(() => {
     const pull = async () => {
       try {
-        const target = await gmailApi.getSettingsTarget();
+        const target = await mailApi.getSettingsTarget();
         if (!target) return;
         const pane = target.pane ?? lastPaneRef.current;
         console.log("[HomeView:openSettings]", { pane });
@@ -467,7 +467,7 @@ function MailHome() {
         if (closeBrowserTabRef.current?.()) return;
         if (closeWorkspaceTabRef.current?.()) return;
         if (closeChatWindowRef.current()) return;
-        void gmailApi.closeMainWindow();
+        void mailApi.closeMainWindow();
       }),
     [],
   );
@@ -541,7 +541,7 @@ function MailHome() {
   const spansMailboxes = spanning(space);
 
   const globalSync = useGlobalSyncStatus(accountIds);
-  useGmailWriteFailureToasts();
+  useWriteFailureToasts();
   useSignInAlerts();
   useExternalMailChanges();
   useBrowserEvents();
@@ -618,7 +618,7 @@ function MailHome() {
     });
   };
   // Rows multi-selected in the list, surfaced to the agent's context chip.
-  const [chatSelection, setChatSelection] = useState<GmailMessageSummary[]>([]);
+  const [chatSelection, setChatSelection] = useState<MessageSummary[]>([]);
   const openBrowser = () => {
     localStorage.setItem("gmail:browser-open", "1");
     setBrowserOpen(true);
@@ -874,7 +874,7 @@ function MailHome() {
   useKeybindingContext("agentOpen", !settingsRoute && (isChats || chatWindowOpen));
   useKeybindingContext("messageOpen", selectedMessageId !== null);
   /** A folder of the mailbox showing (from Chats or a view, the first mailbox's). */
-  const goTo = (labelId: string | ((account: GmailAccount) => string)) => {
+  const goTo = (labelId: string | ((account: MailAccount) => string)) => {
     const mailbox = isChats || viewSpace ? firstRealAccountId : selectedAccountId;
     const account = accounts.find((a) => a.id === mailbox);
     if (!account) return;
@@ -987,7 +987,7 @@ function MailHome() {
   // prefilled.
   useEffect(() => {
     const pull = async () => {
-      const target = await gmailApi.takePendingMailto();
+      const target = await mailApi.takePendingMailto();
       if (!target) return;
       console.log("[HomeView:mailto]", { to: target.to });
       setMailtoPrefill(target);
@@ -1007,7 +1007,7 @@ function MailHome() {
   } | null>(null);
   useEffect(() => {
     const pull = async () => {
-      const target = await gmailApi.takePendingOpenMessage().catch(() => null);
+      const target = await mailApi.takePendingOpenMessage().catch(() => null);
       if (!target) return;
       console.log("[HomeView:openFromNotification]", { messageId: target.messageId });
       setOpenFromNotification(target);
@@ -1144,12 +1144,12 @@ function MailHome() {
     } else {
       let messageId: string;
       if (target.kind === "draft") {
-        const version = await gmailApi.getDraftVersion(target.accountId, target.id);
+        const version = await mailApi.getDraftVersion(target.accountId, target.id);
         if (!version.messageId) throw new Error("This draft was sent or deleted.");
-        await gmailApi.loadDraftVersion(target.accountId, target.id, version.messageId);
+        await mailApi.loadDraftVersion(target.accountId, target.id, version.messageId);
         messageId = version.messageId;
       } else {
-        const messages = await gmailApi.getThread(target.accountId, target.id);
+        const messages = await mailApi.getThread(target.accountId, target.id);
         const message = messages.at(-1);
         if (!message) throw new Error("This conversation is no longer available.");
         messageId = message.id;
@@ -1300,7 +1300,7 @@ function MailHome() {
   }, [searchActive, activeSearch, openSearchForEffect]);
 
   // Palette mail result: jump to the owning account (a view stays put) and open.
-  const handlePaletteOpenMessage = (message: GmailMessageSummary) => {
+  const handlePaletteOpenMessage = (message: MessageSummary) => {
     console.log("[HomeView:paletteOpenMessage]", {
       messageId: message.id,
       accountId: message.accountId,
@@ -1341,10 +1341,10 @@ function MailHome() {
     const startedAt = Date.now();
     void (async () => {
       try {
-        await Promise.all(accountIds.map((id) => gmailApi.syncAccount(id).catch(() => null)));
+        await Promise.all(accountIds.map((id) => mailApi.syncAccount(id).catch(() => null)));
         for (let i = 0; i < 150; i++) {
           const statuses = await Promise.all(
-            accountIds.map((id) => gmailApi.getSyncStatus(id).catch(() => null)),
+            accountIds.map((id) => mailApi.getSyncStatus(id).catch(() => null)),
           );
           if (!statuses.some((st) => st?.syncing)) break;
           await new Promise((r) => setTimeout(r, 400));

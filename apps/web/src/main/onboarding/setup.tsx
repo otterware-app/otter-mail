@@ -19,7 +19,7 @@ import {
 import { AgentIcon } from "../mail/agent-icon";
 import { Switch } from "~/components/ui/switch";
 import {
-  gmailApi,
+  mailApi,
   type NotificationsMode,
   type ProvidersState,
   type SyncSettings,
@@ -50,7 +50,7 @@ import {
   useMailProviders,
 } from "../mail/hooks";
 import { toast } from "../mail/toast";
-import type { GmailAccount } from "../mail/types";
+import type { MailAccount } from "../mail/types";
 import { Btn, cn } from "../mail/ui";
 import { WindowTitle } from "../mail/top-bar";
 import { OtterSignInOnboardingLink } from "../settings/otter-account-pane";
@@ -228,7 +228,7 @@ function Progress({ step }: { step: Step }) {
 }
 
 /** First sync keeps going while the rest of the setup runs; say so. */
-function SyncNote({ accounts }: { accounts: GmailAccount[] }) {
+function SyncNote({ accounts }: { accounts: MailAccount[] }) {
   const sync = useGlobalSyncStatus(accounts.map((a) => a.id));
   if (!sync.syncing) return <span />;
   return (
@@ -372,7 +372,7 @@ function WelcomeStep({ onStart }: { onStart: () => void }) {
 // Mailbox
 // ---------------------------------------------------------------------------
 
-function MailboxStep({ accounts }: { accounts: GmailAccount[] }) {
+function MailboxStep({ accounts }: { accounts: MailAccount[] }) {
   const addAccount = useAddAccount();
   const outlook = useAddOutlook();
   const hasOutlook = useMailProviders().data?.outlook ?? false;
@@ -436,7 +436,7 @@ function MailboxStep({ accounts }: { accounts: GmailAccount[] }) {
           <button
             type="button"
             className="cursor-pointer text-foreground underline-offset-2 hover:underline"
-            onClick={() => void gmailApi.cancelAddAccount()}
+            onClick={() => void mailApi.cancelAddAccount()}
           >
             Cancel
           </button>
@@ -465,7 +465,7 @@ function MailboxStep({ accounts }: { accounts: GmailAccount[] }) {
   );
 }
 
-function ConnectedMailbox({ account }: { account: GmailAccount }) {
+function ConnectedMailbox({ account }: { account: MailAccount }) {
   // Starts its sync, and follows it.
   const status = useAccountSync(account.id);
   const busy = !!status && (status.syncing || status.download != null);
@@ -608,14 +608,14 @@ function HabitsStep() {
 
   const refreshDefaultMail = () => {
     if (!features.defaultMailApp) return;
-    gmailApi.getDefaultMailStatus().then(
+    mailApi.getDefaultMailStatus().then(
       (s) => setIsDefaultMail(s.isDefault),
       () => {},
     );
   };
   const refreshDefaultMailForEffect = useLatest(refreshDefaultMail);
   useEffect(() => {
-    gmailApi
+    mailApi
       .getSyncSettings()
       .then(setSettings, (error: unknown) =>
         toast.error(`Failed to load settings: ${String(error)}`),
@@ -627,7 +627,7 @@ function HabitsStep() {
     console.log("[Setup:setSyncSettings]", patch);
     setSettings((s) => (s ? { ...s, ...patch } : s));
     try {
-      setSettings(await gmailApi.setSyncSettings(patch));
+      setSettings(await mailApi.setSyncSettings(patch));
     } catch (error) {
       toast.error(`Failed to save: ${String(error)}`);
     }
@@ -708,7 +708,7 @@ function HabitsStep() {
                       disabled={isDefaultMail === null}
                       onClick={() => {
                         console.log("[Setup:setDefaultMailApp]");
-                        void gmailApi
+                        void mailApi
                           .setDefaultMailApp()
                           .catch(() => {})
                           .then(refreshDefaultMail);
@@ -773,7 +773,7 @@ function AgentStep({ firstRun }: { firstRun: boolean }) {
   const [hermesOpen, setHermesOpen] = useState(false);
   const pick = (kind: NonNullable<typeof state>["selected"]) => {
     console.log("[Setup:selectAgent]", { kind });
-    gmailApi
+    mailApi
       .updateAgentSettings({ selected: kind })
       .then(setState, (error: unknown) => toast.error(`Could not save: ${String(error)}`));
   };

@@ -47,7 +47,7 @@ import {
   useAppThemes,
   useThemeChoice,
 } from "../theme/apply-theme";
-import type { GmailAccount, GmailMessageSummary, MailView } from "./types";
+import type { MailAccount, MessageSummary, MailView } from "./types";
 import { PaneIcon } from "./top-bar";
 import type { SettingsPane } from "./api";
 import type { KeybindingCommand } from "../keybindings/commands";
@@ -72,10 +72,10 @@ const MAX_MAIL_RESULTS = 12;
 type CommandPaletteProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  accounts: GmailAccount[];
+  accounts: MailAccount[];
   views: MailView[];
   selectedAccountId: string | null;
-  onOpenMessage: (message: GmailMessageSummary) => void;
+  onOpenMessage: (message: MessageSummary) => void;
   /** Runs the typed text as a Gmail search in the Search mailbox. */
   onSearchMail: (query: string) => void;
   onSelectAccount: (accountId: string) => void;

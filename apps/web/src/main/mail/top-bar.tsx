@@ -32,7 +32,7 @@ import {
   DropdownMenuTrigger,
 } from "./menu";
 import { useRecentlyViewed, type RecentIcon } from "../recently-viewed";
-import type { GmailAccount } from "./types";
+import type { MailAccount } from "./types";
 import type { KeybindingCommand } from "../keybindings/commands";
 import { shortcutLabelFor, useKeybindingsState } from "../keybindings/store";
 import { features } from "../features";
@@ -324,13 +324,13 @@ export function SidebarTitle() {
 
 export type MailboxOption = {
   id: string;
-  account: GmailAccount;
+  account: MailAccount;
   name: string;
   shortcut: string;
 };
 
 /** The mailboxes to switch between, in ⌘1… order. */
-export function useMailboxOptions(accounts: GmailAccount[]): MailboxOption[] {
+export function useMailboxOptions(accounts: MailAccount[]): MailboxOption[] {
   const { resolved: keybindings } = useKeybindingsState();
   const jump = (digit: number) =>
     shortcutLabelFor(keybindings, `mailbox.jump.${digit}` as KeybindingCommand) ?? "";
@@ -343,7 +343,7 @@ export function useMailboxOptions(accounts: GmailAccount[]): MailboxOption[] {
 }
 
 /** Unread in each mailbox's Inbox (as its sidebar shows it). */
-export function useInboxUnread(accounts: GmailAccount[]): Record<string, number> {
+export function useInboxUnread(accounts: MailAccount[]): Record<string, number> {
   return Object.fromEntries(
     useAllAccountLabels(accounts.map((a) => a.id)).map(({ accountId, labels }) => [
       accountId,

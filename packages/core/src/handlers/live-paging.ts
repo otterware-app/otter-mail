@@ -6,7 +6,7 @@
 
 import { findProvider, isSignedIn, providerFor } from "../providers/index.js";
 import * as mailStore from "../services/mail-store.js";
-import type { GmailMessageSummary } from "../types.js";
+import type { MessageSummary } from "../types.js";
 import { sleep } from "./ipc-budget.js";
 import { hasPendingLabelWrites } from "../services/pending-label-writes.js";
 
@@ -45,7 +45,7 @@ export function forgetLiveCursors(accountId: string): void {
 /** Fetches and caches the next live page of a label (null = all mail). One
     fetch per cursor at a time: callers that time out leave it running, and
     the next request joins it instead of starting another. */
-function fillFromGmail(accountId: string, labelId: string | null): Promise<void> {
+function fillFromServer(accountId: string, labelId: string | null): Promise<void> {
   const key = liveKey(accountId, labelId);
   const running = inflightFills.get(key);
   if (running) return running;
@@ -78,8 +78,8 @@ async function fillOnce(accountId: string, labelId: string | null): Promise<void
 export async function pageWithLiveFill(
   sources: { accountId: string; labelId: string | null }[],
   maxResults: number,
-  read: () => { messages: GmailMessageSummary[]; hasMore: boolean },
-): Promise<{ messages: GmailMessageSummary[]; more: boolean }> {
+  read: () => { messages: MessageSummary[]; hasMore: boolean },
+): Promise<{ messages: MessageSummary[]; more: boolean }> {
   const started = Date.now();
   let page = read();
   const pending = () => sources.filter((src) => needsLive(src.accountId, src.labelId));
@@ -88,7 +88,7 @@ export async function pageWithLiveFill(
     if (left <= 0) break;
     // Gmail can stall (rate-limit backoff waits up to 32s): answer with what's
     // cached when the budget runs out; the fill keeps going in the background.
-    const fills = Promise.all(pending().map((src) => fillFromGmail(src.accountId, src.labelId)));
+    const fills = Promise.all(pending().map((src) => fillFromServer(src.accountId, src.labelId)));
     fills.catch((err) => console.log("[gmail:livePage] failed", { error: String(err) }));
     const done = await Promise.race([
       fills.then(

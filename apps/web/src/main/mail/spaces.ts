@@ -8,7 +8,7 @@
  *   "label" is the chat showing (NEW_CHAT, a new one).
  */
 
-import type { GmailAccount, MailView } from "./types";
+import type { MailAccount, MailView } from "./types";
 
 export const CHATS_SPACE = "__chats__";
 
@@ -22,7 +22,7 @@ export const VIEW_LIST = "all";
 export const isViewSpaceId = (id: string) => id.startsWith("v_");
 
 export type Space =
-  | { kind: "mailbox"; id: string; account: GmailAccount }
+  | { kind: "mailbox"; id: string; account: MailAccount }
   | { kind: "view"; id: string; view: MailView }
   | { kind: "chats"; id: typeof CHATS_SPACE };
 
@@ -32,7 +32,7 @@ export type Space =
  */
 export function spaceOf(
   id: string,
-  { accounts, views }: { accounts: GmailAccount[]; views: MailView[] },
+  { accounts, views }: { accounts: MailAccount[]; views: MailView[] },
 ): Space | null {
   if (id === CHATS_SPACE) return { kind: "chats", id };
   if (isViewSpaceId(id)) {

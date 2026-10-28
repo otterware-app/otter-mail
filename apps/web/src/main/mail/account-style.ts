@@ -1,4 +1,4 @@
-import type { GmailAccount } from "./types";
+import type { MailAccount } from "./types";
 
 /** Preset account colors offered in Settings — a macOS-style accent palette. */
 export const ACCOUNT_COLOR_PALETTE: string[] = [
@@ -23,14 +23,14 @@ function hashString(value: string): number {
 }
 
 /** An account's display color — its saved choice, or a stable fallback from the palette. */
-export function getAccountColor(account: Pick<GmailAccount, "id" | "color">): string {
+export function getAccountColor(account: Pick<MailAccount, "id" | "color">): string {
   return (
     account.color ?? ACCOUNT_COLOR_PALETTE[hashString(account.id) % ACCOUNT_COLOR_PALETTE.length]
   );
 }
 
 /** An account's display name — the user's override, or the Google profile name. */
-export function getAccountDisplayName(account: Pick<GmailAccount, "name" | "displayName">): string {
+export function getAccountDisplayName(account: Pick<MailAccount, "name" | "displayName">): string {
   return account.displayName?.trim() || account.name;
 }
 

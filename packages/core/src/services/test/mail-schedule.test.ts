@@ -1,7 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { Platform, SqlDatabase } from "../../platform.js";
-import type { GmailMessageSummary } from "../../types.js";
+import type { MessageSummary } from "../../types.js";
 
 const mocks = vi.hoisted(() => ({
   capabilities: { archiveFolder: false },
@@ -30,7 +30,7 @@ const mail = {
   inReplyTo: "reply-id",
   attachments: [{ name: "file.txt", mimeType: "text/plain", size: 1, base64: "YQ==" }],
 };
-const row = (id: string, labels: string[]): GmailMessageSummary => ({
+const row = (id: string, labels: string[]): MessageSummary => ({
   id,
   threadId: "thread",
   subject: "Later",

@@ -14,9 +14,9 @@ import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import type { Platform, SqlDatabase } from "../../platform.ts";
-import type { GmailAccount } from "../../types.ts";
+import type { MailAccount } from "../../types.ts";
 
-const account: GmailAccount = {
+const account: MailAccount = {
   id: "me@contoso.test",
   email: "me@contoso.test",
   name: "Me",

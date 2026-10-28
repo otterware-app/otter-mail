@@ -3,7 +3,7 @@ import type { ChatContextKind, ChatContextMeta } from "@otter-mail/contracts/cha
 import type { ProviderKind } from "./api";
 import { clampTitle } from "./chat-store";
 import { useAccounts, useMessage } from "./hooks";
-import type { GmailMessageSummary } from "./types";
+import type { MessageSummary } from "./types";
 
 /**
  * Pointer-sized mail context for the agent chat. The agent can read the same
@@ -35,7 +35,7 @@ export type QuoteContext = {
 
 /** One row (or thread rep) → context entry. */
 export function contextFromMessages(
-  messages: GmailMessageSummary[],
+  messages: MessageSummary[],
   accountEmailById: (accountId: string | undefined) => string,
 ): AgentContext {
   return {
@@ -139,7 +139,7 @@ export function useMailChatContext({
 }: {
   accountId: string | null;
   messageId: string | null;
-  selectedRows?: GmailMessageSummary[];
+  selectedRows?: MessageSummary[];
   quote?: QuoteContext | null;
 }): MailChatContext {
   const accountsQuery = useAccounts();

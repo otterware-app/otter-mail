@@ -1,5 +1,5 @@
 import type { MailCapabilities } from "@otter-mail/contracts";
-import type { GmailLabel } from "./types";
+import type { MailLabel } from "./types";
 
 /** Pseudo label id for "All Mail" (every message but Spam/Trash) — mirrors the backend. */
 export const ALL_MAIL_LABEL_ID = "ALL_MAIL";
@@ -40,7 +40,7 @@ export function folderName(labelId: string, capabilities: MailCapabilities): str
   return SYSTEM_LABEL_NAMES[labelId];
 }
 
-export function labelDisplayName(label: GmailLabel): string {
+export function labelDisplayName(label: MailLabel): string {
   if (label.type === "system") {
     return SYSTEM_LABEL_NAMES[label.id] ?? label.name;
   }

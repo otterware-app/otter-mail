@@ -30,7 +30,7 @@ import {
 } from "./compose-attachments";
 import { useDraftAutosave } from "./use-draft-autosave";
 import { RecipientInput } from "./recipient-input";
-import type { ComposeAttachment, GmailAccount } from "./types";
+import type { ComposeAttachment, MailAccount } from "./types";
 
 /** The From account picker (shown only with several accounts). */
 function FromPicker({
@@ -38,8 +38,8 @@ function FromPicker({
   value,
   onChange,
 }: {
-  accounts: GmailAccount[];
-  value: GmailAccount;
+  accounts: MailAccount[];
+  value: MailAccount;
   onChange: (accountId: string) => void;
 }) {
   return (
@@ -90,7 +90,7 @@ export function NewMessageView({
   onClose,
   prefill,
 }: {
-  accounts: GmailAccount[];
+  accounts: MailAccount[];
   defaultAccountId: string;
   onClose: () => void;
   /** Seeds the composer once at mount (mailto: links); remount to re-seed. */

@@ -9,7 +9,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Dialog } from "~/components/ui/dialog";
 import { Text } from "~/components/ui/text";
 import { toast } from "./toast";
-import { gmailApi } from "./api";
+import { mailApi } from "./api";
 import { openLink } from "../browser/store";
 
 export function UnsubscribeLink({
@@ -27,7 +27,7 @@ export function UnsubscribeLink({
   const key = ["unsubscribe", accountId, messageId];
   const query = useQuery({
     queryKey: key,
-    queryFn: () => gmailApi.getUnsubscribe(accountId, messageId, senderEmail),
+    queryFn: () => mailApi.getUnsubscribe(accountId, messageId, senderEmail),
     staleTime: 10 * 60_000,
   });
   const [confirming, setConfirming] = useState(false);
@@ -44,7 +44,7 @@ export function UnsubscribeLink({
     setWorking(true);
     console.log("[UnsubscribeLink:run]", { method: info.method });
     try {
-      const result = await gmailApi.unsubscribe(accountId, messageId);
+      const result = await mailApi.unsubscribe(accountId, messageId);
       if ("openUrl" in result) {
         openLink(result.openUrl);
         toast.info(`Finish unsubscribing from ${who} on their page`);
