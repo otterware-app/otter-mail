@@ -35,7 +35,7 @@ export function providerFor(account: GmailAccount | string): MailProvider {
 }
 
 /** Gmail's own IMAP servers. */
-const GMAIL_IMAP_HOSTS = ["imap.gmail.com", "imap.googlemail.com"];
+const GMAIL_IMAP_HOSTS = new Set(["imap.gmail.com", "imap.googlemail.com"]);
 
 /**
  * What the account's mailbox can do: its provider's, except that Gmail
@@ -45,7 +45,7 @@ const GMAIL_IMAP_HOSTS = ["imap.gmail.com", "imap.googlemail.com"];
 export function capabilitiesOf(account: GmailAccount | string): MailCapabilities | null {
   const capabilities = findProvider(account)?.capabilities ?? null;
   const host = typeof account === "string" ? imapHostOf(account) : account.imap?.imap.host;
-  return capabilities && host && GMAIL_IMAP_HOSTS.includes(host.toLowerCase())
+  return capabilities && host && GMAIL_IMAP_HOSTS.has(host.toLowerCase())
     ? { ...capabilities, archiveFolder: false, stars: true }
     : capabilities;
 }
