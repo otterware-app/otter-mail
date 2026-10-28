@@ -33,7 +33,7 @@ import { listAccounts } from "./account-store.js";
 import { platform } from "../platform.js";
 import * as store from "./mail-store.js";
 import { notifyNewMail, updateDockBadge } from "./notifier.js";
-import type { GmailMessageDetail, SyncStatus } from "../types.js";
+import type { MessageDetail, SyncStatus } from "../types.js";
 
 const statuses = new Map<string, SyncStatus>();
 const running = new Set<string>();
@@ -514,7 +514,7 @@ async function downloadBodies(accountId: string, provider: MailProvider): Promis
       );
       let pushedBack = false;
       // Written together once the chunk is in: one transaction, not sixty.
-      const details: GmailMessageDetail[] = [];
+      const details: MessageDetail[] = [];
       await mapPool(jobs, DOWNLOAD_CONCURRENCY, async ({ threadId, ids }) => {
         if (pushedBack || removed.has(accountId)) return;
         for (const id of ids) attempted.add(id);

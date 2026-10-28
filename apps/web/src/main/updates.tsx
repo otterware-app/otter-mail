@@ -5,8 +5,8 @@ import { openLink } from "./browser/store";
 
 import { ArrowDownCircleIcon, SparklesIcon, XIcon } from "lucide-react";
 
-import { Btn } from "./gmail/ui";
-import { toast } from "./gmail/toast";
+import { Btn } from "./mail/ui";
+import { toast } from "./mail/toast";
 import { RowSelect, SettingsRow, SettingsSection } from "./settings/settings-ui";
 import { searchableSetting } from "./settings/settings-search";
 

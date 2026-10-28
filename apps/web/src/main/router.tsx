@@ -10,10 +10,9 @@ import { HomeView } from "./home-view";
 import { RootView } from "./root-view";
 import { QueryClient } from "@tanstack/react-query";
 import { ErrorBoundaryView } from "~/components/ui/error-boundary-view";
-import type { SettingsPane } from "./gmail/api";
-import { COMBINED_ACCOUNT_ID } from "./gmail/custom-views";
-import { SEARCH_MAILBOX } from "./gmail/gmail-query";
-import { CHATS_SPACE } from "./gmail/spaces";
+import type { SettingsPane } from "./mail/api";
+import { SEARCH_MAILBOX } from "./mail/gmail-query";
+import { CHATS_SPACE } from "./mail/spaces";
 
 const rootRoute = createRootRouteWithContext<{
   queryClient: QueryClient;
@@ -78,36 +77,17 @@ const settingsRoute = createRoute({
   component: () => null,
 });
 
-// Spaces are account ids (their email addresses), `all` (the combined
-// mailbox), a view's id (its one label is `all`), or `chats` (the AI
-// workspace: a chat's id, or `new`). Labels are Gmail's (or IMAP's) ids and views' ids, but
-// the app's own `__name__` ones read as `name`: the combined mailbox's
-// built-in views and Search.
-const toMailbox = (segment: string) =>
-  segment === "all" ? COMBINED_ACCOUNT_ID : segment === "chats" ? CHATS_SPACE : segment;
-const fromMailbox = (id: string) =>
-  id === COMBINED_ACCOUNT_ID ? "all" : id === CHATS_SPACE ? "chats" : id;
-const BUILT_IN_VIEWS = new Set([
-  "inbox",
-  "starred",
-  "sent",
-  "drafts",
-  "important",
-  "allmail",
-  "junk",
-  "trash",
-]);
-const toLabel = (mailbox: string, segment: string) =>
-  segment === "search"
-    ? SEARCH_MAILBOX
-    : mailbox === COMBINED_ACCOUNT_ID && BUILT_IN_VIEWS.has(segment)
-      ? `__${segment}__`
-      : segment;
+// Spaces are account ids (their email addresses), a view's id (its one label
+// is `all`), or `chats` (the AI workspace: a chat's id, or `new`). Labels are
+// the mailbox's label ids, but the app's own `__name__` ones read as `name`
+// (Search).
+const toMailbox = (segment: string) => (segment === "chats" ? CHATS_SPACE : segment);
+const fromMailbox = (id: string) => (id === CHATS_SPACE ? "chats" : id);
+const toLabel = (segment: string) => (segment === "search" ? SEARCH_MAILBOX : segment);
 const fromLabel = (id: string) => /^__([a-z]+)__$/.exec(id)?.[1] ?? id;
 type MailParams = { mailbox: string; label: string };
 const parseMail = (params: MailParams): MailParams => {
-  const mailbox = toMailbox(params.mailbox);
-  return { mailbox, label: toLabel(mailbox, params.label) };
+  return { mailbox: toMailbox(params.mailbox), label: toLabel(params.label) };
 };
 const stringifyMail = (params: MailParams): MailParams => ({
   mailbox: fromMailbox(params.mailbox),

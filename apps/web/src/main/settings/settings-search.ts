@@ -1,6 +1,6 @@
 import { features } from "../features";
 import { osNames } from "../os-names";
-import type { SettingsPane } from "../gmail/api";
+import type { SettingsPane } from "../mail/api";
 import { commandLabel, DEFAULT_KEYBINDINGS, KEYBINDING_COMMANDS } from "../keybindings/commands";
 
 /*
@@ -268,12 +268,6 @@ export const SETTINGS_SEARCH_ITEMS = [
     title: "Mailboxes",
     pane: "accounts",
     searchTerms: ["accounts gmail imap turn on off order reorder drag add"],
-  },
-  {
-    id: "all-mailboxes",
-    title: "All mailboxes",
-    pane: "accounts",
-    searchTerms: ["combined unified one inbox"],
   },
   {
     id: "mailbox-status",

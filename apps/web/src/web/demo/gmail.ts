@@ -15,7 +15,7 @@ import {
   accountStore,
   fromBase64,
   toBase64,
-  type GmailAccount,
+  type MailAccount,
   type GoogleAuth,
   type Platform,
 } from "@otter-mail/core";
@@ -878,7 +878,7 @@ export async function installFakeGmail(demoFiles: Platform["files"]): Promise<vo
 
 // ── Sign-in ──────────────────────────────────────────────────────────────────
 
-function demoAccount(seed: SeedAccount): GmailAccount {
+function demoAccount(seed: SeedAccount): MailAccount {
   return {
     id: seed.email,
     email: seed.email,

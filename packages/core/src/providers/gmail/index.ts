@@ -44,7 +44,7 @@ export const gmailProvider: MailProvider = {
   getReplyHeaders: api.fetchReplyHeaders,
   getUnsubscribeHeaders: api.getUnsubscribeHeaders,
   listIds: api.listMessageIdsPage,
-  search: api.searchGmailPage,
+  search: api.searchMailPage,
 
   async modifyMessage(accountId, messageId, change) {
     await api.modifyMessage(accountId, messageId, change);

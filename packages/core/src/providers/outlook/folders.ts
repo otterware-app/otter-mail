@@ -1,19 +1,23 @@
 /**
  * Outlook's folders and categories as labels (docs/outlook.md).
  *
- * The well-known folders are Gmail's system labels: Inbox → INBOX, Sent
- * Items → SENT, Drafts → DRAFT, Deleted Items → TRASH, Junk Email → SPAM; the
- * Archive folder is no label at all (archived mail just lacks INBOX). Every
- * other folder is a user label, `folder:<id>`, named by its path. A message
- * sits in one folder: applying a folder label moves it.
+ * The well-known folders are system labels: Inbox → INBOX, Sent Items →
+ * SENT, Drafts → DRAFT, Deleted Items → TRASH, Junk Email → SPAM, Archive
+ * → ARCHIVE (Gmail has no such folder; Outlook's archive moves mail there),
+ * and Scheduled → SNOOZED (where Outlook's Snooze keeps mail till it's due).
+ * Every other folder is a user label, `folder:<id>`, named by its path. A
+ * message sits in one folder: applying a folder label moves it.
  *
  * Categories are Outlook's labels: several per message, each with a color.
  * They're user labels too, `category:<name>`. Flags, read state and
- * importance stand for STARRED, UNREAD and IMPORTANT.
+ * importance stand for STARRED, UNREAD and IMPORTANT, and Focused Inbox's
+ * Other for OTHER.
  */
 
+import { ARCHIVE_LABEL_ID, OTHER_LABEL_ID, SNOOZED_LABEL_ID } from "@otter-mail/contracts";
+
 import * as store from "../../services/mail-store.js";
-import type { GmailLabel } from "../../types.js";
+import type { MailLabel } from "../../types.js";
 import { graph, graphAll, graphBatch, ok } from "./graph.js";
 
 export const FOLDER_PREFIX = "folder:";
@@ -40,13 +44,15 @@ const SYSTEM_LABEL: Partial<Record<WellKnown, string>> = {
   drafts: "DRAFT",
   deleteditems: "TRASH",
   junkemail: "SPAM",
+  archive: ARCHIVE_LABEL_ID,
+  scheduled: SNOOZED_LABEL_ID,
 };
 
 /** Folders that hold no mail worth listing (mail on its way out, Skype logs, sync conflicts). */
-const SKIPPED: WellKnown[] = ["outbox", "conversationhistory", "syncissues", "scheduled"];
+const SKIPPED: WellKnown[] = ["outbox", "conversationhistory", "syncissues"];
 
 /** The labels flags and properties stand for, besides the folder's own and categories. */
-export const FLAG_LABELS = ["UNREAD", "STARRED", "IMPORTANT"];
+export const FLAG_LABELS = ["UNREAD", "STARRED", "IMPORTANT", OTHER_LABEL_ID];
 
 export interface Folder {
   id: string;
@@ -55,7 +61,7 @@ export interface Folder {
   parentId: string | null;
   unread: number;
   total: number;
-  /** The label its mail carries: a system label, `folder:<id>`, or none (the archive). */
+  /** The label its mail carries: a system label or `folder:<id>`. */
   labelId: string | null;
 }
 
@@ -112,8 +118,17 @@ const FOLDER_FIELDS =
 export async function readMailbox(accountId: string): Promise<Mailbox> {
   const known = mailboxOf(accountId)?.wellKnown;
   const wellKnown: Mailbox["wellKnown"] = {};
-  if (known?.inbox) Object.assign(wellKnown, known);
-  else {
+  if (known?.inbox) {
+    Object.assign(wellKnown, known);
+    // A mailbox without an Archive gets one when mail is first archived (by Outlook too).
+    if (!known.archive) {
+      const archive = await graph<{ id?: string }>(
+        accountId,
+        "/me/mailFolders/archive?$select=id",
+      ).catch(() => null);
+      if (archive?.id) wellKnown.archive = archive.id;
+    }
+  } else {
     const answers = await graphBatch(
       accountId,
       WELL_KNOWN.map((name) => ({ method: "GET", url: `/me/mailFolders/${name}?$select=id` })),
@@ -193,7 +208,7 @@ export async function wellKnownId(accountId: string, name: WellKnown): Promise<s
   return id ?? name;
 }
 
-/** The label a folder's mail carries (null: archived, or a folder not worth listing). */
+/** The label a folder's mail carries (null: a folder not worth listing). */
 export function folderLabel(accountId: string, folderId: string | undefined): string | null {
   if (!folderId) return null;
   const mailbox = mailboxOf(accountId);
@@ -290,8 +305,8 @@ export function nearestPreset(hex: string): string {
 // ── Labels ──────────────────────────────────────────────────────────────────
 
 /** Every label, as the sidebar lists them: folders with Outlook's counts, categories with ours. */
-export function labelsOf(accountId: string, mailbox: Mailbox): GmailLabel[] {
-  const labels: GmailLabel[] = [];
+export function labelsOf(accountId: string, mailbox: Mailbox): MailLabel[] {
+  const labels: MailLabel[] = [];
   const seen = new Set<string>();
   for (const folder of mailbox.folders) {
     if (!folder.labelId) continue;
@@ -343,6 +358,7 @@ export function labelsFor(
     flag?: { flagStatus?: string } | null;
     importance?: string;
     categories?: string[];
+    inferenceClassification?: string;
   },
 ): string[] {
   const labels: string[] = [];
@@ -351,6 +367,7 @@ export function labelsFor(
   if (message.isRead === false) labels.push("UNREAD");
   if (message.flag?.flagStatus === "flagged") labels.push("STARRED");
   if (message.importance === "high") labels.push("IMPORTANT");
+  if (message.inferenceClassification === "other") labels.push(OTHER_LABEL_ID);
   for (const category of message.categories ?? []) labels.push(categoryLabel(category));
   return labels;
 }

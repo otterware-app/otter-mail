@@ -8,7 +8,7 @@ import { registerTodoistHandlers } from "./handlers/todoist.js";
 import { registerAgentHandlers } from "./handlers/agent.js";
 import { registerChatHandlers } from "./handlers/chats.js";
 import { registerCalendarHandlers } from "./handlers/calendar.js";
-import { registerGmailHandlers } from "./handlers/gmail.js";
+import { registerMailHandlers } from "./handlers/mail.js";
 import { registerImapAccountHandlers } from "./handlers/imap-accounts.js";
 import { registerOutlookAccountHandlers } from "./handlers/outlook-accounts.js";
 import { registerOtterAccountHandlers } from "./handlers/otter-account.js";
@@ -40,7 +40,7 @@ export async function startCore(platform: Platform): Promise<void> {
   await loadImapPasswords();
   await loadOtterAccount();
 
-  registerGmailHandlers();
+  registerMailHandlers();
   startMailSchedule();
   registerImapAccountHandlers();
   registerOutlookAccountHandlers();

@@ -16,23 +16,23 @@ import { useMatch, useNavigate, useRouter } from "@tanstack/react-router";
 import { ArrowLeftIcon } from "lucide-react";
 import { EmptyState } from "~/components/ui/empty-state";
 import { useQueryClient } from "@tanstack/react-query";
-import { toast, type ToastId } from "./gmail/toast";
-import { setDraftOpener } from "./gmail/undo-send";
-import { AppSidebar } from "./gmail/app-sidebar";
-import { SidebarPeekCard, useSidebarPeek } from "./gmail/sidebar-peek";
-import { ViewEditorDialog } from "./gmail/view-editor";
-import { MessageList } from "./gmail/message-list";
-import { MessageReader } from "./gmail/message-reader";
-import { NewMessageView } from "./gmail/new-message-view";
-import { CommandPalette } from "./gmail/command-palette";
+import { toast, type ToastId } from "./mail/toast";
+import { setDraftOpener } from "./mail/undo-send";
+import { AppSidebar } from "./mail/app-sidebar";
+import { SidebarPeekCard, useSidebarPeek } from "./mail/sidebar-peek";
+import { ViewEditorDialog } from "./mail/view-editor";
+import { MessageList } from "./mail/message-list";
+import { MessageReader } from "./mail/message-reader";
+import { NewMessageView } from "./mail/new-message-view";
+import { CommandPalette } from "./mail/command-palette";
 import { BrowserPanel } from "./browser/browser-panel";
-import { ChatLauncher, ChatWindow } from "./gmail/chat-window";
-import { ChatWorkspace } from "./gmail/chat-workspace";
-import { newChat, showChat, useChatEvents, useChats } from "./gmail/chat-store";
-import { useMailChatContext } from "./gmail/chat-context";
-import { useChatProvider } from "./gmail/agent-providers";
-import { SEARCH_MAILBOX } from "./gmail/gmail-query";
-import { searchTabId, searchTitle, type SearchTab } from "./gmail/search-tabs";
+import { ChatLauncher, ChatWindow } from "./mail/chat-window";
+import { ChatWorkspace } from "./mail/chat-workspace";
+import { newChat, showChat, useChatEvents, useChats } from "./mail/chat-store";
+import { useMailChatContext } from "./mail/chat-context";
+import { useChatProvider } from "./mail/agent-providers";
+import { SEARCH_MAILBOX } from "./mail/gmail-query";
+import { searchTabId, searchTitle, type SearchTab } from "./mail/search-tabs";
 import {
   PanelControl,
   SidebarControl,
@@ -40,13 +40,13 @@ import {
   TitleTrailing,
   TitlebarInset,
   SidebarTitle,
-} from "./gmail/top-bar";
+} from "./mail/top-bar";
 import { SettingsPage, type SettingsRoute } from "./settings/settings-page";
 import { SettingsNav } from "./settings/settings-nav";
-import { isTypingTarget } from "./gmail/keyboard";
-import { cn, HintTooltip, IconBtn } from "./gmail/ui";
+import { isTypingTarget } from "./mail/keyboard";
+import { cn, HintTooltip, IconBtn } from "./mail/ui";
 import { useMailLayout } from "./theme/interface-settings";
-import { FloatingReader } from "./gmail/floating-reader";
+import { FloatingReader } from "./mail/floating-reader";
 import { usePanelAnimationSettings, usePanelPresence } from "./panel-animations";
 import {
   keybindingContext,
@@ -59,7 +59,7 @@ import {
   useAccounts,
   useAccountSync,
   useGlobalSyncStatus,
-  useGmailWriteFailureToasts,
+  useWriteFailureToasts,
   useExternalMailChanges,
   useModifyMessage,
   useModifyThread,
@@ -67,7 +67,7 @@ import {
   useTrashThread,
   useUntrashThread,
   useUntrashMessage,
-} from "./gmail/hooks";
+} from "./mail/hooks";
 import {
   beginUndoGroup,
   onUndoableAction,
@@ -76,24 +76,19 @@ import {
   takeRedo,
   takeUndo,
   type UndoAction,
-} from "./gmail/undo";
-import { getAccountColor, getAccountContrastColor } from "./gmail/account-style";
-import { gmailApi, type ChatChange, type MailtoTarget, type SettingsPane } from "./gmail/api";
-import type { QuoteContext } from "./gmail/chat-context";
-import type { GmailAccount, GmailMessageSummary, MailView } from "./gmail/types";
+} from "./mail/undo";
+import { getAccountColor, getAccountContrastColor } from "./mail/account-style";
+import { mailApi, type ChatChange, type MailtoTarget, type SettingsPane } from "./mail/api";
+import type { QuoteContext } from "./mail/chat-context";
+import type { MailAccount, MessageSummary, MailView } from "./mail/types";
 import {
   useMailViews,
   resolveRules,
   loadLastLocation,
   saveLastLocation,
-  COMBINED_ACCOUNT_ID,
-  INBOX_VIEW_ID,
-  SENT_VIEW_ID,
-  STARRED_VIEW_ID,
-  DRAFTS_VIEW_ID,
-  ALL_MAIL_VIEW_ID,
-} from "./gmail/custom-views";
-import { ALL_MAIL_LABEL_ID } from "./gmail/label-names";
+} from "./mail/custom-views";
+import { ALL_MAIL_LABEL_ID, ARCHIVE_LABEL_ID } from "./mail/label-names";
+import { capabilitiesOf } from "./mail/capabilities";
 import { useMonochromeTheme } from "./theme/apply-theme";
 import { features } from "./features";
 import { useMailboxes } from "./mailboxes";
@@ -105,8 +100,8 @@ import {
   isViewSpaceId,
   spaceOf,
   spansMailboxes as spanning,
-} from "./gmail/spaces";
-import { useSignInAlerts } from "./gmail/sync-health";
+} from "./mail/spaces";
+import { useSignInAlerts } from "./mail/sync-health";
 import { useRecordRecentlyViewed } from "./recently-viewed";
 import { SetupFlow } from "./onboarding/setup";
 import {
@@ -136,7 +131,7 @@ const FRAME_INSET = 4;
 
 /** A place in the mail, as the route names it (router.tsx). */
 type MailLoc = {
-  /** The space (spaces.ts): an account id, COMBINED_ACCOUNT_ID, a view's id, or CHATS_SPACE. */
+  /** The space (spaces.ts): an account id, a view's id, or CHATS_SPACE. */
   mailbox: string;
   /** A label or view id (in Chats, a chat's id or NEW_CHAT), or SEARCH_MAILBOX. */
   label: string;
@@ -180,23 +175,17 @@ function savedLoc(): MailLoc {
 }
 
 /**
- * `loc` among the spaces there are: one turned off (or "All mailboxes" off,
- * a view deleted, or one not there at all) gives way to what's first now
- * (Combined when it's on, else the first account), at its inbox. Views count
+ * `loc` among the spaces there are: one turned off (a view deleted, or one
+ * not there at all) gives way to the first mailbox, at its inbox. Views count
  * as there until they're known (`views` null).
  */
-function placeFor(
-  loc: MailLoc,
-  accounts: GmailAccount[],
-  combined: boolean,
-  views: MailView[] | null,
-): MailLoc {
+function placeFor(loc: MailLoc, accounts: MailAccount[], views: MailView[] | null): MailLoc {
   const there =
     views === null && isViewSpaceId(loc.mailbox)
       ? true
-      : spaceOf(loc.mailbox, { accounts, views: views ?? [], combined }) !== null;
+      : spaceOf(loc.mailbox, { accounts, views: views ?? [] }) !== null;
   if (there) return loc;
-  const mailbox = combined ? COMBINED_ACCOUNT_ID : (accounts[0]?.id ?? loc.mailbox);
+  const mailbox = accounts[0]?.id ?? loc.mailbox;
   return { mailbox, label: firstLabelOf(mailbox), messageId: null, account: null, focusId: null };
 }
 
@@ -384,7 +373,7 @@ function MailHome() {
   const settingsRoute = useRouteSettings();
 
   const accountsQuery = useAccounts();
-  const { views, loaded: viewsLoaded, saveView, deleteView, resetView } = useMailViews();
+  const { views, loaded: viewsLoaded, saveView, deleteView } = useMailViews();
 
   // The mailboxes shown: turned-on accounts, in the user's order (Settings →
   // Mailboxes, synced with the Otter account).
@@ -403,13 +392,13 @@ function MailHome() {
   // route up), so nothing shows a place only to leave it at once.
   const placed = routeLoc ?? lastMail;
   const mailLoc = ready
-    ? placeFor(placed ?? savedLoc(), accounts, mailboxes.combined, viewsLoaded ? views : null)
+    ? placeFor(placed ?? savedLoc(), accounts, viewsLoaded ? views : null)
     : placed;
   const initialized = ready && mailLoc !== null;
   const selectedAccountId = mailLoc?.mailbox ?? null;
   const selectedLabelId = mailLoc?.label ?? "INBOX";
   const selectedMessageId = mailLoc?.messageId ?? null;
-  // Account that owns the currently-open message (differs per row in combined views).
+  // Account that owns the currently-open message (differs per row in a view).
   const readerAccountId = mailLoc?.account ?? null;
   // One message picked from an expanded conversation in the list: the reader
   // shows just that message.
@@ -454,7 +443,7 @@ function MailHome() {
   useEffect(() => {
     const pull = async () => {
       try {
-        const target = await gmailApi.getSettingsTarget();
+        const target = await mailApi.getSettingsTarget();
         if (!target) return;
         const pane = target.pane ?? lastPaneRef.current;
         console.log("[HomeView:openSettings]", { pane });
@@ -478,7 +467,7 @@ function MailHome() {
         if (closeBrowserTabRef.current?.()) return;
         if (closeWorkspaceTabRef.current?.()) return;
         if (closeChatWindowRef.current()) return;
-        void gmailApi.closeMainWindow();
+        void mailApi.closeMainWindow();
       }),
     [],
   );
@@ -539,10 +528,7 @@ function MailHome() {
   }, [leaveSettingsRef, settingsRouteRef]);
 
   // The space showing (spaces.ts); none until the mailboxes are known.
-  const space = selectedAccountId
-    ? spaceOf(selectedAccountId, { accounts, views, combined: mailboxes.combined })
-    : null;
-  const isCombined = space?.kind === "combined";
+  const space = selectedAccountId ? spaceOf(selectedAccountId, { accounts, views }) : null;
   // The AI workspace: a chat (the label) instead of a list and a reader.
   const isChats = space?.kind === "chats";
   const mailLayout = useMailLayout();
@@ -555,7 +541,7 @@ function MailHome() {
   const spansMailboxes = spanning(space);
 
   const globalSync = useGlobalSyncStatus(accountIds);
-  useGmailWriteFailureToasts();
+  useWriteFailureToasts();
   useSignInAlerts();
   useExternalMailChanges();
   useBrowserEvents();
@@ -632,7 +618,7 @@ function MailHome() {
     });
   };
   // Rows multi-selected in the list, surfaced to the agent's context chip.
-  const [chatSelection, setChatSelection] = useState<GmailMessageSummary[]>([]);
+  const [chatSelection, setChatSelection] = useState<MessageSummary[]>([]);
   const openBrowser = () => {
     localStorage.setItem("gmail:browser-open", "1");
     setBrowserOpen(true);
@@ -711,8 +697,7 @@ function MailHome() {
   const leaveWorkspace = () => {
     const back = mailBeforeChats.current;
     if (back && back.mailbox !== CHATS_SPACE) go({ ...back, messageId: null });
-    else if (firstRealAccountId)
-      handleSelectAccount(mailboxes.combined ? COMBINED_ACCOUNT_ID : firstRealAccountId);
+    else if (firstRealAccountId) handleSelectAccount(firstRealAccountId);
   };
   // The workspace's address names its chat: "new" gets a new one, at its own address.
   const showNewChat = useLatest(() => go({ label: newChat(selectedKind) }, true));
@@ -757,13 +742,12 @@ function MailHome() {
 
   const searchRef = useRef<HTMLInputElement>(null);
 
-  // ⌘1 = Combined mailbox, ⌘2…⌘9 = accounts in rail order. The ref is
-  // populated below once handleSelectAccount exists.
+  // ⌘1…⌘9 = accounts in rail order. The ref is populated below once
+  // handleSelectAccount exists.
   const accountSwitchRef = useRef<{
     ids: string[];
-    combined: boolean;
     select: (id: string) => void;
-  }>({ ids: [], combined: false, select: () => {} });
+  }>({ ids: [], select: () => {} });
 
   const undoModifyMessage = useModifyMessage();
   const undoModifyThread = useModifyThread();
@@ -889,25 +873,21 @@ function MailHome() {
   useKeybindingContext("workspaceOpen", isChats && !settingsRoute);
   useKeybindingContext("agentOpen", !settingsRoute && (isChats || chatWindowOpen));
   useKeybindingContext("messageOpen", selectedMessageId !== null);
-  const goTo = (combinedViewId: string, labelId: string) => {
-    // From Chats or a view, to the first mailbox's.
-    const mailbox =
-      isChats || viewSpace
-        ? mailboxes.combined
-          ? COMBINED_ACCOUNT_ID
-          : firstRealAccountId
-        : selectedAccountId;
-    if (!mailbox) return;
+  /** A folder of the mailbox showing (from Chats or a view, the first mailbox's). */
+  const goTo = (labelId: string | ((account: MailAccount) => string)) => {
+    const mailbox = isChats || viewSpace ? firstRealAccountId : selectedAccountId;
+    const account = accounts.find((a) => a.id === mailbox);
+    if (!account) return;
     go({
-      mailbox,
-      label: mailbox === COMBINED_ACCOUNT_ID ? combinedViewId : labelId,
+      mailbox: account.id,
+      label: typeof labelId === "string" ? labelId : labelId(account),
       messageId: null,
     });
   };
   const jumpToMailbox = (digit: number) => {
-    const { ids, combined, select } = accountSwitchRef.current;
-    // ⌘1 = All mailboxes when it's on, then the accounts in sidebar order.
-    const target = combined ? (digit === 1 ? COMBINED_ACCOUNT_ID : ids[digit - 2]) : ids[digit - 1];
+    const { ids, select } = accountSwitchRef.current;
+    // The accounts in sidebar order.
+    const target = ids[digit - 1];
     if (!target) return false;
     select(target);
   };
@@ -935,11 +915,15 @@ function MailHome() {
       undoRunner.current(action);
     },
     "mail.redo": () => redoRunner.current(),
-    "go.inbox": () => goTo(INBOX_VIEW_ID, "INBOX"),
-    "go.sent": () => goTo(SENT_VIEW_ID, "SENT"),
-    "go.starred": () => goTo(STARRED_VIEW_ID, "STARRED"),
-    "go.drafts": () => goTo(DRAFTS_VIEW_ID, "DRAFT"),
-    "go.allMail": () => goTo(ALL_MAIL_VIEW_ID, ALL_MAIL_LABEL_ID),
+    "go.inbox": () => goTo("INBOX"),
+    "go.sent": () => goTo("SENT"),
+    "go.starred": () => goTo("STARRED"),
+    "go.drafts": () => goTo("DRAFT"),
+    // Where archived mail is: the Archive folder (Outlook, IMAP), or Gmail's All Mail.
+    "go.allMail": () =>
+      goTo((account) =>
+        capabilitiesOf(account).archiveFolder ? ARCHIVE_LABEL_ID : ALL_MAIL_LABEL_ID,
+      ),
     "message.close": () => closeMessage(),
     ...Object.fromEntries(
       MAILBOX_JUMP_COMMANDS.map((command, i) => [command, () => jumpToMailbox(i + 1)]),
@@ -1003,7 +987,7 @@ function MailHome() {
   // prefilled.
   useEffect(() => {
     const pull = async () => {
-      const target = await gmailApi.takePendingMailto();
+      const target = await mailApi.takePendingMailto();
       if (!target) return;
       console.log("[HomeView:mailto]", { to: target.to });
       setMailtoPrefill(target);
@@ -1023,7 +1007,7 @@ function MailHome() {
   } | null>(null);
   useEffect(() => {
     const pull = async () => {
-      const target = await gmailApi.takePendingOpenMessage().catch(() => null);
+      const target = await mailApi.takePendingOpenMessage().catch(() => null);
       if (!target) return;
       console.log("[HomeView:openFromNotification]", { messageId: target.messageId });
       setOpenFromNotification(target);
@@ -1048,15 +1032,10 @@ function MailHome() {
     }
     // A view as a label (views were once in each mailbox): its own space.
     const view = views.find((v) => v.id === selectedLabelId);
-    if (view?.kind === "custom") {
-      correctForEffect.current({ mailbox: view.id, label: VIEW_LIST });
-      return;
-    }
-    if (isCombined && !view) correctForEffect.current({ label: INBOX_VIEW_ID });
+    if (view) correctForEffect.current({ mailbox: view.id, label: VIEW_LIST });
   }, [
     initialized,
     viewsLoaded,
-    isCombined,
     views,
     selectedLabelId,
     effectiveAccountId,
@@ -1066,18 +1045,15 @@ function MailHome() {
   ]);
   /* oxlint-enable react/exhaustive-effect-dependencies */
 
-  // Local-first: keep the on-disk cache synced in the background. Combined mode
-  // refreshes all accounts via its own list handler (sentinel isn't a real account).
+  // Local-first: keep the on-disk cache synced in the background. A view
+  // refreshes its accounts through its own list handler.
   useAccountSync(spansMailboxes ? null : effectiveAccountId);
 
   // Per-account branding: the primary (send, unread dot, focus ring) and the
   // accent take the active account's color; selection surfaces stay
-  // neutral (Combined keeps the default blue). Set on the document root so
-  // portaled dialogs/menus rebrand too; inline properties win over the
-  // injected theme rule.
-  const brandAccount = isCombined
-    ? null
-    : (accounts.find((a) => a.id === effectiveAccountId) ?? null);
+  // neutral. Set on the document root so portaled dialogs/menus rebrand too;
+  // inline properties win over the injected theme rule.
+  const brandAccount = accounts.find((a) => a.id === effectiveAccountId) ?? null;
   // Monochrome themes (Codex) keep their own primary.
   const monochrome = useMonochromeTheme();
   const brand = brandAccount && !monochrome ? getAccountColor(brandAccount) : null;
@@ -1096,25 +1072,10 @@ function MailHome() {
     root.setProperty("--ring", brand);
   }, [brand]);
 
-  // Resolve the selected view to concrete per-account rules.
-  const combined = (() => {
-    if (viewSpace) {
-      return {
-        viewId: viewSpace.id,
-        name: viewSpace.name,
-        rules: resolveRules(viewSpace, accounts),
-      };
-    }
-    if (isCombined) {
-      const view = views.find((v) => v.id === selectedLabelId) ?? views[0];
-      return {
-        viewId: view?.id ?? INBOX_VIEW_ID,
-        name: view?.name ?? "Inbox",
-        rules: view ? resolveRules(view, accounts) : [],
-      };
-    }
-    return null;
-  })();
+  // The view showing, with its rules across the mailboxes.
+  const combined = viewSpace
+    ? { viewId: viewSpace.id, name: viewSpace.name, rules: resolveRules(viewSpace, accounts) }
+    : null;
 
   const handleSelectAccount = (accountId: string) => {
     console.log("[HomeView:selectAccount]", { accountId });
@@ -1122,15 +1083,11 @@ function MailHome() {
     go({ mailbox: accountId, label: firstLabelOf(accountId), messageId: null });
   };
   useLayoutEffect(() => {
-    accountSwitchRef.current = {
-      ids: accountIds,
-      combined: mailboxes.combined,
-      select: handleSelectAccount,
-    };
+    accountSwitchRef.current = { ids: accountIds, select: handleSelectAccount };
   });
 
-  // The route's mailbox was turned off (or "All mailboxes" was), or isn't
-  // there: the route catches up with what shows instead.
+  // The route's mailbox was turned off, or isn't there: the route catches up
+  // with what shows instead.
   const misplaced = ready && !!routeLoc && routeLoc.mailbox !== mailLoc?.mailbox;
   const goForAccountEffect = useLatest(go);
   useEffect(() => {
@@ -1187,12 +1144,12 @@ function MailHome() {
     } else {
       let messageId: string;
       if (target.kind === "draft") {
-        const version = await gmailApi.getDraftVersion(target.accountId, target.id);
+        const version = await mailApi.getDraftVersion(target.accountId, target.id);
         if (!version.messageId) throw new Error("This draft was sent or deleted.");
-        await gmailApi.loadDraftVersion(target.accountId, target.id, version.messageId);
+        await mailApi.loadDraftVersion(target.accountId, target.id, version.messageId);
         messageId = version.messageId;
       } else {
-        const messages = await gmailApi.getThread(target.accountId, target.id);
+        const messages = await mailApi.getThread(target.accountId, target.id);
         const message = messages.at(-1);
         if (!message) throw new Error("This conversation is no longer available.");
         messageId = message.id;
@@ -1342,8 +1299,8 @@ function MailHome() {
     if (searchActive && !activeSearch) openSearchForEffect.current();
   }, [searchActive, activeSearch, openSearchForEffect]);
 
-  // Palette mail result: jump to the owning account (Combined stays put) and open.
-  const handlePaletteOpenMessage = (message: GmailMessageSummary) => {
+  // Palette mail result: jump to the owning account (a view stays put) and open.
+  const handlePaletteOpenMessage = (message: MessageSummary) => {
     console.log("[HomeView:paletteOpenMessage]", {
       messageId: message.id,
       accountId: message.accountId,
@@ -1353,7 +1310,7 @@ function MailHome() {
     openMessage(owner, message.id);
   };
 
-  /** Opens a message of `owner`'s where it is: Combined stays put, another account's inbox opens. */
+  /** Opens a message of `owner`'s where it is: a view stays put, another account's inbox opens. */
   const openMessage = (owner: string, messageId: string) => {
     const switching = !spansMailboxes && owner !== effectiveAccountId;
     setAutoFocusDraft(true);
@@ -1373,11 +1330,6 @@ function MailHome() {
     openMessageForEffect.current(openFromNotification.accountId, openFromNotification.messageId);
   }, [openFromNotification, hasMail, openMessageForEffect]);
 
-  const handlePaletteGoToView = (viewId: string) => {
-    console.log("[HomeView:paletteGoToView]", { viewId });
-    go({ mailbox: COMBINED_ACCOUNT_ID, label: viewId, messageId: null });
-  };
-
   // Manual refresh: spin from the click until every account's sync settles
   // (any phase — the passive indicator only shows long full/body syncs), and
   // for at least a beat so a fast incremental sync still reads as feedback.
@@ -1389,10 +1341,10 @@ function MailHome() {
     const startedAt = Date.now();
     void (async () => {
       try {
-        await Promise.all(accountIds.map((id) => gmailApi.syncAccount(id).catch(() => null)));
+        await Promise.all(accountIds.map((id) => mailApi.syncAccount(id).catch(() => null)));
         for (let i = 0; i < 150; i++) {
           const statuses = await Promise.all(
-            accountIds.map((id) => gmailApi.getSyncStatus(id).catch(() => null)),
+            accountIds.map((id) => mailApi.getSyncStatus(id).catch(() => null)),
           );
           if (!statuses.some((st) => st?.syncing)) break;
           await new Promise((r) => setTimeout(r, 400));
@@ -1438,7 +1390,7 @@ function MailHome() {
     views,
   });
   // The workspace has no list: a chat and its tabs.
-  const hasListTarget = (isCombined || effectiveAccountId != null) && !isChats;
+  const hasListTarget = effectiveAccountId != null && !isChats;
   const showMain =
     !!settingsRoute ||
     !wideInbox ||
@@ -1476,6 +1428,7 @@ function MailHome() {
       titleTrailing={trailing}
       accountId={readerAccount ?? ""}
       messageId={focusedMessageId ?? selectedMessageId}
+      listLabelId={spansMailboxes || selectedLabelId === SEARCH_MAILBOX ? null : selectedLabelId}
       autoFocusDraft={autoFocusDraft}
       single={focusedMessageId != null}
       onShowConversation={() => go({ focusId: null })}
@@ -1826,7 +1779,6 @@ function MailHome() {
           })
         }
         onDelete={deleteView}
-        onReset={resetView}
         onClose={() => setViewEditor(null)}
       />
 
@@ -1839,7 +1791,6 @@ function MailHome() {
           selectedAccountId={effectiveAccountId}
           onOpenMessage={handlePaletteOpenMessage}
           onSearchMail={(q) => openSearch(q)}
-          onGoToView={handlePaletteGoToView}
           onSelectAccount={handleSelectAccount}
           onOpenChat={openWorkspace}
           onNewChat={startNewChat}

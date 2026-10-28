@@ -196,24 +196,24 @@ nonisolated enum OutlookMail {
 
     /**
      * Where a label change sends a message (nil: it stays), as core's
-     * outlook/writes.ts: into an added folder label's folder; out of the inbox
-     * or a folder, to the Archive; out of Junk or Deleted Items, back to the
-     * inbox (Sent Items for your own). On a thread, your sent mail and drafts
-     * stay put unless it's trashed.
+     * outlook/writes.ts: into an added folder label's folder (`ARCHIVE`'s
+     * too); out of the inbox or a folder, to the Archive; out of Junk,
+     * Deleted Items or the Archive, back to the inbox (Sent Items for your
+     * own). On a thread, your sent mail and drafts stay put unless it's trashed.
      */
     static func destination(_ message: GraphMessage, add: [String], remove: [String], wholeThread: Bool, mailbox: String, folders: OutlookFolders) -> String? {
         let current = folders.label(ofFolder: message.parentFolderId)
         let own = current == "SENT" || current == "DRAFT" || message.isDraft == true
             || message.from?.emailAddress?.address?.lowercased() == mailbox.lowercased()
         let target = add.first { $0 == "TRASH" } ?? add.first { $0 == "SPAM" }
-            ?? add.first { $0.hasPrefix(OutlookFolders.folderPrefix) } ?? add.first { $0 == "INBOX" }
+            ?? add.first { $0.hasPrefix(OutlookFolders.folderPrefix) } ?? add.first { $0 == "ARCHIVE" } ?? add.first { $0 == "INBOX" }
         if let target {
             if target == current { return nil }
             if wholeThread, own, target != "TRASH" { return nil }
             return folders.folder(ofLabel: target)
         }
         guard let current, remove.contains(current) else { return nil }
-        if current == "SPAM" || current == "TRASH" { return folders.id(own ? "sentitems" : "inbox") }
+        if current == "SPAM" || current == "TRASH" || current == "ARCHIVE" { return folders.id(own ? "sentitems" : "inbox") }
         if current == "INBOX" || current.hasPrefix(OutlookFolders.folderPrefix) { return folders.id("archive") }
         return nil
     }

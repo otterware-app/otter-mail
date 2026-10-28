@@ -8,7 +8,7 @@
 import type { ImapSettings } from "@otter-mail/contracts";
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
 
-import { searchGmail } from "../../../handlers/search.ts";
+import { searchMail } from "../../../handlers/search.ts";
 import { connectImap, type ImapClient } from "../../../protocols/index.ts";
 import { nodeConnect } from "../../../protocols/test/node-stream.ts";
 import {
@@ -20,7 +20,7 @@ import {
 import * as accounts from "../../../services/account-store.ts";
 import { setImapPassword } from "../../../services/imap-passwords.ts";
 import * as store from "../../../services/mail-store.ts";
-import type { GmailMessageSummary } from "../../../types.ts";
+import type { MessageSummary } from "../../../types.ts";
 import type { SyncContext } from "../../provider.ts";
 import { imapProvider } from "../index.ts";
 import { threadIdOf } from "../messages.ts";
@@ -75,8 +75,8 @@ function mail(opts: {
   return { id, raw };
 }
 
-async function sync(accountId: string): Promise<GmailMessageSummary[]> {
-  const newMail: GmailMessageSummary[] = [];
+async function sync(accountId: string): Promise<MessageSummary[]> {
+  const newMail: MessageSummary[] = [];
   const ctx: SyncContext = {
     update: () => {},
     bumpRevision: () => {},
@@ -209,12 +209,13 @@ function providerScenario(
 
   it("searches the local index with Gmail's operators", async () => {
     const subjects = async (q: string) =>
-      (await searchGmail(q, [accountId])).messages.map((m) => m.subject).sort();
+      (await searchMail(q, [accountId])).messages.map((m) => m.subject).sort();
     expect(await subjects("report")).toEqual(["Old report", "Report"]);
     expect(await subjects("in:inbox report")).toEqual([]);
     expect(await subjects("label:work old")).toEqual(["Old report"]);
     expect(await subjects("in:inbox")).toEqual(["Lunch?"]);
     expect(await subjects("is:unread has:attachment")).toEqual(["Lunch?"]);
+    expect(await subjects("is:flagged")).toEqual(await subjects("is:starred"));
     expect(await subjects("from:bob -in:inbox")).toEqual(["Old report", "Report"]);
     expect(await subjects("in:sent lunch")).toEqual(["Re: Lunch?"]);
   });
@@ -282,7 +283,7 @@ function providerScenario(
     await provider.modifyThread(accountId, threadId, { removeLabelIds: ["INBOX"] });
     const original = cachedByHeader(accountId, a.id)!;
     expect(pathOf(original.id)).toBe("Archive");
-    expect(original.labels).toEqual(["STARRED"]);
+    expect(original.labels.sort()).toEqual(["ARCHIVE", "STARRED"]);
     expect(pathOf(cachedByHeader(accountId, b.id)!.id)).toBe("Sent");
     expect(await serverSearch("INBOX", a.id)).toEqual([]);
     expect(await serverSearch("Archive", a.id)).toHaveLength(1);
@@ -290,6 +291,24 @@ function providerScenario(
     expect(store.getThreadMessages(accountId, threadId)).toHaveLength(2);
     await sync(accountId);
     expect(pathOf(cachedByHeader(accountId, a.id)!.id)).toBe("Archive");
+    expect(store.getLabels(accountId).find((l) => l.id === "ARCHIVE")).toMatchObject({
+      type: "system",
+      total: 1,
+    });
+  });
+
+  it("gives ARCHIVE to archived mail cached before the Archive had a label", async () => {
+    const { id } = cachedByHeader(accountId, a.id)!;
+    // As an older version left it: no label for the Archive's mail, nor in its sync state.
+    store.applyHistoryChanges(accountId, [{ kind: "labelsRemoved", id, labelIds: ["ARCHIVE"] }]);
+    const key = `imapSync:${accountId}`;
+    const state = JSON.parse(store.getKv(key)!) as Record<string, { label?: string | null }>;
+    for (const folder of Object.values(state)) delete folder.label;
+    store.setKv(key, JSON.stringify(state));
+
+    await sync(accountId);
+    expect(cachedByHeader(accountId, a.id)!.labels.sort()).toEqual(["ARCHIVE", "STARRED"]);
+    expect(cachedByHeader(accountId, b.id)!.labels).toEqual(["SENT"]);
   });
 
   it("moves to a folder, and back to the inbox", async () => {
@@ -478,7 +497,7 @@ function providerScenario(
     expect(sent).toMatchObject({ subject, unread: false, labelIds: ["SENT"] });
     expect((await provider.getMessage(accountId, messageId!)).bcc).toBe("bob@example.com");
 
-    let arrived: GmailMessageSummary | undefined;
+    let arrived: MessageSummary | undefined;
     for (let i = 0; i < 50 && !arrived; i++) {
       await sync(accountId);
       arrived = store

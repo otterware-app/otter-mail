@@ -27,7 +27,7 @@ import {
   logger,
   SIGNED_OUT_MESSAGE,
   SignInCancelledError,
-  type GmailAccount,
+  type MailAccount,
   type GoogleAuth,
 } from "@otter-mail/core";
 
@@ -297,7 +297,7 @@ async function authorizeInBrowser(opts: {
  * email/name/picture, then tokens and metadata are stored under the email.
  * `loginHint` preselects that Google account when signing an account back in.
  */
-async function addAccount(loginHint?: string): Promise<GmailAccount> {
+async function addAccount(loginHint?: string): Promise<MailAccount> {
   let tokens: StoredTokens;
   try {
     const { code, redirectUri, verifier } = await authorizeInBrowser({
@@ -324,7 +324,7 @@ async function addAccount(loginHint?: string): Promise<GmailAccount> {
  * The demo mailbox (`pnpm dev:demo:desktop`): its saved sign-in with this
  * app's client instead of the browser; the first refresh proves it still works.
  */
-async function addDemoAccount(mailbox: DemoGmailMailbox): Promise<GmailAccount> {
+async function addDemoAccount(mailbox: DemoGmailMailbox): Promise<MailAccount> {
   const refreshToken = mailbox.refreshTokens.desktop;
   if (!refreshToken) {
     throw new Error(
@@ -336,7 +336,7 @@ async function addDemoAccount(mailbox: DemoGmailMailbox): Promise<GmailAccount> 
 }
 
 /** Who signed in (userinfo), then their tokens and the account, stored under the email. */
-async function saveAccount(tokens: StoredTokens): Promise<GmailAccount> {
+async function saveAccount(tokens: StoredTokens): Promise<MailAccount> {
   // Right after a new grant, Google can answer 500 for a few seconds.
   let userInfoResponse: Response;
   for (let attempt = 1; ; attempt++) {
@@ -367,7 +367,7 @@ async function saveAccount(tokens: StoredTokens): Promise<GmailAccount> {
   // Re-adding an account (e.g. to grant new scopes) replaces its tokens.
   tokenCache.delete(email);
 
-  const account: GmailAccount = {
+  const account: MailAccount = {
     id: email,
     email,
     name: userInfo.name ?? email,

@@ -83,7 +83,7 @@ describe("the pretend Graph", () => {
       {
         method: "POST",
         body: JSON.stringify({
-          requests: ["inbox", "archive", "scheduled"].map((name, i) => ({
+          requests: ["inbox", "archive", "syncissues"].map((name, i) => ({
             id: String(i),
             method: "GET",
             url: `/me/mailFolders/${name}?$select=id`,

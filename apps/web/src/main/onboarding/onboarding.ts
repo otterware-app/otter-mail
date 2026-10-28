@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { toast, type ToastId } from "../gmail/toast";
+import { toast, type ToastId } from "../mail/toast";
 
 /**
  * Where this device is in getting started: the setup (a mailbox, a look, how

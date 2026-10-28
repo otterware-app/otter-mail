@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
-import { useAccounts } from "./gmail/hooks";
-import type { GmailAccount } from "./gmail/types";
+import { useAccounts } from "./mail/hooks";
+import type { MailAccount } from "./mail/types";
 import { setSyncedPreference } from "./synced-preferences";
 
 /**
  * How the mailboxes are arranged, following the Otter account to every
- * device: their order, which are turned off, and whether "All mailboxes" is
- * on. Mailboxes are named by address, the one thing every device agrees on.
+ * device: their order, and which are turned off. Mailboxes are named by
+ * address, the one thing every device agrees on.
  * Core reads the same preference to leave turned-off mailboxes unsynced
  * (packages/core, services/mail-sync.ts).
  */
@@ -15,8 +15,6 @@ export type MailboxArrangement = {
   order: string[];
   /** Addresses of turned-off mailboxes. */
   off: string[];
-  /** "All mailboxes" (the combined inbox) is offered. */
-  combined: boolean;
 };
 
 const KEY = "mail:mailboxes";
@@ -25,9 +23,9 @@ const CHANGE_EVENT = "otter:mailboxes-change";
 function read(): MailboxArrangement {
   try {
     const value = JSON.parse(localStorage.getItem(KEY) ?? "{}") as Partial<MailboxArrangement>;
-    return { order: value.order ?? [], off: value.off ?? [], combined: value.combined ?? true };
+    return { order: value.order ?? [], off: value.off ?? [] };
   } catch {
-    return { order: [], off: [], combined: true };
+    return { order: [], off: [] };
   }
 }
 
@@ -56,10 +54,10 @@ export function useMailboxArrangement(): MailboxArrangement {
 
 /** Accounts in the user's order (turned-off ones included). */
 export function arrangeAccounts(
-  accounts: GmailAccount[],
+  accounts: MailAccount[],
   { order }: MailboxArrangement,
-): GmailAccount[] {
-  const rank = (a: GmailAccount) => {
+): MailAccount[] {
+  const rank = (a: MailAccount) => {
     const i = order.indexOf(a.email);
     return i === -1 ? order.length : i;
   };
@@ -69,13 +67,9 @@ export function arrangeAccounts(
     .map((x) => x.account);
 }
 
-/**
- * The mailboxes the app shows: turned-on accounts in the user's order, and
- * whether "All mailboxes" is offered (it needs two or more).
- */
+/** The mailboxes the app shows: turned-on accounts in the user's order. */
 export function useMailboxes(): {
-  accounts: GmailAccount[];
-  combined: boolean;
+  accounts: MailAccount[];
   isLoading: boolean;
 } {
   const query = useAccounts();
@@ -83,9 +77,5 @@ export function useMailboxes(): {
   const accounts = arrangeAccounts(query.data ?? [], arrangement).filter(
     (a) => !arrangement.off.includes(a.email),
   );
-  return {
-    accounts,
-    combined: arrangement.combined && accounts.length > 1,
-    isLoading: query.isLoading,
-  };
+  return { accounts, isLoading: query.isLoading };
 }

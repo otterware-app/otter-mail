@@ -14,20 +14,20 @@ import type { RelayAccount, RelayEvent } from "@otter-mail/contracts/relay";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import type { Platform, SqlDatabase } from "../../platform.ts";
-import type { GmailAccount } from "../../types.ts";
+import type { MailAccount } from "../../types.ts";
 
 const GMAIL = "gmail.googleapis.com";
 const RELAY = "http://relay.test";
 const TOPIC = "projects/test/topics/gmail-push";
 
-const gmail: GmailAccount = { id: "Live@Gmail.test", email: "Live@Gmail.test", name: "Live" };
-const signedOut: GmailAccount = { id: "out@gmail.test", email: "out@gmail.test", name: "Out" };
+const gmail: MailAccount = { id: "Live@Gmail.test", email: "Live@Gmail.test", name: "Live" };
+const signedOut: MailAccount = { id: "out@gmail.test", email: "out@gmail.test", name: "Out" };
 const imapSettings = {
   username: "me@fastmail.test",
   imap: { host: "imap.fastmail.test", port: 993, security: "tls" as const },
   smtp: { host: "smtp.fastmail.test", port: 465, security: "tls" as const },
 };
-const imap: GmailAccount = {
+const imap: MailAccount = {
   id: "me@fastmail.test",
   email: "me@fastmail.test",
   name: "Fastmail",
@@ -35,7 +35,7 @@ const imap: GmailAccount = {
   imap: imapSettings,
 };
 
-const relayAccount = (account: GmailAccount): RelayAccount => ({
+const relayAccount = (account: MailAccount): RelayAccount => ({
   email: account.email.toLowerCase(),
   provider: account.provider ?? "gmail",
   imap: account.imap ?? null,
@@ -457,7 +457,7 @@ describe("Gmail realtime", () => {
     const preferences = relayCalls("GET /v1/preferences").length;
 
     // Linked on another device: it arrives here, signed out.
-    const added: GmailAccount = { id: "new@gmail.test", email: "new@gmail.test", name: "New" };
+    const added: MailAccount = { id: "new@gmail.test", email: "new@gmail.test", name: "New" };
     relayAccounts = [...relayAccounts, relayAccount(added)];
     const changed = broadcasts.filter((b) => b.channel === "gmail:accounts-changed").length;
     socket().event({ type: "accounts" });

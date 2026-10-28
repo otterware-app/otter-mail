@@ -27,7 +27,7 @@ import {
 } from "../../protocols/index.js";
 import { hasPendingLabelWrites } from "../../services/pending-label-writes.js";
 import * as store from "../../services/mail-store.js";
-import type { GmailLabel, GmailMessageSummary } from "../../types.js";
+import type { MailLabel, MessageSummary } from "../../types.js";
 import type { SyncContext } from "../provider.js";
 import { FolderGone, inFolder, withImap } from "./connection.js";
 import {
@@ -52,6 +52,8 @@ interface FolderState {
   modseq?: string;
   /** First sync: UIDs below this are still to fetch; 0 once done. */
   below: number;
+  /** The label the folder's cached mail carries. */
+  label?: string | null;
   /** STATUS at the last run, to skip folders that didn't change. */
   messages?: number | null;
   unseen?: number | null;
@@ -97,10 +99,11 @@ export async function syncImap(accountId: string, ctx: SyncContext): Promise<voi
       : { phase: "incremental", synced: 0 },
   );
 
-  const newMail: GmailMessageSummary[] = [];
+  const newMail: MessageSummary[] = [];
   for (const folder of folders.synced) {
+    if (relabelFolder(accountId, folder, state[folder.path])) ctx.bumpRevision();
     const run = new FolderSync(accountId, folder, ctx, state[folder.path]);
-    let added: GmailMessageSummary[];
+    let added: MessageSummary[];
     try {
       added = await run.sync(statuses.get(folder.path));
     } catch (err) {
@@ -121,8 +124,8 @@ export async function syncImap(accountId: string, ctx: SyncContext): Promise<voi
 
 // ── Labels ─────────────────────────────────────────────────────────────────
 
-function labelsOf(folders: Folders, statuses: Map<string, MailboxStatus>): GmailLabel[] {
-  const labels: GmailLabel[] = [];
+function labelsOf(folders: Folders, statuses: Map<string, MailboxStatus>): MailLabel[] {
+  const labels: MailLabel[] = [];
   for (const folder of folders.synced) {
     if (!folder.labelId) continue;
     const status = statuses.get(folder.path);
@@ -141,11 +144,11 @@ function labelsOf(folders: Folders, statuses: Map<string, MailboxStatus>): Gmail
 }
 
 /** Stores the labels; answers whether names or counts changed. */
-function writeLabels(accountId: string, labels: GmailLabel[]): boolean {
+function writeLabels(accountId: string, labels: MailLabel[]): boolean {
   const before = store.getLabels(accountId);
   store.upsertLabels(accountId, labels);
   store.recountLabels(accountId, ["STARRED", "UNREAD"]);
-  const key = (list: GmailLabel[]) =>
+  const key = (list: MailLabel[]) =>
     JSON.stringify(
       list
         .map((l) => [l.id, l.name, l.unread, l.total])
@@ -171,7 +174,7 @@ function readFolders(accountId: string) {
 }
 
 /** listLabels: the folders and their counts, straight from the server. */
-export async function readLabels(accountId: string): Promise<GmailLabel[]> {
+export async function readLabels(accountId: string): Promise<MailLabel[]> {
   const { folders, statuses } = await readFolders(accountId);
   return labelsOf(folders, statuses);
 }
@@ -202,6 +205,28 @@ function dropFolder(accountId: string, path: string, uidValidity: number): void 
 }
 
 /**
+ * A folder whose label changed (the Archive, which had none before ARCHIVE)
+ * moves its cached mail to the new label; answers whether it did.
+ */
+function relabelFolder(accountId: string, folder: Folder, state: FolderState | undefined): boolean {
+  if (!state) return false;
+  // Synced before folders kept their label: only the Archive's has changed since.
+  const had =
+    state.label !== undefined ? state.label : folder.role === "ARCHIVE" ? null : folder.labelId;
+  state.label = folder.labelId;
+  if (had === folder.labelId) return false;
+  const ids = [...cachedUids(accountId, state.uidValidity, folder.path).values()];
+  store.applyHistoryChanges(
+    accountId,
+    ids.flatMap((id) => [
+      ...(had ? [{ kind: "labelsRemoved" as const, id, labelIds: [had] }] : []),
+      ...(folder.labelId ? [{ kind: "labelsAdded" as const, id, labelIds: [folder.labelId] }] : []),
+    ]),
+  );
+  return true;
+}
+
+/**
  * A folder renamed here: its cached mail and sync state follow when the
  * server kept its UIDVALIDITY; otherwise the next sync fetches it anew.
  */
@@ -225,6 +250,7 @@ export function renameFolderState(
         labels.map((l) => (l === from ? to : l)),
       );
     }
+    if (folderState.label === from) folderState.label = to;
     state[to] = folderState;
   } else {
     dropFolder(accountId, from, folderState.uidValidity);
@@ -241,7 +267,7 @@ class FolderSync {
   ) {}
 
   /** Brings the folder up to date; answers the new mail (none on its first sync). */
-  async sync(status: MailboxStatus | undefined): Promise<GmailMessageSummary[]> {
+  async sync(status: MailboxStatus | undefined): Promise<MessageSummary[]> {
     const prev = this.state;
     if (prev && prev.below === 0 && status && this.unchanged(prev, status)) return [];
 
@@ -278,6 +304,7 @@ class FolderSync {
         uidNext: mailbox.uidNext ?? 1,
         modseq: mailbox.highestModseq?.toString(),
         below: mailbox.uidNext ?? Number.MAX_SAFE_INTEGER,
+        label: this.folder.labelId,
       };
       await this.firstSync();
       Object.assign(this.state, seen);
@@ -302,8 +329,8 @@ class FolderSync {
   }
 
   /** Summaries of `uids`, fetched and stored a page at a time; answers them. */
-  private async fetchAndStore(uids: number[]): Promise<GmailMessageSummary[]> {
-    const stored: GmailMessageSummary[] = [];
+  private async fetchAndStore(uids: number[]): Promise<MessageSummary[]> {
+    const stored: MessageSummary[] = [];
     for (let end = uids.length; end > 0; end -= PAGE) {
       for (const summary of await this.fetchPage(uids.slice(Math.max(0, end - PAGE), end))) {
         stored.push(summary);
@@ -312,9 +339,9 @@ class FolderSync {
     return stored;
   }
 
-  private async fetchPage(uids: number[]): Promise<GmailMessageSummary[]> {
+  private async fetchPage(uids: number[]): Promise<MessageSummary[]> {
     const fetched = await this.run((client) => client.fetch(uids, SUMMARY_QUERY));
-    const summaries: GmailMessageSummary[] = [];
+    const summaries: MessageSummary[] = [];
     for (const message of fetched) {
       if (isDeleted(message)) continue;
       summaries.push(await toSummary(this.folder, this.state!.uidValidity, message));
@@ -331,9 +358,11 @@ class FolderSync {
     const top = state.below === Number.MAX_SAFE_INTEGER ? "*" : String(state.below - 1);
     const uids =
       state.below > 1
-        ? (await this.run((client) => client.search({ uids: `1:${top}`, deleted: false }))).filter(
-            (uid) => uid < state.below,
-          )
+        ? (
+            await this.run((client) =>
+              client.search({ uids: `1:${top}`, deleted: false, gmailRaw: this.folder.gmailRaw }),
+            )
+          ).filter((uid) => uid < state.below)
         : [];
     const synced = { count: store.countAllMessages(this.accountId) };
     for (let end = uids.length; end > 0; end -= PAGE) {
@@ -362,7 +391,7 @@ class FolderSync {
       changed: FetchedMessage[];
     },
     qresynced: boolean,
-  ): Promise<GmailMessageSummary[]> {
+  ): Promise<MessageSummary[]> {
     const { accountId, folder } = this;
     const since = state.modseq !== undefined ? BigInt(state.modseq) : null;
 
@@ -380,7 +409,8 @@ class FolderSync {
     } else if (!hasPendingLabelWrites(accountId)) {
       // No mod-sequences: every UID's flags (which also lists what's left).
       flags = await this.run((client) => client.fetch("1:*", { flags: true }));
-      listing = flags.filter((m) => !isDeleted(m)).map((m) => m.uid);
+      // (Gmail's All Mail lists more than is synced: its search says what's there.)
+      if (!folder.gmailRaw) listing = flags.filter((m) => !isDeleted(m)).map((m) => m.uid);
     }
     const ops: store.HistoryOp[] = [];
     const known = cachedUids(accountId, state.uidValidity, folder.path);
@@ -412,9 +442,11 @@ class FolderSync {
     // New mail.
     let fresh: number[] = [];
     if (mailbox.uidNext === null || mailbox.uidNext > state.uidNext) {
-      fresh = (await this.run((client) => client.search({ uids: `${state.uidNext}:*` }))).filter(
-        (uid) => uid >= state.uidNext,
-      );
+      fresh = (
+        await this.run((client) =>
+          client.search({ uids: `${state.uidNext}:*`, gmailRaw: this.folder.gmailRaw }),
+        )
+      ).filter((uid) => uid >= state.uidNext);
     }
 
     // Expunged mail, and anything an earlier run missed: when the counts disagree.
@@ -423,7 +455,10 @@ class FolderSync {
     const count = await this.run(async (_client, box) => box.exists);
     if (listing || known.size + fresh.length !== count) {
       const onServer = new Set(
-        listing ?? (await this.run((client) => client.search({ deleted: false }))),
+        listing ??
+          (await this.run((client) =>
+            client.search({ deleted: false, gmailRaw: this.folder.gmailRaw }),
+          )),
       );
       for (const [uid, id] of known) {
         if (!onServer.has(uid)) ops.push({ kind: "deleted", id });

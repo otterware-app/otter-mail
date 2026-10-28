@@ -4,43 +4,42 @@ import { useQuery } from "@tanstack/react-query";
 import { Avatar, AvatarFallback, AvatarImage } from "~/components/ui/avatar";
 import { Dialog } from "~/components/ui/dialog";
 import { Text } from "~/components/ui/text";
-import { CheckIcon, GripVerticalIcon, LayersIcon, PlusIcon, RotateCwIcon } from "lucide-react";
+import { CheckIcon, GripVerticalIcon, PlusIcon, RotateCwIcon } from "lucide-react";
 import { Switch } from "~/components/ui/switch";
 import { arrangeAccounts, setMailboxArrangement, useMailboxArrangement } from "../mailboxes";
-import { gmailApi } from "../gmail/api";
+import { mailApi } from "../mail/api";
 import { useOtterAccount } from "../otter-account";
-import { toast } from "../gmail/toast";
+import { toast } from "../mail/toast";
 import {
   syncStatusPollMs,
   useAccounts,
   useAddAccount,
   useRemoveAccount,
   useUpdateAccount,
-} from "../gmail/hooks";
-import { RichTextArea, type RichTextRef } from "../gmail/rich-text";
-import { AddMailboxMenu, ImapPasswordForm } from "../gmail/add-mailbox";
-import { ProviderMark } from "../gmail/provider-mark";
+} from "../mail/hooks";
+import { RichTextArea, type RichTextRef } from "../mail/rich-text";
+import { AddMailboxMenu, ImapPasswordForm } from "../mail/add-mailbox";
+import { ProviderMark } from "../mail/provider-mark";
 import {
   capabilitiesOf,
   mailServerName,
   signInProvider,
   signsInWithPassword,
-} from "../gmail/capabilities";
+} from "../mail/capabilities";
 import {
   ACCOUNT_COLOR_PALETTE,
   getAccountColor,
   getAccountDisplayName,
-} from "../gmail/account-style";
-import type { GmailAccount, SyncStatus } from "../gmail/types";
-import { StatusText, accountStatus, needsSignIn, takeRequestedMailbox } from "../gmail/sync-health";
-import { Btn, HintTooltip, cn, restoreFocusForKeyboardOnly } from "../gmail/ui";
+} from "../mail/account-style";
+import type { MailAccount, SyncStatus } from "../mail/types";
+import { StatusText, accountStatus, needsSignIn, takeRequestedMailbox } from "../mail/sync-health";
+import { Btn, HintTooltip, cn, restoreFocusForKeyboardOnly } from "../mail/ui";
 import {
   DraftInput,
   SettingResetButton,
   SettingsGroup,
   SettingsPageContainer,
   SettingsRow,
-  SettingsSearchTarget,
   SettingsSection,
 } from "./settings-ui";
 import { searchableSetting } from "./settings-search";
@@ -55,7 +54,7 @@ import { searchableSetting } from "./settings-search";
 function useSyncStatusOnly(accountId: string) {
   return useQuery<SyncStatus>({
     queryKey: ["gmail:syncStatus", accountId],
-    queryFn: () => gmailApi.getSyncStatus(accountId),
+    queryFn: () => mailApi.getSyncStatus(accountId),
     refetchInterval: (query) => syncStatusPollMs(query.state.data),
   });
 }
@@ -122,7 +121,7 @@ function AccountAvatar({
   account,
   size = "small",
 }: {
-  account: GmailAccount;
+  account: MailAccount;
   size?: "small" | "medium";
 }) {
   const displayName = getAccountDisplayName(account);
@@ -160,7 +159,7 @@ function SignInButton({
   const signIn = useAddAccount(provider);
   if (signIn.isPending) {
     return (
-      <Btn size="sm" onClick={() => void gmailApi.cancelAddAccount()}>
+      <Btn size="sm" onClick={() => void mailApi.cancelAddAccount()}>
         Cancel sign-in
       </Btn>
     );
@@ -209,7 +208,7 @@ function AccountListRow({
   onDrop,
   onDragEnd,
 }: {
-  account: GmailAccount;
+  account: MailAccount;
   selected: boolean;
   onSelect: () => void;
   on: boolean;
@@ -303,30 +302,6 @@ function AccountListRow({
   );
 }
 
-/** "All mailboxes", the combined inbox: pinned first, only turned on or off. */
-function AllMailboxesRow({ on, onToggle }: { on: boolean; onToggle: (on: boolean) => void }) {
-  return (
-    <SettingsSearchTarget
-      id={searchableSetting("all-mailboxes").id}
-      data-slot="settings-row"
-      className="flex min-h-[60px] items-center gap-3 px-4 py-2.5"
-    >
-      <span className={cn("contents", !on && "[&>*]:opacity-50")}>
-        <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-foreground/[0.06] text-muted-foreground">
-          <LayersIcon className="size-4" />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm text-foreground">All mailboxes</span>
-          <span className="block truncate text-[13px] leading-[18px] text-muted-foreground">
-            One inbox for every mailbox
-          </span>
-        </span>
-      </span>
-      <Switch checked={on} onCheckedChange={onToggle} aria-label="All mailboxes on" />
-    </SettingsSearchTarget>
-  );
-}
-
 // ---------------------------------------------------------------------------
 // Editor
 // ---------------------------------------------------------------------------
@@ -337,7 +312,7 @@ function editedSignature(editor: RichTextRef): string {
   return editor.getText().trim() || /<img\b/i.test(html) ? html : "";
 }
 
-function AccountEditor({ account }: { account: GmailAccount }) {
+function AccountEditor({ account }: { account: MailAccount }) {
   const updateAccount = useUpdateAccount();
   const removeAccount = useRemoveAccount();
   const signIn = useAddAccount();
@@ -365,7 +340,7 @@ function AccountEditor({ account }: { account: GmailAccount }) {
 
   const syncNow = () => {
     setSyncing(true);
-    void gmailApi
+    void mailApi
       .syncAccount(account.id)
       .catch(() => {})
       .finally(() => setTimeout(() => setSyncing(false), 700));
@@ -554,13 +529,13 @@ function AccountEditor({ account }: { account: GmailAccount }) {
 }
 
 /** An explicit server connection, separate from local desktop banners. */
-function MailboxNotifications({ account }: { account: GmailAccount }) {
+function MailboxNotifications({ account }: { account: MailAccount }) {
   const otter = useOtterAccount();
   const [busy, setBusy] = useState(false);
   const [confirmImap, setConfirmImap] = useState(false);
   const connections = useQuery({
     queryKey: ["notification-connections", otter?.user?.email],
-    queryFn: gmailApi.notificationConnections,
+    queryFn: mailApi.notificationConnections,
     enabled: Boolean(otter?.user),
     refetchInterval: otter?.user ? 5000 : false,
   });
@@ -573,7 +548,7 @@ function MailboxNotifications({ account }: { account: GmailAccount }) {
     setBusy(true);
     setConfirmImap(false);
     try {
-      const result = await gmailApi.connectNotifications(account.id);
+      const result = await mailApi.connectNotifications(account.id);
       if ("url" in result) await window.desktopBridge.openExternal(result.url);
       await connections.refetch();
     } catch (error) {
@@ -587,7 +562,7 @@ function MailboxNotifications({ account }: { account: GmailAccount }) {
   const disconnect = async () => {
     setBusy(true);
     try {
-      await gmailApi.disconnectNotifications(account.id);
+      await mailApi.disconnectNotifications(account.id);
       await connections.refetch();
     } catch {
       toast.error("Couldn't disconnect notifications", {
@@ -688,7 +663,7 @@ export function AccountsPane() {
   const [selectedId, setSelectedId] = useState<string | null>(takeRequestedMailbox);
   const current = accounts.find((a) => a.id === selectedId) ?? accounts[0];
   // Signatures live in Gmail: pick up edits made there.
-  useEffect(() => void gmailApi.refreshSignatures().catch(() => {}), []);
+  useEffect(() => void mailApi.refreshSignatures().catch(() => {}), []);
 
   return (
     <SettingsPageContainer
@@ -700,12 +675,6 @@ export function AccountsPane() {
       {current ? (
         <>
           <SettingsGroup>
-            {accounts.length > 1 ? (
-              <AllMailboxesRow
-                on={arrangement.combined}
-                onToggle={(combined) => setMailboxArrangement({ ...arrangement, combined })}
-              />
-            ) : null}
             {accounts.map((account) => {
               const on = !arrangement.off.includes(account.email);
               return (

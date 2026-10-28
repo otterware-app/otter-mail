@@ -72,6 +72,7 @@ const SPECIAL_USES = [
   "\\Archive",
   "\\Drafts",
   "\\Flagged",
+  "\\Important",
   "\\Junk",
   "\\Sent",
   "\\Trash",
@@ -146,6 +147,8 @@ export interface SearchCriteria {
   text?: string;
   /** Messages changed since this mod-sequence (CONDSTORE). */
   modseq?: bigint;
+  /** Gmail's own search syntax (X-GM-EXT-1's X-GM-RAW). */
+  gmailRaw?: string;
 }
 
 /** Where copied or moved messages landed (UIDPLUS): source UID → UID in the destination. */
@@ -529,6 +532,7 @@ export class ImapClient {
     if (criteria.seen !== undefined) keys.push(criteria.seen ? "SEEN" : "UNSEEN");
     if (criteria.flagged !== undefined) keys.push(criteria.flagged ? "FLAGGED" : "UNFLAGGED");
     if (criteria.deleted !== undefined) keys.push(criteria.deleted ? "DELETED" : "UNDELETED");
+    if (criteria.gmailRaw) keys.push("X-GM-RAW", this.astring(criteria.gmailRaw));
     if (criteria.header) {
       keys.push("HEADER", this.astring(criteria.header.name), this.astring(criteria.header.value));
     }
@@ -610,8 +614,11 @@ export class ImapClient {
     return uidValidity !== null && uid !== null ? { uidValidity, uid } : null;
   }
 
-  async createMailbox(path: string): Promise<void> {
-    await this.command(["CREATE", this.mailboxName(path)]);
+  /** Creates a folder; `specialUse` flags its role where the server can (CREATE-SPECIAL-USE). */
+  async createMailbox(path: string, options: { specialUse?: SpecialUse } = {}): Promise<void> {
+    const use =
+      options.specialUse && this.has("CREATE-SPECIAL-USE") ? [`(USE (${options.specialUse}))`] : [];
+    await this.command(["CREATE", this.mailboxName(path), ...use]);
   }
 
   async renameMailbox(from: string, to: string): Promise<void> {

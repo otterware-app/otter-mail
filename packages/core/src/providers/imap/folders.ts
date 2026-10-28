@@ -1,13 +1,18 @@
 /**
  * Folders as labels (docs/imap.md): INBOX and the special-use folders are
- * Gmail's system labels (\Sent → SENT, \Drafts → DRAFT, \Trash → TRASH,
- * \Junk → SPAM); the archive is no label at all (archived mail just lacks
- * INBOX); every other folder is a user label whose id is its path. Servers
- * that don't flag their special folders get them by name.
+ * system labels (\Sent → SENT, \Drafts → DRAFT, \Trash → TRASH, \Junk →
+ * SPAM, \Archive → ARCHIVE); every other folder is a user label whose id is
+ * its path. Servers that don't flag their special folders get them by name.
+ * Gmail's IMAP archives into All Mail (\All), which only takes them out of
+ * the inbox; of All Mail, only what's archived is synced (the rest is in the
+ * other folders). Other servers' \All, \Flagged and \Important folders hold
+ * copies of mail in other folders: they aren't synced.
  *
  * Message ids are `<uidvalidity>:<uid>:<path>`: a message moved to another
  * folder gets a new id.
  */
+
+import { ARCHIVE_LABEL_ID } from "@otter-mail/contracts";
 
 import type { ImapClient, ImapFolder, SpecialUse } from "../../protocols/index.js";
 
@@ -17,11 +22,16 @@ export interface Folder {
   path: string;
   delimiter: string | null;
   role: Role | null;
-  /** The label its mail carries: a system label, the path itself, or none (the archive). */
+  /** The label its mail carries: a system label, the path itself, or none (Gmail's All Mail). */
   labelId: string | null;
   /** The label's name: the path with "/" between levels. */
   name: string;
+  /** Only what Gmail's search finds is synced (X-GM-RAW): Gmail's All Mail, its archived mail. */
+  gmailRaw?: string;
 }
+
+/** Gmail's archived mail: in All Mail and nowhere else (no inbox, no label, not Sent or Drafts). */
+const GMAIL_ARCHIVED = "-in:inbox -in:sent -in:drafts -in:chats has:nouserlabels";
 
 const SPECIAL_USE_ROLES: Partial<Record<SpecialUse, Role>> = {
   "\\Sent": "SENT",
@@ -63,12 +73,13 @@ const ROLE_NAMES: Record<Exclude<Role, "INBOX">, string[]> = {
   ARCHIVE: ["archive", "archives", "archiv", "archivo", "archivio", "archief"],
 };
 
-const SYSTEM_LABELS: Record<Exclude<Role, "ARCHIVE">, string> = {
+const SYSTEM_LABELS: Record<Role, string> = {
   INBOX: "INBOX",
   SENT: "SENT",
   DRAFT: "DRAFT",
   TRASH: "TRASH",
   SPAM: "SPAM",
+  ARCHIVE: ARCHIVE_LABEL_ID,
 };
 
 /** The labels flags stand for, besides the folder's own. */
@@ -77,11 +88,20 @@ export const FLAG_LABELS = ["UNREAD", "STARRED", "DRAFT"];
 export class Folders {
   /** Selectable folders worth syncing, INBOX first, then Sent, the rest, Junk and Trash last. */
   readonly synced: Folder[];
+  /** Where archived mail goes, when there's a folder for it yet. */
+  readonly archive: Folder | undefined;
+  /** Gmail's All Mail, its archive. */
+  private readonly allMail: string | undefined;
   private readonly byPath = new Map<string, Folder>();
 
-  constructor(list: ImapFolder[]) {
+  /** `gmail`: the server is Gmail's (X-GM-EXT-1), whose archive is All Mail. */
+  constructor(list: ImapFolder[], gmail = false) {
     const usable = list.filter(
-      (f) => f.selectable && f.specialUse !== "\\All" && f.specialUse !== "\\Flagged",
+      (f) =>
+        f.selectable &&
+        f.specialUse !== "\\All" &&
+        f.specialUse !== "\\Flagged" &&
+        f.specialUse !== "\\Important",
     );
     const roles = new Map<Role, string>([["INBOX", "INBOX"]]);
     for (const f of usable) {
@@ -89,8 +109,9 @@ export class Folders {
       if (role && !roles.has(role)) roles.set(role, f.path);
     }
     // By name, for the roles no folder is flagged with: top level, or right under INBOX.
+    // (A Gmail label named Archive is just a label: Gmail archives into All Mail.)
     for (const [role, names] of Object.entries(ROLE_NAMES) as [Role, string[]][]) {
-      if (roles.has(role)) continue;
+      if (roles.has(role) || (gmail && role === "ARCHIVE")) continue;
       const match = usable.find((f) => {
         const parent = f.delimiter ? f.path.slice(0, -f.name.length - f.delimiter.length) : "";
         return (parent === "" || parent === "INBOX") && names.includes(f.name.toLowerCase());
@@ -104,13 +125,27 @@ export class Folders {
         path: f.path,
         delimiter: f.delimiter,
         role,
-        labelId: role === "ARCHIVE" ? null : role ? SYSTEM_LABELS[role] : f.path,
+        labelId: role ? SYSTEM_LABELS[role] : f.path,
         name: labelName(f.path, f.delimiter),
+      });
+    }
+    const all = gmail ? list.find((f) => f.selectable && f.specialUse === "\\All") : undefined;
+    if (all) {
+      this.allMail = all.path;
+      this.byPath.set(all.path, {
+        path: all.path,
+        delimiter: all.delimiter,
+        role: null,
+        labelId: null,
+        name: labelName(all.path, all.delimiter),
+        gmailRaw: GMAIL_ARCHIVED,
       });
     }
     const ORDER: Partial<Record<Role, number>> = { INBOX: 0, SENT: 1, DRAFT: 2, SPAM: 4, TRASH: 5 };
     const order = (f: Folder) => (f.role && ORDER[f.role]) ?? 3;
     this.synced = [...this.byPath.values()].sort((a, b) => order(a) - order(b));
+    this.archive =
+      this.withRole("ARCHIVE") ?? (this.allMail ? this.byPath.get(this.allMail) : undefined);
   }
 
   get(path: string): Folder | undefined {
@@ -123,10 +158,13 @@ export class Folders {
 
   /** The folder behind a label id (a system label's special folder, or a path). */
   forLabel(labelId: string): Folder | undefined {
-    const byRole = (Object.keys(SYSTEM_LABELS) as (keyof typeof SYSTEM_LABELS)[]).find(
-      (r) => SYSTEM_LABELS[r] === labelId,
-    );
+    const byRole = (Object.keys(SYSTEM_LABELS) as Role[]).find((r) => SYSTEM_LABELS[r] === labelId);
     return byRole ? this.withRole(byRole) : this.byPath.get(labelId);
+  }
+
+  /** Gmail's All Mail, where its archived mail is. */
+  isAllMail(path: string): boolean {
+    return path === this.allMail;
   }
 
   /** Where a new folder named "A/B" goes: with the server's separator, under INBOX where all others are. */
@@ -159,7 +197,7 @@ export async function foldersOf(accountId: string, client: ImapClient): Promise<
 }
 
 export async function listFolders(accountId: string, client: ImapClient): Promise<Folders> {
-  const folders = new Folders(await client.list());
+  const folders = new Folders(await client.list(), client.has("X-GM-EXT-1"));
   folderCache.set(accountId, folders);
   return folders;
 }
@@ -168,6 +206,14 @@ export function forgetFolders(accountId: string): void {
   folderCache.delete(accountId);
 }
 
+const SPECIAL_USE: Record<Exclude<Role, "INBOX">, SpecialUse> = {
+  SENT: "\\Sent",
+  DRAFT: "\\Drafts",
+  TRASH: "\\Trash",
+  SPAM: "\\Junk",
+  ARCHIVE: "\\Archive",
+};
+
 /** A special folder, created ("Archive", "Trash", …) when the server has none. */
 export async function ensureFolder(
   accountId: string,
@@ -175,14 +221,22 @@ export async function ensureFolder(
   role: Exclude<Role, "INBOX">,
   name: string,
 ): Promise<Folder> {
+  const find = (folders: Folders) =>
+    role === "ARCHIVE" ? folders.archive : folders.withRole(role);
   let folders = await foldersOf(accountId, client);
-  let folder = folders.withRole(role);
+  let folder = find(folders);
   if (folder) return folder;
   folders = await listFolders(accountId, client);
-  folder = folders.withRole(role);
+  folder = find(folders);
   if (folder) return folder;
-  await client.createMailbox(folders.pathFor(name));
-  folder = (await listFolders(accountId, client)).withRole(role);
+  // Flagged for its use where the server can (RFC 6154), so other apps find it too;
+  // a server may refuse the flag (USEATTR), and the name finds it then.
+  const path = folders.pathFor(name);
+  await client.createMailbox(path, { specialUse: SPECIAL_USE[role] }).catch((err: unknown) => {
+    if (!client.has("CREATE-SPECIAL-USE")) throw err;
+    return client.createMailbox(path);
+  });
+  folder = find(await listFolders(accountId, client));
   if (!folder) throw new Error(`Couldn't create a ${name} folder.`);
   return folder;
 }

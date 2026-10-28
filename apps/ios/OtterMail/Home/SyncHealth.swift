@@ -91,21 +91,18 @@ struct SignedOutBanners: View {
     }
 }
 
-/** The drawer's foot: how the mailboxes on the page are syncing (All: the worst of them). Tap to sync now. */
+/** The drawer's foot: how the page's mailbox is syncing. Tap to sync now. */
 struct SyncStatusLine: View {
     @Environment(MailStore.self) private var store
     @Environment(\.palette) private var palette
-    let scope: String?
+    let scope: String
 
     var body: some View {
-        let mailboxes = store.shownMailboxes.filter { scope == nil || $0.email == scope }
         // A signed-out mailbox's own page says so above its folders.
-        if !store.isDemo, !mailboxes.isEmpty, scope == nil || !mailboxes.contains(where: \.signedOut) {
-            let (text, warning) = status(mailboxes)
+        if !store.isDemo, let mailbox = store.shownMailboxes.first(where: { $0.email == scope }), !mailbox.signedOut {
+            let (text, warning) = status(mailbox)
             Button {
-                Task {
-                    for mailbox in mailboxes where !mailbox.signedOut { await store.sync?.sync(mailbox.email) }
-                }
+                Task { await store.sync?.sync(mailbox.email) }
             } label: {
                 HStack(spacing: 6) {
                     if warning { Circle().fill(palette.warning).frame(width: 6, height: 6) }
@@ -121,13 +118,10 @@ struct SyncStatusLine: View {
         }
     }
 
-    private func status(_ mailboxes: [Mailbox]) -> (String, Bool) {
-        if let out = mailboxes.first(where: \.signedOut) { return (signedOutTitle(out), true) }
-        let health = mailboxes.map { store.health[$0.email] ?? MailStore.SyncHealth() }
-        if let failure = health.compactMap(\.failure).first { return ("\(failure) — will retry", true) }
-        let synced = health.map(\.syncedAt)
-        if synced.contains(nil) { return ("Syncing…", false) }
-        let oldest = synced.compactMap { $0 }.min() ?? .now
-        return (Date.now.timeIntervalSince(oldest) < 60 ? "Synced just now" : "Synced \(oldest.formatted(.relative(presentation: .named)))", false)
+    private func status(_ mailbox: Mailbox) -> (String, Bool) {
+        let health = store.health[mailbox.email] ?? MailStore.SyncHealth()
+        if let failure = health.failure { return ("\(failure) — will retry", true) }
+        guard let synced = health.syncedAt else { return ("Syncing…", false) }
+        return (Date.now.timeIntervalSince(synced) < 60 ? "Synced just now" : "Synced \(synced.formatted(.relative(presentation: .named)))", false)
     }
 }

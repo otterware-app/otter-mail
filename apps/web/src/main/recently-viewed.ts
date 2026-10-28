@@ -7,20 +7,35 @@
  */
 
 import { useEffect, useSyncExternalStore } from "react";
-import { getAccountDisplayName } from "./gmail/account-style";
-import { senderLabel } from "./gmail/address";
-import { COMBINED_ACCOUNT_ID } from "./gmail/custom-views";
-import { CHATS_SPACE, isViewSpaceId } from "./gmail/spaces";
-import { SEARCH_MAILBOX } from "./gmail/gmail-query";
-import { useLabels, useMessage } from "./gmail/hooks";
-import { isBlank, useChats } from "./gmail/chat-store";
-import { SYSTEM_LABEL_NAMES, labelDisplayName } from "./gmail/label-names";
-import type { GmailAccount, MailView, ViewKind } from "./gmail/types";
-import type { SettingsPane } from "./gmail/api";
+import { getAccountDisplayName } from "./mail/account-style";
+import { senderLabel } from "./mail/address";
+import { CHATS_SPACE, isViewSpaceId } from "./mail/spaces";
+import { SEARCH_MAILBOX } from "./mail/gmail-query";
+import { useLabels, useMessage } from "./mail/hooks";
+import { isBlank, useChats } from "./mail/chat-store";
+import { folderName, labelDisplayName } from "./mail/label-names";
+import { capabilitiesOf } from "./mail/capabilities";
+import type { MailAccount, MailView } from "./mail/types";
+import type { SettingsPane } from "./mail/api";
 import { SETTINGS_SECTION_LABELS } from "./settings/settings-search";
 
-/** The icon a place shows: a view's kind, a label, a conversation, Settings, or a chat. */
-export type RecentIcon = ViewKind | "label" | "conversation" | "settings" | "chat";
+/** The icon a place shows: a system folder's, a view's ("custom"), a label, a conversation, Settings, or a chat. */
+export type RecentIcon =
+  | "inbox"
+  | "starred"
+  | "flagged"
+  | "sent"
+  | "drafts"
+  | "important"
+  | "allmail"
+  | "archive"
+  | "junk"
+  | "trash"
+  | "custom"
+  | "label"
+  | "conversation"
+  | "settings"
+  | "chat";
 
 export type RecentPlace = Readonly<{
   /** The router location that brings it back. */
@@ -74,14 +89,15 @@ export function useRecentlyViewed(): RecentPlace[] {
   return useSyncExternalStore(subscribe, getRecentlyViewed);
 }
 
-/** A system label's icon: the kind of the combined view that shows it. */
-const SYSTEM_LABEL_ICONS: Record<string, ViewKind> = {
+/** A system label's icon. */
+const SYSTEM_LABEL_ICONS: Record<string, RecentIcon> = {
   INBOX: "inbox",
   STARRED: "starred",
   SENT: "sent",
   DRAFT: "drafts",
   IMPORTANT: "important",
   ALL_MAIL: "allmail",
+  ARCHIVE: "archive",
   SPAM: "junk",
   TRASH: "trash",
 };
@@ -110,7 +126,7 @@ export function useRecordRecentlyViewed({
   label: string;
   messageId: string | null;
   readerAccount: string | null;
-  accounts: GmailAccount[];
+  accounts: MailAccount[];
   views: MailView[];
 }): void {
   const inSettings = settingsPane !== null;
@@ -148,25 +164,27 @@ export function useRecordRecentlyViewed({
     if (chat && !isBlank(chat)) place = { href, context: "Chats", title: chat.title, icon: "chat" };
   } else if (mailbox && label !== SEARCH_MAILBOX) {
     const account = accounts.find((a) => a.id === mailbox);
-    const context =
-      mailbox === COMBINED_ACCOUNT_ID
-        ? "All mailboxes"
-        : account
-          ? getAccountDisplayName(account)
-          : isViewSpaceId(mailbox)
-            ? "Views"
-            : null;
+    const context = account
+      ? getAccountDisplayName(account)
+      : isViewSpaceId(mailbox)
+        ? "Views"
+        : null;
     // A view's space is its list: the view itself.
     const view = views.find((v) => v.id === (isViewSpaceId(mailbox) ? mailbox : label));
     const ownLabel = ownLabels?.find((l) => l.id === label);
+    const capabilities = capabilitiesOf(account);
     const title =
-      view?.name ?? SYSTEM_LABEL_NAMES[label] ?? (ownLabel && labelDisplayName(ownLabel));
+      view?.name ?? folderName(label, capabilities) ?? (ownLabel && labelDisplayName(ownLabel));
     if (context && title) {
       place = {
         href,
         context,
         title,
-        icon: view ? view.kind : (SYSTEM_LABEL_ICONS[label] ?? "label"),
+        icon: view
+          ? view.kind
+          : label === "STARRED" && !capabilities.stars
+            ? "flagged"
+            : (SYSTEM_LABEL_ICONS[label] ?? "label"),
       };
     }
   }

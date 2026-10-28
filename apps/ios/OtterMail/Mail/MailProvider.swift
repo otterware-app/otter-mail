@@ -27,6 +27,8 @@ protocol MailProvider: AnyObject {
     func search(_ query: String, known: [MailThread]) async throws -> (ids: [String], threads: [MailThread])
     /** The mailbox's own labels (IMAP: its folders). */
     func labels() async throws -> [MailLabel]
+    /** Whether there's an Archive folder (`ARCHIVE`; Outlook, IMAP), as `labels()` last found. */
+    var hasArchive: Bool { get }
     /** The signature the server keeps; nil when the app keeps it (following the Otter account). */
     func signature() async throws -> String?
     /** Saves the signature; answers it as kept. */
@@ -101,6 +103,8 @@ nonisolated struct MailboxState: Codable {
     var deltas: [String: String]? = nil
     /** Outlook: this iPhone's Graph subscription, which sends the mailbox's changes to the relay (`watchTopic`: where). */
     var subscription: String? = nil
+    /** Outlook and IMAP: cached mail from the Archive carries `ARCHIVE` (mail cached before it did is labeled again once). */
+    var archiveLabeled: Bool? = nil
 
     /** A folder's page came in, back to `oldest`; `next` is the page after it, nil at the end. */
     mutating func paged(_ key: String, next: String?, oldest: Date?) {

@@ -16,7 +16,7 @@ import {
   XIcon,
 } from "lucide-react";
 
-import { gmailApi } from "../gmail/api";
+import { mailApi } from "../mail/api";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -24,9 +24,9 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "../gmail/menu";
-import { toast } from "../gmail/toast";
-import { Btn, HintTooltip, IconBtn, cn } from "../gmail/ui";
+} from "../mail/menu";
+import { toast } from "../mail/toast";
+import { Btn, HintTooltip, IconBtn, cn } from "../mail/ui";
 import { ExtensionToolbar } from "./extension-toolbar";
 import {
   CHROME_WEB_STORE_URL,
@@ -472,7 +472,7 @@ function PageMenu({ url, onDevTools }: { url: string; onDevTools?: () => void })
         ) : null}
         <DropdownMenuItem
           icon={<PuzzleIcon className="size-4" />}
-          onSelect={() => void gmailApi.openSettings({ pane: "browser" })}
+          onSelect={() => void mailApi.openSettings({ pane: "browser" })}
         >
           Extensions
         </DropdownMenuItem>
@@ -498,7 +498,7 @@ function StartPage({ onNavigate }: { onNavigate: (url: string) => void }) {
           <button
             type="button"
             className={tile}
-            onClick={() => void gmailApi.openSettings({ pane: "browser" })}
+            onClick={() => void mailApi.openSettings({ pane: "browser" })}
           >
             <PuzzleIcon />
             Extensions

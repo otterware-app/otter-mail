@@ -16,11 +16,11 @@ import { getAccount } from "./account-store.js";
 import { turnedOffMailboxes } from "./mail-sync.js";
 import { getSettings } from "./settings-store.js";
 import * as mailStore from "./mail-store.js";
-import type { GmailAccount, GmailMessageSummary } from "../types.js";
+import type { MailAccount, MessageSummary } from "../types.js";
 
 const MAX_INDIVIDUAL_NOTIFICATIONS = 3;
 
-function accountLabel(account: GmailAccount): string {
+function accountLabel(account: MailAccount): string {
   return account.displayName?.trim() || account.name || account.email;
 }
 
@@ -31,7 +31,7 @@ function accountLabel(account: GmailAccount): string {
  */
 export async function notifyNewMail(
   accountId: string,
-  added: GmailMessageSummary[],
+  added: MessageSummary[],
   prevLastSyncAt: number | null,
 ): Promise<void> {
   try {

@@ -9,13 +9,14 @@ import { IMAP_CAPABILITIES, type ImapSettings, type MailServer } from "@otter-ma
 
 import { broadcast, handle } from "../ipc.js";
 import { MailProtocolError, connectImap, connectSmtp } from "../protocols/index.js";
+import { capabilitiesOf } from "../providers/index.js";
 import * as accountStore from "../services/account-store.js";
 import { appPasswordUrl, discoverImap, mxHosts, servesImap } from "../services/imap-discovery.js";
 import { setImapPassword } from "../services/imap-passwords.js";
 import { accountAdded } from "../services/linked-accounts.js";
 import * as mailSync from "../services/mail-sync.js";
 import { syncedSignature } from "../services/preferences.js";
-import type { GmailAccount } from "../types.js";
+import type { MailAccount } from "../types.js";
 
 const VERIFY_TIMEOUT_MS = 20_000;
 
@@ -104,13 +105,13 @@ function settings(value: unknown): ImapSettings {
 
 // ── Flows ───────────────────────────────────────────────────────────────────
 
-const withCapabilities = (account: GmailAccount) => ({
+const withCapabilities = (account: MailAccount) => ({
   ...account,
-  capabilities: IMAP_CAPABILITIES,
+  capabilities: capabilitiesOf(account) ?? IMAP_CAPABILITIES,
 });
 
 /** Checks the password, keeps it on this device, saves the mailbox, links it and syncs. */
-export async function addImapAccount(params: unknown): Promise<GmailAccount> {
+export async function addImapAccount(params: unknown): Promise<MailAccount> {
   const p = (params ?? {}) as Record<string, unknown>;
   const email = text(p.email, "Email");
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email))
@@ -125,7 +126,7 @@ export async function addImapAccount(params: unknown): Promise<GmailAccount> {
   await verifyLogin(imap, password, email);
   await setImapPassword(id, password);
   const name = typeof p.name === "string" && p.name.trim() ? p.name.trim() : email;
-  const account: GmailAccount = {
+  const account: MailAccount = {
     ...existing,
     id,
     email,

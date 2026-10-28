@@ -22,7 +22,7 @@ import {
 } from "../../protocols/index.js";
 import { getAccount } from "../../services/account-store.js";
 import * as store from "../../services/mail-store.js";
-import type { GmailMessageSummary } from "../../types.js";
+import type { MessageSummary } from "../../types.js";
 import type { SyncContext } from "../provider.js";
 import { mapMessageSummary } from "./api.js";
 
@@ -88,7 +88,7 @@ export async function fillOverImap(accountId: string, ctx: SyncContext): Promise
         });
         const rows = fetched
           .map((m) => rowOf(m, folderLabel, userLabels))
-          .filter((row): row is GmailMessageSummary => row !== null);
+          .filter((row): row is MessageSummary => row !== null);
         ctx.assertActive();
         // Rows the history feed cached meanwhile are newer than these.
         const fresh = new Set(
@@ -116,7 +116,7 @@ function rowOf(
   m: FetchedMessage,
   folderLabel: string | null,
   userLabels: Map<string, string>,
-): GmailMessageSummary | null {
+): MessageSummary | null {
   if (m.gmailId === undefined) return null;
   const labelIds = new Set<string>();
   for (const raw of m.gmailLabels ?? []) {

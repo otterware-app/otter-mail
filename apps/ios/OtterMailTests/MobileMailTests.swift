@@ -15,43 +15,35 @@ struct MobileMailTests {
         return MailThread(id: id, mailbox: mailbox, subject: "Hello", labels: labels, messages: [message])
     }
 
-    @Test func folderCachesFollowEditsSyncAndMailboxVisibility() throws {
-        let name = "FolderCacheTests.\(UUID())"
-        let defaults = try #require(UserDefaults(suiteName: name))
-        defer { defaults.removePersistentDomain(forName: name) }
-        let preferences = Preferences(defaults: defaults)
+    @Test func folderCachesFollowEditsAndSync() {
         let personal = mailbox(), work = mailbox("work@example.com")
         let first = thread("one"), second = thread("two", mailbox: work.email)
-        let store = MailStore(preferences: preferences, mailboxes: [personal, work], threads: [first, second])
+        let store = MailStore(preferences: Preferences(), mailboxes: [personal, work], threads: [first, second])
         for _ in 0..<2 {
-            #expect(store.threads(in: .inbox, scope: nil).count == 2)
-            #expect(store.unreadCount(in: .inbox, scope: nil) == 2)
+            #expect(store.threads(in: .inbox, scope: personal.email).map(\.id) == [first.id])
+            #expect(store.unreadCount(in: .inbox, scope: personal.email) == 1)
         }
         store.setRead(true, first.id)
-        #expect(store.unreadCount(in: .inbox, scope: nil) == 1)
-        #expect(store.threads(in: .inbox, scope: nil).first { $0.id == first.id }?.unread == false)
-        store.setOn(false, work)
-        #expect(store.threads(in: .inbox, scope: nil).map(\.id) == [first.id])
-        #expect(store.unreadCount(in: .inbox, scope: nil) == 0)
-        store.setOn(true, work)
-        #expect(store.unreadCount(in: .inbox, scope: nil) == 1)
+        #expect(store.unreadCount(in: .inbox, scope: personal.email) == 0)
+        #expect(store.threads(in: .inbox, scope: personal.email).first?.unread == false)
         store.archive(second.id)
-        #expect(store.threads(in: .inbox, scope: nil).count == 1)
+        #expect(store.threads(in: .inbox, scope: work.email).isEmpty)
         store.undo()
-        #expect(store.threads(in: .inbox, scope: nil).count == 2)
+        #expect(store.threads(in: .inbox, scope: work.email).count == 1)
         var fresh = second
         fresh.messages[0].unread = false
         store.upsert(threads: [fresh])
-        #expect(store.unreadCount(in: .inbox, scope: nil) == 0)
+        #expect(store.unreadCount(in: .inbox, scope: work.email) == 0)
         store.remove(threadIDs: [first.id])
-        #expect(store.threads(in: .inbox, scope: nil).map(\.id) == [second.id])
+        #expect(store.threads(in: .inbox, scope: personal.email).isEmpty)
+        #expect(store.threads(in: .inbox, scope: work.email).map(\.id) == [second.id])
     }
 
     @Test func undoRestoresFoldersWithoutLosingFreshMessageContent() {
         let original = thread("one", labels: ["INBOX", "Label_1"])
         let store = MailStore(preferences: Preferences(), mailboxes: [mailbox()], threads: [original])
         store.trash(original.id)
-        #expect(store.threads(in: .inbox, scope: nil).isEmpty)
+        #expect(store.threads(in: .inbox, scope: original.mailbox).isEmpty)
         var fresh = original
         fresh.messages[0].text = "Updated on another device"
         fresh.messages[0].unread = false
@@ -68,15 +60,16 @@ struct MobileMailTests {
     @Test func bulkArchiveAndUndoWorkAcrossMailboxes() {
         let first = thread("one"), second = thread("two", mailbox: "work@example.com")
         let store = MailStore(preferences: Preferences(), mailboxes: [mailbox(), mailbox("work@example.com")], threads: [first, second])
+        let inbox = { [first.mailbox, second.mailbox].flatMap { store.threads(in: .inbox, scope: $0) }.map(\.id) }
         store.archive([first.id, second.id])
         #expect(store.undoAction?.threads.count == 2)
-        #expect(store.threads(in: .inbox, scope: nil).isEmpty)
+        #expect(inbox().isEmpty)
         store.undo()
-        #expect(store.threads(in: .inbox, scope: nil).count == 2)
+        #expect(inbox().count == 2)
         store.archive(first.id)
         store.commitPendingAction()
         store.undo()
-        #expect(store.threads(in: .inbox, scope: nil).map(\.id) == [second.id])
+        #expect(inbox() == [second.id])
     }
 
     @Test func recipientsHandleQuotedCommasAndRejectIncompleteAddresses() {

@@ -1,7 +1,7 @@
 import { useLatest } from "../use-latest";
 import { setSyncedPreference } from "../synced-preferences";
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
-import { toast } from "../gmail/toast";
+import { toast } from "../mail/toast";
 import type { NativeThemeInfo } from "@otter-mail/contracts";
 import {
   CopyIcon,
@@ -12,13 +12,13 @@ import {
   Trash2Icon,
   UploadIcon,
 } from "lucide-react";
-import { cn, HintTooltip } from "../gmail/ui";
+import { cn, HintTooltip } from "../mail/ui";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "../gmail/menu";
+} from "../mail/menu";
 import {
   appearance,
   INITIAL_THEME_ID,

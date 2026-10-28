@@ -3,7 +3,7 @@ import ReactDOM from "react-dom/client";
 import { RouterProvider } from "@tanstack/react-router";
 import { router, queryClient } from "./router";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { ToastProvider } from "./gmail/toast";
+import { ToastProvider } from "./mail/toast";
 import { ReportProblemDialog } from "./support/report-problem";
 
 declare const __APP_DISPLAY_NAME__: string | undefined;

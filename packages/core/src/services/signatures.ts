@@ -19,10 +19,10 @@ import { logger } from "../logger.js";
 import { findProvider, isSignedIn } from "../providers/index.js";
 import { listAccounts, updateAccount } from "./account-store.js";
 import { preferenceChanged } from "./preferences.js";
-import type { GmailAccount } from "../types.js";
+import type { MailAccount } from "../types.js";
 
 /** Saves the signature on the server when it keeps them, then keeps its copy. */
-export async function saveSignature(account: GmailAccount, html: string): Promise<GmailAccount> {
+export async function saveSignature(account: MailAccount, html: string): Promise<MailAccount> {
   const signatures = findProvider(account)?.signatures;
   if (!signatures) {
     // Kept on the device, following the Otter account as a preference.
@@ -40,7 +40,7 @@ export async function saveSignature(account: GmailAccount, html: string): Promis
   }
 }
 
-async function refreshSignature(account: GmailAccount): Promise<boolean> {
+async function refreshSignature(account: MailAccount): Promise<boolean> {
   const signatures = findProvider(account)?.signatures;
   if (!signatures) return false;
   if (account.signatureInGmail === false) {

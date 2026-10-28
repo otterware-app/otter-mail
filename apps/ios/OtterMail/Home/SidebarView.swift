@@ -1,9 +1,9 @@
 import SwiftUI
 
 /**
- * The drawer, ChatGPT's sidebar: a page per mailbox (All first), swiped
- * through like the desktop's mailbox pages, each with its folders and
- * labels; at the bottom, a Compose pill with Settings beside it.
+ * The drawer, ChatGPT's sidebar: a page per mailbox, swiped through like
+ * the desktop's mailbox tabs, each with its folders and labels; at the
+ * bottom, a Compose pill with Settings beside it.
  */
 struct SidebarView: View {
     @Environment(MailStore.self) private var store
@@ -15,15 +15,12 @@ struct SidebarView: View {
     let onCompose: () -> Void
     let onSettings: () -> Void
 
-    /** The page shown: a mailbox's address, or `Self.all`. */
+    /** The page shown: a mailbox's address. */
     @State private var page: String?
-    private static let all = "__all__"
 
     private var pageAnimation: Animation? { reduceMotion ? nil : .smooth(duration: 0.2) }
 
-    private var pages: [String] {
-        (store.offersCombined ? [Self.all] : []) + store.shownMailboxes.map(\.email)
-    }
+    private var pages: [String] { store.shownMailboxes.map(\.email) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -40,7 +37,7 @@ struct SidebarView: View {
             ScrollView(.horizontal) {
                 LazyHStack(alignment: .top, spacing: 0) {
                     ForEach(pages, id: \.self) { key in
-                        folders(scope: key == Self.all ? nil : key)
+                        folders(scope: key)
                             .containerRelativeFrame(.horizontal)
                     }
                 }
@@ -52,20 +49,19 @@ struct SidebarView: View {
         }
         .safeAreaInset(edge: .bottom) { footer }
         .background(palette.sidebar)
-        .onAppear { page = place.scope ?? Self.all }
+        .onAppear { page = place.scope }
         .onChange(of: place.scope) { _, scope in
-            withAnimation(pageAnimation) { page = scope ?? Self.all }
+            withAnimation(pageAnimation) { page = scope }
         }
         .onChange(of: page) { _, page in
-            // Swiped to another mailbox: the list behind follows.
-            guard let page else { return }
-            let scope = page == Self.all ? nil : page
-            guard scope != place.scope else { return }
-            place = Place(scope: scope, folder: scope == nil && place.folder.isLabel ? .inbox : place.folder)
+            // Swiped to another mailbox: the list behind follows, to the same folder where it has one.
+            guard let page, page != place.scope else { return }
+            let same = store.mailbox(page)?.folders.contains(place.folder) == true
+            place = Place(scope: page, folder: same ? place.folder : .inbox)
         }
     }
 
-    /** All mailboxes, then each one: a tap or a swipe switches. */
+    /** Each mailbox: a tap or a swipe switches. */
     private var chips: some View {
         ScrollViewReader { reader in
             ScrollView(.horizontal) {
@@ -84,18 +80,14 @@ struct SidebarView: View {
     }
 
     private func chip(_ key: String) -> some View {
-        let selected = (page ?? Self.all) == key
-        let mailbox = store.mailbox(key)
+        let selected = page == key
         return Button {
             withAnimation(pageAnimation) { page = key }
         } label: {
             HStack(spacing: 6) {
-                if let mailbox {
+                if let mailbox = store.mailbox(key) {
                     MailboxMark(mailbox: mailbox, size: 16)
                     Text(mailbox.displayName)
-                } else {
-                    Image(systemName: "square.stack")
-                    Text("All")
                 }
             }
             .font(.subheadline.weight(.medium))
@@ -109,10 +101,11 @@ struct SidebarView: View {
     }
 
     /** A mailbox's page: its folders, then its labels. */
-    private func folders(scope: String?) -> some View {
-        ScrollView {
+    private func folders(scope: String) -> some View {
+        let mailbox = store.mailbox(scope)
+        return ScrollView {
             VStack(alignment: .leading, spacing: 2) {
-                if let mailbox = scope.flatMap(store.mailbox), mailbox.signedOut {
+                if let mailbox, mailbox.signedOut {
                     HStack(spacing: 10) {
                         Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(palette.warning)
                         Text(signedOutTitle(mailbox)).font(.subheadline).lineLimit(1)
@@ -125,17 +118,16 @@ struct SidebarView: View {
                     .background(palette.sidebarSelected, in: .rect(cornerRadius: 12))
                     .padding(.bottom, 8)
                 }
-                // Important is Gmail's sorting, and Outlook's high importance; IMAP has neither.
-                let sorts = scope.flatMap(store.mailbox)?.provider != .imap
-                ForEach(Folder.system.filter { sorts || $0 != .important }, id: \.self) { folder in
+                ForEach(mailbox?.folders ?? [], id: \.self) { folder in
                     row(folder, scope: scope)
                 }
-                let labels = scope.flatMap(store.mailbox)?.labels ?? []
-                if scope.flatMap(store.mailbox)?.provider == .outlook {
+                let labels = mailbox?.labels ?? []
+                switch mailbox?.provider {
+                case .outlook:
                     labelSection("Folders", labels: labels.filter { $0.id.hasPrefix(OutlookFolders.folderPrefix) }, scope: scope)
                     labelSection("Categories", labels: labels.filter { $0.id.hasPrefix(OutlookFolders.categoryPrefix) }, scope: scope, flat: true)
-                } else {
-                    labelSection(sorts ? "Labels" : "Folders", labels: labels, scope: scope)
+                case .imap: labelSection("Folders", labels: labels, scope: scope)
+                default: labelSection("Labels", labels: labels, scope: scope)
                 }
             }
             .padding(.horizontal, 12)
@@ -157,7 +149,7 @@ struct SidebarView: View {
     }
 
     @ViewBuilder
-    private func labelSection(_ title: String, labels: [MailLabel], scope: String?, flat: Bool = false) -> some View {
+    private func labelSection(_ title: String, labels: [MailLabel], scope: String, flat: Bool = false) -> some View {
         if !labels.isEmpty {
             Text(title)
                 .font(.footnote)
@@ -171,19 +163,20 @@ struct SidebarView: View {
         }
     }
 
-    private func row(_ folder: Folder, scope: String?, color: String? = nil, indent: Int = 0) -> some View {
+    private func row(_ folder: Folder, scope: String, color: String? = nil, indent: Int = 0) -> some View {
         let selected = place.scope == scope && place.folder == folder
         let count = store.badge(in: folder, scope: scope)
+        let mailbox = store.mailbox(scope)
         return Button {
             onSelect(Place(scope: scope, folder: folder))
         } label: {
             HStack(spacing: 12) {
                 // Icons stay quiet, as on the desktop, until their row is picked.
-                Image(systemName: folder.symbol)
+                Image(systemName: folder.symbol(in: mailbox))
                     .font(.system(size: 16))
                     .foregroundStyle(color.map(Color.init(hex:)) ?? (selected ? palette.sidebarText : palette.sidebarMuted))
                     .frame(width: 22)
-                Text(folder.title)
+                Text(folder.title(in: mailbox))
                     .font(.callout)
                     .foregroundStyle(palette.sidebarText)
                     .lineLimit(1)
@@ -206,7 +199,7 @@ struct SidebarView: View {
 
     private var footer: some View {
         VStack(alignment: .leading, spacing: 10) {
-            SyncStatusLine(scope: page == Self.all ? nil : page)
+            SyncStatusLine(scope: page ?? place.scope)
                 .padding(.horizontal, 4)
             footerButtons
         }
@@ -234,11 +227,5 @@ struct SidebarView: View {
                 .foregroundStyle(palette.sidebarText)
                 .glassEffect(.regular.interactive(), in: .circle)
         }
-    }
-}
-
-extension Folder {
-    var isLabel: Bool {
-        if case .label = self { true } else { false }
     }
 }

@@ -3,8 +3,8 @@ import { useState } from "react";
 import { Dialog } from "~/components/ui/dialog";
 import { Text } from "~/components/ui/text";
 import { ipc } from "~/lib/ipc";
-import { toast } from "../gmail/toast";
-import { Btn } from "../gmail/ui";
+import { toast } from "../mail/toast";
+import { Btn } from "../mail/ui";
 import {
   RowSelect,
   SettingResetButton,

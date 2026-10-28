@@ -29,10 +29,10 @@ import * as mailStore from "./mail-store.js";
 import { getImapPassword, setAsideImapPassword } from "./imap-passwords.js";
 import { getOtterUser, relayRequest, RelayError } from "./otter-account.js";
 import { syncedSignature } from "./preferences.js";
-import type { GmailAccount } from "../types.js";
+import type { MailAccount } from "../types.js";
 
 export type LocalAccount = Pick<
-  GmailAccount,
+  MailAccount,
   "email" | "name" | "picture" | "displayName" | "color" | "imap"
 > & {
   signedIn: boolean;
@@ -141,7 +141,7 @@ const PROVIDERS = "?providers=gmail,imap,outlook";
 const accountRoute = (email: string) =>
   `/v1/accounts/${encodeURIComponent(key(email))}${PROVIDERS}`;
 
-const profile = (account: GmailAccount) => ({
+const profile = (account: MailAccount) => ({
   name: account.name,
   // Outlook's photo is a data URL, too big for the relay and only this device's to read.
   picture: account.picture?.startsWith("data:") ? null : (account.picture ?? null),
@@ -155,7 +155,7 @@ const profile = (account: GmailAccount) => ({
  * password).
  */
 export async function linkRequest(
-  account: GmailAccount,
+  account: MailAccount,
   idToken: (accountId: string) => Promise<string>,
 ): Promise<PutAccountRequest> {
   if (account.provider === "imap") {
@@ -168,7 +168,7 @@ export async function linkRequest(
 }
 
 /** Links a signed-in account to the Otter account. */
-async function link(account: GmailAccount): Promise<void> {
+async function link(account: MailAccount): Promise<void> {
   const body = await linkRequest(account, (id) => {
     const auth = account.provider === "outlook" ? platform().microsoft : platform().google;
     if (!auth) throw new Error("This app can't sign in to Outlook.");
@@ -178,7 +178,7 @@ async function link(account: GmailAccount): Promise<void> {
 }
 
 /** An account linked on another device, as this device keeps it: signed out until it signs in. */
-export function accountFromRelay(account: RelayAccount): GmailAccount {
+export function accountFromRelay(account: RelayAccount): MailAccount {
   const imap = account.provider === "imap" && account.imap;
   return {
     id: account.email,
@@ -195,7 +195,7 @@ export function accountFromRelay(account: RelayAccount): GmailAccount {
 }
 
 /** After adding (or signing back in to) an account here. No-op when signed out of Otter. */
-export async function accountAdded(account: GmailAccount): Promise<void> {
+export async function accountAdded(account: MailAccount): Promise<void> {
   if (!getOtterUser()) return;
   try {
     await link(account);
@@ -226,7 +226,7 @@ export async function accountRemoved(email: string): Promise<void> {
  * of the others may be older than the relay's.
  */
 export async function accountEdited(
-  account: GmailAccount,
+  account: MailAccount,
   fields: (keyof ReturnType<typeof profile>)[],
 ): Promise<void> {
   if (!getOtterUser() || !readSnapshot().has(key(account.email))) return;

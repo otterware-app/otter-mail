@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { gmailApi, type ProviderSnapshot } from "../gmail/api";
-import { useSetProvidersState } from "../gmail/agent-providers";
-import { toast } from "../gmail/toast";
-import { Btn } from "../gmail/ui";
+import { mailApi, type ProviderSnapshot } from "../mail/api";
+import { useSetProvidersState } from "../mail/agent-providers";
+import { toast } from "../mail/toast";
+import { Btn } from "../mail/ui";
 import { SettingsRow, SettingsSection, TextInput } from "./settings-ui";
 
 export function OpenRouterConnection({ provider }: { provider: ProviderSnapshot }) {
@@ -14,7 +14,7 @@ export function OpenRouterConnection({ provider }: { provider: ProviderSnapshot 
   const connect = async () => {
     setSaving(true);
     try {
-      setState(await gmailApi.connectOpenRouter(key.trim()));
+      setState(await mailApi.connectOpenRouter(key.trim()));
       setKey("");
       toast.success("OpenRouter connected");
     } catch (error) {
@@ -26,7 +26,7 @@ export function OpenRouterConnection({ provider }: { provider: ProviderSnapshot 
   const disconnect = async () => {
     setSaving(true);
     try {
-      setState(await gmailApi.disconnectOpenRouter());
+      setState(await mailApi.disconnectOpenRouter());
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not disconnect OpenRouter.");
     } finally {

@@ -24,7 +24,7 @@ MailProvider                packages/core/src/providers/provider.ts
 - `contracts/src/mail.ts` has the shared model: `MailProviderKind`, `ImapSettings`,
   `MailCapabilities` (and each provider's). The UI gates on capabilities, the way it gates
   Mac-only UI on `features`.
-- An account is `GmailAccount` with `provider` (absent = Gmail) and `imap` settings. Its id is
+- An account is `MailAccount` with `provider` (absent = Gmail) and `imap` settings. Its id is
   its address for both providers.
 - The IMAP password lives in `platform.secrets` under `imap-password:<accountId>`
   (`services/imap-passwords.ts`); it is never synced. A mailbox linked on another device arrives
@@ -49,13 +49,26 @@ MailProvider                packages/core/src/providers/provider.ts
 ## IMAP on the Gmail-shaped cache
 
 - Folders are labels. Special-use folders map to system label ids: INBOX → `INBOX`, `\Sent` →
-  `SENT`, `\Drafts` → `DRAFT`, `\Trash` → `TRASH`, `\Junk` → `SPAM`, `\Archive` / `\All` → none
-  (archived mail simply lacks `INBOX`, as in Gmail). Other folders are user labels whose id is
-  the folder path and whose name uses `/` as the separator.
+  `SENT`, `\Drafts` → `DRAFT`, `\Trash` → `TRASH`, `\Junk` → `SPAM`, `\Archive` → `ARCHIVE`
+  (shown as Archive in the sidebar, in place of All Mail: `capabilities.archiveFolder`). Servers
+  that don't flag them get them by name (Archive, Archives, …). Other folders are user labels
+  whose id is the folder path and whose name uses `/` as the separator. `\All` and `\Flagged`
+  folders hold copies of other folders' mail and aren't synced.
 - Flags: no `\Seen` → `UNREAD`, `\Flagged` → `STARRED`.
 - A message sits in one folder (`capabilities.multipleLabels = false`): applying a label moves
-  it (UID MOVE, or COPY + `\Deleted` + UID EXPUNGE), archive moves to the Archive folder, trash
-  moves to Trash.
+  it (UID MOVE, or COPY + `\Deleted` + UID EXPUNGE), archive (taking INBOX or a folder away)
+  moves to the Archive folder, made (flagged `\Archive` where the server has CREATE-SPECIAL-USE)
+  when there's none, and trash moves to Trash. Taking ARCHIVE away puts mail back in the inbox.
+  Archived mail lands in ARCHIVE in the cache at once (contracts' `landLabelChange`). The app's
+  Archive archives from any of your folders, as Apple Mail's does: in a folder's list it takes
+  that folder away (`apps/web/src/main/mail/archive.ts`).
+- Gmail's IMAP (X-GM-EXT-1) archives into `[Gmail]/All Mail` (`\All`), which only takes the
+  message out of the inbox; a folder named Archive there is just a label. Moving mail back out
+  of All Mail is a COPY (taking it out of All Mail would delete it). Of All Mail, only archived
+  mail is synced (Gmail's own search, `X-GM-RAW "-in:inbox -in:sent -in:drafts -in:chats
+has:nouserlabels"`), so nothing is cached twice; `[Gmail]/Important` (`\Important`) isn't
+  synced for the same reason. To the app such a mailbox is Gmail (core's `capabilitiesOf`, by
+  its server): All Mail rather than an Archive folder, and Starred.
 - Message ids: `<uidvalidity>:<uid>:<folder path>`, re-keyed in the cache when the message
   moves (COPYUID tells the new uid, else the next sync finds it by Message-ID).
 - Threads: the root Message-ID of `References` (else `In-Reply-To`, else its own Message-ID),

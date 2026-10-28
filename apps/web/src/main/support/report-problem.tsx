@@ -38,9 +38,9 @@ import {
 import { Field } from "~/components/ui/field";
 import { Input } from "~/components/ui/input";
 import { features } from "../features";
-import { Btn } from "../gmail/ui";
-import { gmailApi } from "../gmail/api";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../gmail/select";
+import { Btn } from "../mail/ui";
+import { mailApi } from "../mail/api";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../mail/select";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -50,8 +50,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuSub,
   DropdownMenuTrigger,
-} from "../gmail/menu";
-import { toast } from "../gmail/toast";
+} from "../mail/menu";
+import { toast } from "../mail/toast";
 
 export function requestProblemReport(): void {
   // Let the originating menu close before Radix transfers focus to the sheet.
@@ -322,7 +322,7 @@ export function ReportProblemDialog() {
     });
   const save = (contents = body) =>
     run("save", async () => {
-      const saved = await gmailApi.saveSupportReport(
+      const saved = await mailApi.saveSupportReport(
         buildSupportPrompt(`# ${describedReport().title}\n\n${contents}`, false, describedReport()),
       );
       if (saved) toast.success("Report saved. Open it in your coding agent to investigate.");
@@ -330,7 +330,7 @@ export function ReportProblemDialog() {
   const saveDiagnostics = () =>
     run("save", async () => {
       if (!reportDiagnostics) return;
-      const saved = await gmailApi.saveSupportReport(
+      const saved = await mailApi.saveSupportReport(
         JSON.stringify(reportDiagnostics, null, 2),
         "Otter Mail diagnostics.json",
       );

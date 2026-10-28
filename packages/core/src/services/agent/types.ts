@@ -1,6 +1,6 @@
 /**
  * Agent provider contracts shared by the backend and (mirrored in
- * renderer/main/gmail/api.ts) the renderer. Modelled on T3 Code's provider
+ * apps/web/src/main/mail/api.ts) the renderer. Modelled on T3 Code's provider
  * layer: a *snapshot* describes a provider's health, a *provider* runs chat
  * turns, and every provider streams the same canonical {@link ChatEvent}s.
  */

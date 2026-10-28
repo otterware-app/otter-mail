@@ -10,8 +10,8 @@ import {
 } from "react";
 import { Undo2Icon } from "lucide-react";
 import { ScrollArea } from "~/components/ui/scroll-area";
-import { cn, HintTooltip } from "../gmail/ui";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../gmail/select";
+import { cn, HintTooltip } from "../mail/ui";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../mail/select";
 
 /*
  * Settings layout (after ChatGPT's): one centered column. The page title, page

@@ -14,8 +14,8 @@ import {
 } from "~/components/ui/dialog";
 import { Field } from "~/components/ui/field";
 import { Input } from "~/components/ui/input";
-import { toast } from "../gmail/toast";
-import { Btn, cn, IconBtn } from "../gmail/ui";
+import { toast } from "../mail/toast";
+import { Btn, cn, IconBtn } from "../mail/ui";
 import { SettingsGroup, SettingsRow, SettingsSection, timeAgo } from "./settings-ui";
 
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));

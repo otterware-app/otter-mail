@@ -11,17 +11,17 @@ import { Field } from "~/components/ui/field";
 import { Switch } from "~/components/ui/switch";
 import { Text } from "~/components/ui/text";
 import { Toggle, ToggleGroup } from "~/components/ui/toggle-group";
-import { toast } from "../gmail/toast";
+import { toast } from "../mail/toast";
 import { CheckIcon, RotateCwIcon, StarIcon } from "lucide-react";
 import {
-  gmailApi,
+  mailApi,
   type AgentSettingsPatch,
   type ProviderKind,
   type ProviderModel,
   type ProviderSnapshot,
   type ProvidersState,
   type RuntimeMode,
-} from "../gmail/api";
+} from "../mail/api";
 import {
   PROVIDER_STATUS_DOT,
   ProviderIcon,
@@ -29,9 +29,9 @@ import {
   providerVersionLabel,
   useAgentProviders,
   useSetProvidersState,
-} from "../gmail/agent-providers";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../gmail/select";
-import { Btn, cn } from "../gmail/ui";
+} from "../mail/agent-providers";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../mail/select";
+import { Btn, cn } from "../mail/ui";
 import {
   DraftInput,
   RowSelect,
@@ -46,7 +46,7 @@ import { AgentTokensSection, CopyButton } from "./agent-tokens-section";
 import { OpenRouterConnection } from "./openrouter-connection";
 import { features } from "../features";
 import { osNames } from "../os-names";
-import { RUNTIME_MODE_OPTIONS } from "../gmail/model-picker";
+import { RUNTIME_MODE_OPTIONS } from "../mail/model-picker";
 import {
   modelKey,
   resetModelPrefs,
@@ -54,12 +54,12 @@ import {
   toggleAllHidden,
   toggleFavorite,
   useModelPrefs,
-} from "../gmail/model-prefs";
+} from "../mail/model-prefs";
 import {
   setFollowUpBehavior,
   useFollowUpBehavior,
   type FollowUpBehavior,
-} from "../gmail/chat-queue";
+} from "../mail/chat-queue";
 import { shortcutText } from "../keybindings/keys";
 
 function useNow(intervalMs: number): number {
@@ -457,7 +457,7 @@ export function useConnectHermes(state: ProvidersState) {
     setSaving(true);
     console.log("[Settings:connectHermes]");
     try {
-      setState(await gmailApi.connectHermes({ baseUrl: url, apiKey: apiKey.trim() }));
+      setState(await mailApi.connectHermes({ baseUrl: url, apiKey: apiKey.trim() }));
       setBaseUrl("");
       setApiKey("");
       toast.success("Hermes connected");
@@ -632,7 +632,7 @@ function OpenClawEditor({
   // Waiting for approval: look again every few seconds, so it connects once approved.
   useEffect(() => {
     if (!openclawPairingRequest) return;
-    const timer = setInterval(() => void gmailApi.refreshAgentProviders().catch(() => {}), 4000);
+    const timer = setInterval(() => void mailApi.refreshAgentProviders().catch(() => {}), 4000);
     return () => clearInterval(timer);
   }, [openclawPairingRequest]);
 
@@ -640,7 +640,7 @@ function OpenClawEditor({
   const allowQuestions = async () => {
     setAsking(true);
     try {
-      setState(await gmailApi.agentAllowOpenClawQuestions());
+      setState(await mailApi.agentAllowOpenClawQuestions());
     } catch (error) {
       toast.error(
         `Could not ask the gateway: ${error instanceof Error ? error.message : String(error)}`,
@@ -660,7 +660,7 @@ function OpenClawEditor({
     console.log("[Settings:connectOpenClaw]", useToken ? "token" : "setup code");
     try {
       setState(
-        await gmailApi.connectOpenClaw(
+        await mailApi.connectOpenClaw(
           useToken ? { url: address, token: token.trim() } : { code: code.trim() },
         ),
       );
@@ -982,7 +982,7 @@ export function ProvidersPane() {
 
   const update = (patch: AgentSettingsPatch) => {
     console.log("[Settings:updateAgent]", patch);
-    gmailApi
+    mailApi
       .updateAgentSettings(patch)
       .then(setState, (error: unknown) =>
         toast.error(`Could not save: ${error instanceof Error ? error.message : String(error)}`),
@@ -992,7 +992,7 @@ export function ProvidersPane() {
   const refresh = () => {
     if (refreshing) return;
     setRefreshing(true);
-    void gmailApi.refreshAgentProviders().catch(() => {});
+    void mailApi.refreshAgentProviders().catch(() => {});
     // Results arrive as broadcasts; keep the spinner up while the probes run.
     setTimeout(() => setRefreshing(false), 1500);
   };
@@ -1205,7 +1205,7 @@ function ConnectedAgentsSection() {
   const [access, setAccess] = useState<AgentAccess>("safe");
   const change = useMutation({
     mutationFn: ({ id, access }: { id: string; access: AgentAccess }) =>
-      gmailApi.setConnectedAgentAccess(id, access),
+      mailApi.setConnectedAgentAccess(id, access),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["mcp:agents"] }),
     onError: (error) =>
       toast.error(`Could not save: ${error instanceof Error ? error.message : String(error)}`),
@@ -1215,9 +1215,9 @@ function ConnectedAgentsSection() {
       {...searchableSetting("connected-agents")}
       description="Claude Code, Codex, Cursor or any agent that speaks MCP can use your mail, calendars and views while Otter Mail is open."
       queryKey="mcp:agents"
-      list={gmailApi.connectedAgents}
-      create={(name) => gmailApi.addConnectedAgent(name, access)}
-      revoke={gmailApi.removeConnectedAgent}
+      list={mailApi.connectedAgents}
+      create={(name) => mailApi.addConnectedAgent(name, access)}
+      revoke={mailApi.removeConnectedAgent}
       defaultName="Claude Code"
       newTokenFields={
         <Field label="Access" orientation="vertical">

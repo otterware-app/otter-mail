@@ -25,18 +25,18 @@ import {
   SearchIcon,
   XIcon,
 } from "lucide-react";
-import { AgentIcon } from "../gmail/agent-icon";
+import { AgentIcon } from "../mail/agent-icon";
 import { changelogUrl } from "@otter-mail/shared/changelog";
 import { openLink } from "../browser/store";
 import { ScrollArea } from "~/components/ui/scroll-area";
-import { gmailApi, type SettingsPane } from "../gmail/api";
+import { mailApi, type SettingsPane } from "../mail/api";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "../gmail/menu";
-import { HintTooltip, IconBtn, cn } from "../gmail/ui";
+} from "../mail/menu";
+import { HintTooltip, IconBtn, cn } from "../mail/ui";
 import { features } from "../features";
 import { useCommandHandlers } from "../keybindings/dispatch";
 import {
@@ -310,7 +310,7 @@ function DefaultMailRow() {
   const [isDefault, setIsDefault] = useState<boolean | null>(null);
   const refresh = async () => {
     try {
-      setIsDefault((await gmailApi.getDefaultMailStatus()).isDefault);
+      setIsDefault((await mailApi.getDefaultMailStatus()).isDefault);
     } catch (err) {
       console.log("[SettingsNav:defaultMailStatus] failed", { error: String(err) });
     }
@@ -327,7 +327,7 @@ function DefaultMailRow() {
         onClick={async () => {
           console.log("[SettingsNav:setDefaultMailApp]");
           try {
-            await gmailApi.setDefaultMailApp();
+            await mailApi.setDefaultMailApp();
           } catch (err) {
             console.log("[SettingsNav:setDefaultMailApp] failed", { error: String(err) });
           }

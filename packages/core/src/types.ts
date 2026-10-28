@@ -1,12 +1,12 @@
 /**
  * Shared mail types — used by backend services/handlers. They are shaped like
  * Gmail's (labels, threads) for every provider: see contracts' mail.ts.
- * The frontend duplicates these; keep names exact.
+ * The frontend duplicates these (apps/web/src/main/mail/types.ts); keep names exact.
  */
 
 import type { ImapSettings, MailCapabilities, MailProviderKind } from "@otter-mail/contracts";
 
-export interface GmailAccount {
+export interface MailAccount {
   id: string;
   email: string;
   name: string;
@@ -29,7 +29,7 @@ export interface GmailAccount {
   signedOut?: boolean;
 }
 
-export interface GmailLabel {
+export interface MailLabel {
   id: string;
   name: string;
   type: "system" | "user";
@@ -38,7 +38,7 @@ export interface GmailLabel {
   color?: { backgroundColor: string; textColor: string };
 }
 
-export interface GmailMessageSummary {
+export interface MessageSummary {
   id: string;
   /** Owning account — populated on reads so combined (cross-account) views can route. */
   accountId?: string;
@@ -65,7 +65,7 @@ export interface GmailMessageSummary {
   referencesHeader?: string;
 }
 
-export interface GmailMessageDetail extends GmailMessageSummary {
+export interface MessageDetail extends MessageSummary {
   /** Provider revision of this cached draft body (Outlook keeps its message ID). */
   draftRevision?: string;
   bodyHtml: string | null;
@@ -97,7 +97,8 @@ export interface ContactSuggestion {
 
 /** Per-account local-sync progress, exposed to the renderer for status UI. */
 /** Pseudo label id for "All Mail": every message except Spam and Trash
-    (Gmail has no such label — archived mail simply lacks INBOX). */
+    (Gmail has no such label — archived mail simply lacks INBOX). Outlook's
+    and IMAP's archived mail is in a folder of its own: ARCHIVE. */
 export const ALL_MAIL_LABEL_ID = "ALL_MAIL";
 
 export interface SyncStatus {
@@ -122,9 +123,9 @@ export interface SyncStatus {
 }
 
 /**
- * One account's filter within a Combined-mailbox view. A message matches when
- * it belongs to the account, carries every label in `allOf` (empty = any mail
- * from the account), and carries none of the labels in `noneOf`.
+ * One account's filter within a view. A message matches when it belongs to
+ * the account, carries every label in `allOf` (empty = any mail from the
+ * account), and carries none of the labels in `noneOf`.
  */
 export interface ViewRule {
   accountId: string;
@@ -132,26 +133,14 @@ export interface ViewRule {
   noneOf: string[];
 }
 
-export type ViewKind =
-  | "inbox"
-  | "starred"
-  | "sent"
-  | "drafts"
-  | "important"
-  | "allmail"
-  | "junk"
-  | "trash"
-  | "custom";
-
-/** A Combined-mailbox view. null rules = the dynamic built-in default. */
+/** A view: a saved filter across the mailboxes (its rules' matches), a space of its own. */
 export interface MailView {
   id: string;
   name: string;
-  kind: ViewKind;
-  rules: ViewRule[] | null;
-  /** Where it was made: an account id, or "__combined__" (views were once each mailbox's). */
-  mailbox?: string;
-  /** Its mark in the rail: an icon's key or an emoji (custom views; absent = its initial). */
+  /** Always "custom": older versions, which share the synced list, look for it. */
+  kind: "custom";
+  rules: ViewRule[];
+  /** Its mark in the rail: an icon's key or an emoji (absent = its initial). */
   icon?: string | null;
   /** The icon's color (or the initial's). */
   color?: string | null;

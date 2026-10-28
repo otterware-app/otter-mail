@@ -1,15 +1,19 @@
 /**
- * Changing Outlook mail through labels (docs/outlook.md): UNREAD, STARRED and
- * IMPORTANT set the read state, the flag and the importance; categories are
- * set on the message; a folder label (INBOX, SPAM, TRASH, `folder:<id>`)
- * moves it, and taking one away moves it to the Archive (out of Junk or
- * Deleted Items: back to the inbox). Labels themselves are categories (made,
+ * Changing Outlook mail through labels (docs/outlook.md): UNREAD, STARRED,
+ * IMPORTANT and OTHER set the read state, the flag, the importance and Focused
+ * Inbox's sorting; categories are
+ * set on the message; a folder label (INBOX, ARCHIVE, SPAM, TRASH,
+ * `folder:<id>`) moves it, and taking the inbox's or a folder's away moves it
+ * to the Archive, as Outlook's Archive does (out of Junk, Deleted Items or
+ * the Archive: back to the inbox). Labels themselves are categories (made,
  * renamed, recolored, deleted) or folders (renamed, deleted).
  */
 
+import { ARCHIVE_LABEL_ID, OTHER_LABEL_ID, SNOOZED_LABEL_ID } from "@otter-mail/contracts";
+
 import * as store from "../../services/mail-store.js";
 import { renamePendingLabel } from "../../services/pending-label-writes.js";
-import type { GmailLabel, GmailMessageSummary } from "../../types.js";
+import type { MailLabel, MessageSummary } from "../../types.js";
 import type { LabelChange } from "../provider.js";
 import {
   categoryLabel,
@@ -26,7 +30,8 @@ import {
 import { batchError, graph, graphAll, graphBatch, ok, type BatchRequest } from "./graph.js";
 import { getApiMessages, messagePath, toSummary, type ApiMessage } from "./messages.js";
 
-const STATE_FIELDS = "id,parentFolderId,categories,isRead,flag,importance,isDraft,from";
+const STATE_FIELDS =
+  "id,parentFolderId,categories,isRead,flag,importance,inferenceClassification,isDraft,from";
 
 /** Runs a batch of writes; a message already gone (404) is fine, any other failure isn't. */
 async function run(accountId: string, requests: BatchRequest[]): Promise<void> {
@@ -55,6 +60,8 @@ async function destination(
     add.find((l) => l === "TRASH") ??
     add.find((l) => l === "SPAM") ??
     add.find((l) => l.startsWith(FOLDER_PREFIX)) ??
+    add.find((l) => l === ARCHIVE_LABEL_ID) ??
+    add.find((l) => l === SNOOZED_LABEL_ID) ??
     add.find((l) => l === "INBOX");
   if (target) {
     if (target === current) return null;
@@ -62,7 +69,7 @@ async function destination(
     return folderOfLabel(accountId, target);
   }
   if (current && remove.includes(current)) {
-    if (current === "SPAM" || current === "TRASH") {
+    if (current === "SPAM" || current === "TRASH" || current === ARCHIVE_LABEL_ID) {
       return wellKnownId(accountId, ownMail ? "sentitems" : "inbox");
     }
     if (current === "INBOX" || current.startsWith(FOLDER_PREFIX)) {
@@ -84,6 +91,9 @@ function patchFor(message: ApiMessage, change: LabelChange): Record<string, unkn
   if (remove.has("STARRED") && flagged) patch.flag = { flagStatus: "notFlagged" };
   if (add.has("IMPORTANT") && message.importance !== "high") patch.importance = "high";
   if (remove.has("IMPORTANT") && message.importance === "high") patch.importance = "normal";
+  const other = message.inferenceClassification === "other";
+  if (add.has(OTHER_LABEL_ID) && !other) patch.inferenceClassification = "other";
+  if (remove.has(OTHER_LABEL_ID) && other) patch.inferenceClassification = "focused";
   const categories = new Set(message.categories ?? []);
   let edited = false;
   for (const id of add) {
@@ -159,7 +169,7 @@ export const trashThread = (accountId: string, threadId: string) =>
   modifyThread(accountId, threadId, { addLabelIds: ["TRASH"] });
 
 /** Back from Deleted Items: received mail to the inbox, your own to Sent Items. */
-async function untrash(accountId: string, messages: ApiMessage[]): Promise<GmailMessageSummary[]> {
+async function untrash(accountId: string, messages: ApiMessage[]): Promise<MessageSummary[]> {
   const trashed = messages.filter((m) => folderLabel(accountId, m.parentFolderId) === "TRASH");
   await apply(accountId, trashed, { removeLabelIds: ["TRASH"] }, false);
   const ids = trashed.map((m) => m.id);
@@ -224,7 +234,7 @@ async function masterCategories(accountId: string): Promise<MasterCategory[]> {
 }
 
 /** A new label is a category (Outlook's colored labels). */
-export async function createLabel(accountId: string, name: string): Promise<GmailLabel> {
+export async function createLabel(accountId: string, name: string): Promise<MailLabel> {
   const created = await graph<MasterCategory>(accountId, "/me/outlook/masterCategories", {
     method: "POST",
     body: { displayName: name, color: "preset7" },

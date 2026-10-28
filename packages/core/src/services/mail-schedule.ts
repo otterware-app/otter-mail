@@ -1,7 +1,7 @@
-import type { MailSchedule } from "@otter-mail/contracts";
+import { landLabelChange, type MailSchedule } from "@otter-mail/contracts";
 import { broadcast } from "../ipc.js";
 import { platform } from "../platform.js";
-import { providerFor } from "../providers/index.js";
+import { capabilitiesOf, providerFor } from "../providers/index.js";
 import type { OutgoingMail } from "../providers/provider.js";
 import { getAccount } from "./account-store.js";
 import * as store from "./mail-store.js";
@@ -17,6 +17,15 @@ function db() {
     threadId TEXT, payload TEXT, error TEXT
   )`);
   return db;
+}
+
+/** Mirrors a change in the cache as it lands (Outlook and IMAP archive into a folder). */
+function mirror(accountId: string, messageId: string, add: string[], remove: string[]): void {
+  const prior = store.getMessageLabelIds(accountId, messageId);
+  if (!prior) return;
+  const archiveFolder = capabilitiesOf(accountId)?.archiveFolder;
+  const landed = landLabelChange(prior, add, remove, { archiveFolder });
+  store.applyLabelChange(accountId, messageId, landed.add, landed.remove);
 }
 
 function changed() {
@@ -102,7 +111,9 @@ export async function snoozeThread(
   changed();
   try {
     await providerFor(accountId).modifyThread(accountId, threadId, { removeLabelIds: ["INBOX"] });
-    store.applyLabelChangeToThread(accountId, threadId, [], ["INBOX"]);
+    for (const m of store.getThreadMessages(accountId, threadId)) {
+      mirror(accountId, m.id, [], ["INBOX"]);
+    }
     db().prepare("UPDATE mail_schedule SET state = 'pending' WHERE id = ?").run(id);
     changed();
   } catch (error) {
@@ -130,7 +141,7 @@ async function wake(entry: MailSchedule): Promise<void> {
     if (m.labelIds.includes("SENT") && !inboxIds.has(m.id)) continue;
     await provider.modifyMessage(entry.accountId, m.id, { addLabelIds: ["INBOX"] });
     // IMAP moves re-key their cached rows themselves.
-    store.applyLabelChange(entry.accountId, m.id, ["INBOX"], []);
+    mirror(entry.accountId, m.id, ["INBOX"], []);
   }
 }
 

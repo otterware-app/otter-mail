@@ -11,12 +11,20 @@
  * still arrive); a failed write drops it, so its local revert sticks.
  */
 
-import type { GmailMessageSummary } from "../types.js";
+import { landLabelChange, type Landing } from "@otter-mail/contracts";
+
+import type { MessageSummary } from "../types.js";
 
 /** How long a landed write keeps overriding what Gmail reports. */
 const SETTLED_GRACE_MS = 30_000;
 
-type PendingChange = { add: string[]; remove: string[]; until: number };
+type PendingChange = {
+  add: string[];
+  remove: string[];
+  /** How it lands (landLabelChange): where Archive is a folder, mail moves in and out of it. */
+  landing: Landing;
+  until: number;
+};
 
 /** `${accountId}:${messageId}` → changes, oldest first (so undo-after-archive
     replays in order). */
@@ -41,8 +49,9 @@ export function trackLabelWrite(
   messageIds: string[],
   add: string[],
   remove: string[],
+  landing: Landing = {},
 ): { settled: () => void; dropped: () => void } {
-  const change: PendingChange = { add, remove, until: Number.POSITIVE_INFINITY };
+  const change: PendingChange = { add, remove, landing, until: Number.POSITIVE_INFINITY };
   const keys = messageIds.map((id) => keyOf(accountId, id));
   for (const key of keys) pending.set(key, [...live(key), change]);
   return {
@@ -85,10 +94,7 @@ export function hasPendingLabelWrites(accountId: string): boolean {
 }
 
 /** Messages read from Gmail, with this app's pending label changes re-applied. */
-export function withPendingLabels<T extends GmailMessageSummary>(
-  accountId: string,
-  messages: T[],
-): T[] {
+export function withPendingLabels<T extends MessageSummary>(accountId: string, messages: T[]): T[] {
   if (pending.size === 0) return messages;
   const now = Date.now();
   return messages.map((m) => {
@@ -96,8 +102,9 @@ export function withPendingLabels<T extends GmailMessageSummary>(
     if (changes.length === 0) return m;
     const labels = new Set(m.labelIds);
     for (const c of changes) {
-      for (const l of c.remove) labels.delete(l);
-      for (const l of c.add) labels.add(l);
+      const landed = landLabelChange([...labels], c.add, c.remove, c.landing);
+      for (const l of landed.remove) labels.delete(l);
+      for (const l of landed.add) labels.add(l);
     }
     const labelIds = [...labels];
     return { ...m, labelIds, unread: labels.has("UNREAD"), starred: labels.has("STARRED") };

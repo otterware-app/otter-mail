@@ -1,35 +1,18 @@
 import SwiftUI
 
 /**
- * Settings › Mailboxes, as on the desktop: "All mailboxes", each mailbox on
- * or off, their order (Edit, then drag), and adding one. The arrangement
- * and the mailboxes follow the Otter account to every device.
+ * Settings › Mailboxes, as on the desktop: each mailbox on or off, their
+ * order (Edit, then drag), and adding one. The arrangement and the
+ * mailboxes follow the Otter account to every device.
  */
 struct MailboxesSettings: View {
     @Environment(Session.self) private var session
     @Environment(MailStore.self) private var store
-    @Environment(Preferences.self) private var preferences
     @Environment(\.palette) private var palette
     @State private var error: String?
 
     var body: some View {
         SettingsForm {
-            Section {
-                Toggle(isOn: Binding(
-                    get: { preferences.arrangement.combined },
-                    set: { preferences.arrangement.combined = $0 }
-                )) {
-                    Label {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("All mailboxes")
-                            Text("One inbox for every mailbox").font(.subheadline).foregroundStyle(palette.muted)
-                        }
-                    } icon: {
-                        Image(systemName: "square.stack")
-                    }
-                }
-            }
-
             Section {
                 let shown = store.shownMailboxes
                 ForEach(store.arrangedMailboxes) { mailbox in

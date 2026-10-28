@@ -4,9 +4,11 @@ import Foundation
  * An IMAP mailbox behind `MailProvider`, as docs/imap.md designs it:
  *
  * - Folders are labels: INBOX → `INBOX`, \Sent → `SENT`, \Trash → `TRASH`,
- *   \Junk → `SPAM`; Drafts are drafts and the Archive carries no label (as
- *   archived mail in Gmail); any other folder is a label named by its path.
- *   A message sits in one folder, so labeling, archiving and trashing move it.
+ *   \Junk → `SPAM`, \Archive → `ARCHIVE`; Drafts are drafts; any other
+ *   folder is a label named by its path. A message sits in one folder, so
+ *   labeling, archiving and trashing move it. Gmail's IMAP archives into All
+ *   Mail (\All, not synced: it holds every message), which only takes mail
+ *   out of the inbox.
  * - Flags: no \Seen is unread, \Flagged is starred.
  * - Messages are `<uidvalidity>:<uid>:<folder>`; threads join by the root of
  *   their References, when the subject agrees (anyone can write References).
@@ -30,6 +32,8 @@ final class ImapProvider: MailProvider {
     private var waiting: [CheckedContinuation<Void, Never>] = []
     private var folders: [ImapFolder] = []
     private var roles: [Role: String] = [:]
+    /** Gmail's All Mail, where its IMAP archives (not synced). */
+    private var allMail: String?
 
     /** How many messages a page of a folder brings. */
     private static let page = 30
@@ -88,65 +92,94 @@ final class ImapProvider: MailProvider {
         guard let password = Self.password(email) else { throw ImapError.signedOut }
         let client = try await ImapClient.connect(settings.imap, username: settings.username, auth: .password(password))
         self.client = client
-        folders = try await client.list().filter { $0.attributes.isDisjoint(with: ["\\noselect", "\\nonexistent"]) }
-        findRoles()
+        try await refreshFolders(client)
         return client
     }
 
     // ── Folders ──────────────────────────────────────────────────────────────
 
-    private enum Role: String, CaseIterable {
+    enum Role: String, CaseIterable {
         case inbox, sent, drafts, trash, junk, archive
+
+        /** Its label, as core's are (Drafts' is the messages' own). */
+        var label: String {
+            switch self {
+            case .inbox: "INBOX"
+            case .sent: "SENT"
+            case .drafts: "DRAFT"
+            case .trash: "TRASH"
+            case .junk: "SPAM"
+            case .archive: "ARCHIVE"
+            }
+        }
     }
 
     private func refreshFolders(_ client: ImapClient) async throws {
-        folders = try await client.list().filter { $0.attributes.isDisjoint(with: ["\\noselect", "\\nonexistent"]) }
-        findRoles()
+        let list = try await client.list()
+        (folders, roles, allMail) = Self.folders(list, gmail: await client.capabilities.contains("X-GM-EXT-1"))
     }
 
-    /** Which folder is which: by its special-use attribute (RFC 6154), else by its usual names. */
-    private func findRoles() {
-        let attributes: [Role: [String]] = [.sent: ["\\sent"], .drafts: ["\\drafts"], .trash: ["\\trash"], .junk: ["\\junk"], .archive: ["\\archive", "\\all"]]
+    /**
+     * A LIST's folders worth syncing (not \All or \Flagged: they hold copies
+     * of other folders' mail, and a server's virtual All can't even take a
+     * move), which is which, and Gmail's All Mail (`gmail`: X-GM-EXT-1).
+     * Roles come from the special-use attributes (RFC 6154), else the usual
+     * names, at the top or right under INBOX. On Gmail a folder named Archive
+     * is just a label: Gmail archives into All Mail.
+     */
+    static func folders(_ list: [ImapFolder], gmail: Bool) -> (folders: [ImapFolder], roles: [Role: String], allMail: String?) {
+        let list = list.filter { $0.attributes.isDisjoint(with: ["\\noselect", "\\nonexistent"]) }
+        let folders = list.filter { $0.attributes.isDisjoint(with: ["\\all", "\\flagged"]) }
+        let attributes: [Role: String] = [.sent: "\\sent", .drafts: "\\drafts", .trash: "\\trash", .junk: "\\junk", .archive: "\\archive"]
         let names: [Role: [String]] = [
             .sent: ["sent", "sent items", "sent messages", "sent mail"],
             .drafts: ["drafts", "draft"],
             .trash: ["trash", "deleted items", "deleted messages", "bin"],
             .junk: ["junk", "spam", "junk e-mail", "junk email", "bulk mail"],
-            .archive: ["archive", "archives"],
+            .archive: ["archive", "archives", "archiv", "archivo", "archivio", "archief"],
         ]
-        roles = [.inbox: folders.first { $0.path.uppercased() == "INBOX" }?.path ?? "INBOX"]
+        var roles: [Role: String] = [.inbox: folders.first { $0.path.uppercased() == "INBOX" }?.path ?? "INBOX"]
         for role in Role.allCases where role != .inbox {
-            roles[role] = attributes[role]!.lazy.compactMap { attribute in self.folders.first { $0.attributes.contains(attribute) }?.path }.first
-                ?? folders.first { names[role]!.contains(Self.leaf($0).lowercased()) }?.path
+            roles[role] = folders.first { $0.attributes.contains(attributes[role]!) }?.path
         }
+        for role in Role.allCases where roles[role] == nil && !(gmail && role == .archive) {
+            let taken = Set(roles.values)
+            roles[role] = folders.first { names[role]!.contains(name($0).lowercased()) && !taken.contains($0.path) }?.path
+        }
+        return (folders, roles, gmail ? list.first { $0.attributes.contains("\\all") }?.path : nil)
     }
 
-    /** A role's folder, created when the server has none (a first message sent, trashed, …). */
+    /** A role's folder, created when the server has none (a first message sent, trashed, archived, …). */
     private func path(_ role: Role, _ client: ImapClient) async throws -> String {
         if let path = roles[role] { return path }
         let name = role.rawValue.capitalized
+        // The Archive is flagged for its use where the server can, so other apps find it too.
+        let use = role == .archive ? "\\Archive" : nil
         do {
-            try await client.create(name)
+            try await client.create(name, use: use)
         } catch ImapError.server {
             // Some servers keep every folder under INBOX ("INBOX.Sent").
-            try await client.create("INBOX\(folders.first?.delimiter ?? ".")\(name)")
+            try await client.create("INBOX\(folders.first?.delimiter ?? ".")\(name)", use: use)
         }
         try await refreshFolders(client)
         guard let path = roles[role] else { throw ImapError.server("Couldn't make a \(name) folder.") }
         return path
     }
 
+    /** Where archived mail goes: the Archive (made if missing), or Gmail's All Mail. */
+    private func archive(_ client: ImapClient) async throws -> String {
+        if let allMail { return allMail }
+        return try await path(.archive, client)
+    }
+
     private func role(_ path: String) -> Role? { roles.first { $0.value == path }?.key }
 
-    /** The label a message in `path` wears (nil in Drafts and the Archive). */
+    /** The label a message in `path` wears (nil in Drafts, and Gmail's All Mail). */
     private func label(_ path: String) -> String? {
         switch role(path) {
-        case .inbox: "INBOX"
-        case .sent: "SENT"
-        case .trash: "TRASH"
-        case .junk: "SPAM"
-        case .drafts, .archive: nil
-        case nil: path
+        case .drafts: nil
+        case let role?: role.label
+        case nil: folders.contains { $0.path == path } ? path : nil
         }
     }
 
@@ -162,9 +195,9 @@ final class ImapProvider: MailProvider {
         case .drafts: roles[.drafts]
         case .junk: roles[.junk]
         case .trash: roles[.trash]
-        case .allMail: roles[.archive]
+        case .archive: roles[.archive]
         case .label(let id, _): id
-        case .starred, .important: nil
+        case .starred, .important, .allMail: nil
         }
     }
 
@@ -176,10 +209,12 @@ final class ImapProvider: MailProvider {
         case .drafts: .drafts
         case .junk: .junk
         case .trash: .trash
-        case .archive: .allMail
+        case .archive: .archive
         case nil: .label(id: path, name: path)
         }
     }
+
+    var hasArchive: Bool { roles[.archive] != nil }
 
     func labels() async throws -> [MailLabel] {
         if folders.isEmpty { try await session { try await refreshFolders($0) } }
@@ -195,10 +230,6 @@ final class ImapProvider: MailProvider {
         var parts = folder.delimiter.map { decoded.components(separatedBy: $0) } ?? [decoded]
         if parts.count > 1, parts[0].uppercased() == "INBOX" { parts.removeFirst() }
         return parts.joined(separator: "/")
-    }
-
-    private static func leaf(_ folder: ImapFolder) -> String {
-        name(folder).split(separator: "/").last.map(String.init) ?? folder.path
     }
 
     // ── Syncing ──────────────────────────────────────────────────────────────
@@ -218,13 +249,24 @@ final class ImapProvider: MailProvider {
             if state.folders == nil {
                 // The first time: the newest of the inbox, and of Sent and Drafts so replies join their threads.
                 state.folders = [:]
+                state.archiveLabeled = true
                 for role in [Role.inbox, .sent, .drafts] {
                     if let path = roles[role] { try await loadPage(path, &state, client, &changes) }
                 }
             } else {
                 try await catchUp(&state, known: known, client, &changes)
             }
-            return merge(known, changes)
+            var delta = merge(known, changes)
+            if state.archiveLabeled != true {
+                // Cached before the Archive's mail carried ARCHIVE: labeled once as its folders say now.
+                let merged = Set(delta.threads.map(\.id)).union(delta.removed)
+                for var thread in known where !merged.contains(thread.id) && labels(of: thread) != thread.labels {
+                    thread.labels = labels(of: thread)
+                    delta.threads.append(thread)
+                }
+                state.archiveLabeled = true
+            }
+            return delta
         }
     }
 
@@ -316,11 +358,12 @@ final class ImapProvider: MailProvider {
         state.paged(MailSync.key(folder(path)), next: older.count > page.count ? "more" : nil, oldest: fetched.map(\.message.date).min())
     }
 
-    /** Starts syncing a folder from now, before mail is moved or written there. */
+    /** Starts syncing a folder from now, before mail is moved or written there (not Gmail's All Mail: it holds every message). */
     @discardableResult
     private func track(_ path: String, _ state: inout MailboxState, _ client: ImapClient) async throws -> UInt32 {
         if let saved = state.folders?[path] { return saved.uidValidity }
         let status = try await client.select(path)
+        guard path != allMail else { return status.uidValidity }
         if state.folders == nil { state.folders = [:] }
         state.folders?[path] = ImapFolderState(uidValidity: status.uidValidity, uidNext: status.uidNext, highestModSeq: nil, oldest: status.uidNext)
         return status.uidValidity
@@ -512,22 +555,9 @@ final class ImapProvider: MailProvider {
                 if add.contains("UNREAD") { try await flag(ids, #"-FLAGS.SILENT (\Seen)"#, client) }
                 if remove.contains("UNREAD") { try await flag(ids, #"+FLAGS.SILENT (\Seen)"#, client) }
                 if remove.contains("STARRED") { try await flag(ids, #"-FLAGS.SILENT (\Flagged)"#, client) }
-                let adding = add.filter { $0 != "UNREAD" && $0 != "STARRED" }
-                let removing = Set(remove.filter { $0 != "UNREAD" && $0 != "STARRED" })
-                guard !adding.isEmpty || !removing.isEmpty else { break }
-                // Into the label's folder; out of the inbox is to the Archive; out of another folder, back to the inbox.
-                let destination = if let label = adding.first {
-                    try await path(label: label, client)
-                } else if removing.contains("INBOX") {
-                    try await path(.archive, client)
-                } else {
-                    roles[.inbox]
+                for (destination, group) in try await moves(ids, add: add, remove: remove, in: thread, client) {
+                    moved.merge(try await move(group, to: destination, &state, client)) { $1 }
                 }
-                // What moves: what's in the folders the change takes it out of, else what's filed (not Sent, Drafts, Trash or Junk).
-                let sources = removing.isEmpty
-                    ? ids.filter { [nil, .inbox, .archive].contains(role($0.path)) }
-                    : ids.filter { removing.contains(label($0.path) ?? "") }
-                if let destination { moved = try await move(sources, to: destination, &state, client) }
             case .star(let message):
                 if let id = ImapID(message) { try await flag([id], #"+FLAGS.SILENT (\Flagged)"#, client) }
             case .trash:
@@ -594,8 +624,50 @@ final class ImapProvider: MailProvider {
         case "SENT": try await path(.sent, client)
         case "SPAM": try await path(.junk, client)
         case "TRASH": try await path(.trash, client)
+        case "ARCHIVE": try await archive(client)
         default: folders.contains { $0.path == label } ? label : nil
         }
+    }
+
+    /**
+     * Where a label change on a conversation sends its messages, as core's
+     * imap/writes.ts plans it. A folder added wins: the conversation goes
+     * there, its own mail staying in Sent and Drafts (and out of Junk and
+     * Trash) unless the change takes it from there or it's trashed. Taking
+     * the inbox or a folder away archives what's there; taking Junk or the
+     * Archive away puts it back in the inbox (your own mail in Sent).
+     */
+    private func moves(_ ids: [ImapID], add: [String], remove: [String], in thread: MailThread, _ client: ImapClient) async throws -> [String: [ImapID]] {
+        let isFolder = { (label: String) in
+            ["INBOX", "TRASH", "SPAM", "ARCHIVE"].contains(label) || self.folders.contains { $0.path == label && self.role(label) == nil }
+        }
+        if let target = add.first(where: isFolder) {
+            guard let destination = try await path(label: target, client) else { return [:] }
+            let kept = (target == "TRASH" ? [] : Set(["SENT", "DRAFT", "TRASH", "SPAM"])).subtracting(remove)
+            let others = ids.filter { $0.path != destination }
+            var movable = others.filter { !kept.contains(role($0.path)?.label ?? "") }
+            // Only your own mail in it (a conversation you started): that moves.
+            if movable.isEmpty { movable = others.filter { role($0.path) != .drafts } }
+            // Junk and Not junk take only what was seen where they were asked (else the latest): anyone can make their mail look part of a conversation.
+            if target == "SPAM" || remove.contains("SPAM") {
+                let seen = movable.filter { label($0.path).map(remove.contains) ?? false }
+                movable = seen.isEmpty ? Array(movable.suffix(1)) : seen
+            }
+            return [destination: movable]
+        }
+        let archived = remove.filter { $0 == "INBOX" || isFolder($0) && !["TRASH", "SPAM", "ARCHIVE"].contains($0) }
+        if !archived.isEmpty {
+            return [try await archive(client): ids.filter { label($0.path).map(archived.contains) ?? false }]
+        }
+        let back = ids.filter { id in role(id.path).map { [.junk, .archive].contains($0) && remove.contains($0.label) } ?? false }
+        guard !back.isEmpty else { return [:] }
+        let own = Set(thread.messages.filter { $0.from.isAddress(email) }.map(\.id))
+        var moves: [String: [ImapID]] = [:]
+        for id in back {
+            let destination = if own.contains(id.id) { try await path(.sent, client) } else { roles[.inbox] ?? "INBOX" }
+            moves[destination, default: []].append(id)
+        }
+        return moves
     }
 
     private func flag(_ ids: [ImapID], _ change: String, _ client: ImapClient) async throws {
@@ -613,7 +685,12 @@ final class ImapProvider: MailProvider {
         var out: [String: String?] = [:]
         for (path, group) in Dictionary(grouping: movers, by: \.path) {
             try await client.open(path)
-            let uids = try await client.move(group.map(\.uid), to: destination)
+            // Out of Gmail's All Mail, only a copy: there, taking it out would delete it.
+            let uids = if path == allMail {
+                try await client.copy(group.map(\.uid), to: destination)
+            } else {
+                try await client.move(group.map(\.uid), to: destination)
+            }
             for id in group {
                 out.updateValue(uids[id.uid].map { ImapID(validity: validity, uid: $0, path: destination).id }, forKey: id.id)
             }

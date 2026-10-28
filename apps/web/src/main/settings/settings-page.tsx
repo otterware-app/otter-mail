@@ -3,13 +3,13 @@ import { DEFAULT_SETTINGS } from "@otter-mail/contracts";
 import { TodoistSettingsPane } from "../integrations/todoist";
 import { useCallback, useEffect, useState } from "react";
 import { Switch } from "~/components/ui/switch";
-import { toast } from "../gmail/toast";
-import { gmailApi, type MailApp, type NotificationsMode, type SettingsPane } from "../gmail/api";
+import { toast } from "../mail/toast";
+import { mailApi, type MailApp, type NotificationsMode, type SettingsPane } from "../mail/api";
 import {
   getAdvanceDirection,
   setAdvanceDirection as persistAdvanceDirection,
   type AdvanceDirection,
-} from "../gmail/advance-direction";
+} from "../mail/advance-direction";
 import { AppearancePane } from "./appearance-pane";
 import { KeybindingsPane } from "./keybindings-pane";
 import { AccountsPane } from "./accounts-pane";
@@ -29,7 +29,7 @@ import {
 import { searchableSetting } from "./settings-search";
 import { features } from "../features";
 import { osNames } from "../os-names";
-import { Btn } from "../gmail/ui";
+import { Btn } from "../mail/ui";
 import { requestTour, startSetup } from "../onboarding/onboarding";
 import { requestProblemReport } from "../support/report-problem";
 
@@ -80,7 +80,7 @@ function GeneralPane() {
   const loadSyncSettings = async () => {
     console.log("[Settings:loadSyncSettings]");
     try {
-      const settings = await gmailApi.getSyncSettings();
+      const settings = await mailApi.getSyncSettings();
       setSyncInterval(settings.syncIntervalSeconds);
       setNotificationsMode(settings.notificationsMode);
       setLaunchAtLogin(settings.launchAtLogin);
@@ -93,7 +93,7 @@ function GeneralPane() {
   const loadMailApps = async () => {
     if (!features.defaultMailApp) return;
     try {
-      const result = await gmailApi.listMailApps();
+      const result = await mailApi.listMailApps();
       setMailApps(result.apps);
       setDefaultMailAppId(result.defaultId);
     } catch (error) {
@@ -124,7 +124,7 @@ function GeneralPane() {
     setSyncInterval(seconds);
     console.log("[Settings:setSyncInterval]", { seconds });
     try {
-      await gmailApi.setSyncSettings({ syncIntervalSeconds: seconds });
+      await mailApi.setSyncSettings({ syncIntervalSeconds: seconds });
     } catch (error) {
       toast.error(`Failed to save sync setting: ${error}`);
       void loadSyncSettings();
@@ -136,7 +136,7 @@ function GeneralPane() {
     setNotificationsMode(mode);
     console.log("[Settings:setNotificationsMode]", { mode });
     try {
-      await gmailApi.setSyncSettings({ notificationsMode: mode });
+      await mailApi.setSyncSettings({ notificationsMode: mode });
     } catch (error) {
       toast.error(`Failed to save notifications setting: ${error}`);
       void loadSyncSettings();
@@ -154,7 +154,7 @@ function GeneralPane() {
     setLaunchAtLogin(checked);
     console.log("[Settings:setLaunchAtLogin]", { checked });
     try {
-      await gmailApi.setSyncSettings({ launchAtLogin: checked });
+      await mailApi.setSyncSettings({ launchAtLogin: checked });
     } catch (error) {
       toast.error(`Failed to save launch-at-login setting: ${error}`);
       void loadSyncSettings();
@@ -165,7 +165,7 @@ function GeneralPane() {
     setDockBadge(checked);
     console.log("[Settings:setDockBadgeEnabled]", { checked });
     try {
-      await gmailApi.setSyncSettings({ dockBadgeEnabled: checked });
+      await mailApi.setSyncSettings({ dockBadgeEnabled: checked });
     } catch (error) {
       toast.error(`Failed to change Dock badge: ${error}`);
       void loadSyncSettings();
@@ -176,7 +176,7 @@ function GeneralPane() {
     setDefaultMailAppId(id);
     console.log("[Settings:setDefaultMailApp]", { id });
     try {
-      await gmailApi.setDefaultMailApp(id);
+      await mailApi.setDefaultMailApp(id);
     } catch (error) {
       toast.error(`Failed to change default mail app: ${error}`);
     }

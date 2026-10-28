@@ -6,8 +6,8 @@ import { Dialog } from "~/components/ui/dialog";
 import { Switch } from "~/components/ui/switch";
 import { Text } from "~/components/ui/text";
 import { ipc } from "~/lib/ipc";
-import { toast } from "../gmail/toast";
-import { Btn, cn } from "../gmail/ui";
+import { toast } from "../mail/toast";
+import { Btn, cn } from "../mail/ui";
 import {
   SettingResetButton,
   SettingsGroup,

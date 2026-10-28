@@ -6,7 +6,7 @@
 
 import { getAccount } from "../services/account-store.js";
 import * as mailStore from "../services/mail-store.js";
-import type { ComposeAttachment, GmailMessageSummary } from "../types.js";
+import type { ComposeAttachment, MessageSummary } from "../types.js";
 
 // ── Draft sessions (one per open composer) ──────────────────────────────────
 
@@ -56,7 +56,7 @@ export async function mirrorDraft(
   if (!res.messageId) return;
   try {
     const account = await getAccount(accountId);
-    const summary: GmailMessageSummary = {
+    const summary: MessageSummary = {
       id: res.messageId,
       threadId: res.threadId ?? res.messageId,
       fromName: account?.displayName || account?.name || "",

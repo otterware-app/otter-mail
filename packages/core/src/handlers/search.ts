@@ -13,7 +13,7 @@ import { logger } from "../logger.js";
 import { providerFor } from "../providers/index.js";
 import * as mailStore from "../services/mail-store.js";
 import { runAsTask } from "./ipc-budget.js";
-import type { GmailMessageSummary } from "../types.js";
+import type { MessageSummary } from "../types.js";
 
 const PAGE_SIZE = 50;
 
@@ -21,7 +21,7 @@ const PAGE_SIZE = 50;
 type Cursors = Record<string, string | null>;
 
 type SearchResult = {
-  messages: GmailMessageSummary[];
+  messages: MessageSummary[];
   /** Next page's cursors; undefined when every account is exhausted. */
   cursors?: Cursors;
   /** Gmail's estimate of total matches across the accounts. */
@@ -35,7 +35,7 @@ async function searchAccount(
   accountId: string,
   q: string,
   cursor: string | undefined,
-): Promise<{ rows: GmailMessageSummary[]; next: string | null; estimate: number }> {
+): Promise<{ rows: MessageSummary[]; next: string | null; estimate: number }> {
   const provider = providerFor(accountId);
   if (!provider.search) {
     const local = searchLocal(accountId, q);
@@ -65,6 +65,7 @@ const SYSTEM_LABELS: Record<string, string> = {
   junk: "SPAM",
   trash: "TRASH",
   starred: "STARRED",
+  flagged: "STARRED",
   unread: "UNREAD",
   important: "IMPORTANT",
 };
@@ -100,7 +101,7 @@ function labelOf(accountId: string, op: Operator): string | null {
 }
 
 /** Whether a cached message matches one operator; ones this can't judge match. */
-function matches(accountId: string, m: GmailMessageSummary, op: Operator): boolean {
+function matches(accountId: string, m: MessageSummary, op: Operator): boolean {
   const includes = (...texts: (string | undefined)[]) =>
     texts.some((t) => t?.toLowerCase().includes(op.value));
   switch (op.key) {
@@ -143,7 +144,7 @@ function matches(accountId: string, m: GmailMessageSummary, op: Operator): boole
  * `is:unread`, `has:attachment`, `newer_than:`…) applied to what it finds, so
  * the search bar and its chips work the same on mailboxes without server search.
  */
-function searchLocal(accountId: string, q: string): GmailMessageSummary[] {
+function searchLocal(accountId: string, q: string): MessageSummary[] {
   const ops = operatorsOf(q);
   // The first label it names (`in:inbox`, `is:unread`) is where to look.
   const labelId = ops
@@ -181,7 +182,7 @@ function freeText(q: string): string {
     .trim();
 }
 
-export async function searchGmail(
+export async function searchMail(
   q: string,
   accountIds: string[],
   cursors?: Cursors,
@@ -205,7 +206,7 @@ export async function searchGmail(
 
   const next: Cursors = { ...cursors };
   let estimate = 0;
-  const rows: GmailMessageSummary[] = [];
+  const rows: MessageSummary[] = [];
   settled.forEach((s, i) => {
     const accountId = active[i];
     if (s.status === "fulfilled") {
@@ -237,6 +238,6 @@ export function registerSearchHandlers(): void {
     const taskId = typeof p?.taskId === "string" ? p.taskId : undefined;
     if (!q || accountIds.length === 0) return { messages: [], estimate: 0 };
     logger.info("search", "gmail search", { accounts: accountIds.length, paged: Boolean(cursors) });
-    return runAsTask(taskId, () => searchGmail(q, accountIds, cursors));
+    return runAsTask(taskId, () => searchMail(q, accountIds, cursors));
   });
 }

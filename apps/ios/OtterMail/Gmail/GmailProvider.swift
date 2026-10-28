@@ -62,6 +62,7 @@ final class GmailProvider: MailProvider {
     }
 
     func labels() async throws -> [MailLabel] { try await api.labels() }
+    var hasArchive: Bool { false }
     func signature() async throws -> String? { try await api.signature() }
     func setSignature(_ html: String) async throws -> String { try await api.setSignature(html) }
 
@@ -77,7 +78,8 @@ final class GmailProvider: MailProvider {
         case .sent: "SENT"
         case .drafts: "DRAFT"
         case .important: "IMPORTANT"
-        case .allMail: nil
+        // Gmail's archive is All Mail: archived mail just lacks INBOX.
+        case .allMail, .archive: nil
         case .junk: "SPAM"
         case .trash: "TRASH"
         case .label(let id, _): id

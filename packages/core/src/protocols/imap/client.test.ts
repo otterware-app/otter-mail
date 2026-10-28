@@ -187,4 +187,18 @@ describe("ImapClient against a pretend server", () => {
       serverText: "Shutting down",
     });
   });
+
+  it("searches with Gmail's own syntax (X-GM-RAW)", async () => {
+    const stream = new FakeStream(
+      "* PREAUTH [CAPABILITY IMAP4rev1 X-GM-EXT-1] hi\r\n",
+      (text) => `* SEARCH 4 9\r\n${tagOf(text)} OK done\r\n`,
+    );
+    const client = await connectImap(options(stream, { security: "tls" }));
+    expect(await client.search({ deleted: false, gmailRaw: "-in:inbox has:nouserlabels" })).toEqual(
+      [4, 9],
+    );
+    expect(stream.written.at(-1)).toBe(
+      'A1 UID SEARCH UNDELETED X-GM-RAW "-in:inbox has:nouserlabels"\r\n',
+    );
+  });
 });

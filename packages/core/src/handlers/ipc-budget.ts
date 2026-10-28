@@ -12,7 +12,7 @@ import { broadcast } from "../ipc.js";
  *  eventually fails, the mirror is reverted and the renderer is told. */
 export const IPC_WRITE_BUDGET_MS = 4_000;
 
-export async function settleGmailWrite(
+export async function settleWrite(
   channel: string,
   write: Promise<unknown>,
   revert: () => void,

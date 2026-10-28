@@ -235,7 +235,18 @@ actor ImapClient {
         }
     }
 
-    func create(_ path: String) async throws {
+    /**
+     * Makes a folder; `use` flags what it's for (`\Archive`) where the server
+     * can (CREATE-SPECIAL-USE, RFC 6154). A server may refuse the flag: the
+     * folder is made without it then, and its name says what it's for.
+     */
+    func create(_ path: String, use: String? = nil) async throws {
+        if let use, capabilities.contains("CREATE-SPECIAL-USE") {
+            do {
+                try await command("CREATE \(Self.quote(path)) (USE (\(use)))")
+                return
+            } catch ImapError.server {}
+        }
         try await command("CREATE \(Self.quote(path))")
     }
 
@@ -304,13 +315,22 @@ actor ImapClient {
     /** Moves messages to `path`; answers their new UIDs there (when the server says, UIDPLUS). */
     func move(_ uids: [UInt32], to path: String) async throws -> [UInt32: UInt32] {
         guard !uids.isEmpty else { return [:] }
-        let reply: Reply
-        if capabilities.contains("MOVE") {
-            reply = try await command("UID MOVE \(imapSet(uids)) \(Self.quote(path))")
-        } else {
-            reply = try await command("UID COPY \(imapSet(uids)) \(Self.quote(path))")
+        guard capabilities.contains("MOVE") else {
+            let copied = try await copy(uids, to: path)
             try await delete(uids)
+            return copied
         }
+        return Self.copied(try await command("UID MOVE \(imapSet(uids)) \(Self.quote(path))"))
+    }
+
+    /** Copies messages to `path`; answers their UIDs there (when the server says, UIDPLUS). */
+    func copy(_ uids: [UInt32], to path: String) async throws -> [UInt32: UInt32] {
+        guard !uids.isEmpty else { return [:] }
+        return Self.copied(try await command("UID COPY \(imapSet(uids)) \(Self.quote(path))"))
+    }
+
+    /** COPYUID's old UID → new UID, from a MOVE's or COPY's reply. */
+    private static func copied(_ reply: Reply) -> [UInt32: UInt32] {
         let codes = [reply.code] + reply.untagged.filter { $0.kind == "OK" }.map(\.values)
         guard let copy = codes.first(where: { $0.first?.text?.uppercased() == "COPYUID" }), copy.count == 4 else { return [:] }
         return Dictionary(zip(imapUIDs(copy[2].text ?? ""), imapUIDs(copy[3].text ?? ""))) { a, _ in a }
