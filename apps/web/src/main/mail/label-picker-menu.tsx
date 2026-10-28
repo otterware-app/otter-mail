@@ -12,6 +12,7 @@ import {
 import { useCapabilities } from "./capabilities";
 import { useLabels, useModifyThread } from "./hooks";
 import { buildLabelTree, type LabelTreeNode, isAssignableLabel } from "./label-tree";
+import { ARCHIVE_LABEL_ID, SNOOZED_LABEL_ID } from "./label-names";
 import type { MailLabel } from "./types";
 
 type LabelChoicesParams = {
@@ -21,6 +22,8 @@ type LabelChoicesParams = {
   threadId: string;
   /** Labels currently on the conversation (union over its messages). */
   labelIds: string[];
+  /** Outlook: its folders ("Move to folder") rather than its categories. */
+  folders?: boolean;
 };
 
 type LabelPickerMenuProps = LabelChoicesParams & {
@@ -87,12 +90,17 @@ export function renderLabelMenuNodes(
 }
 
 /**
- * Moving a conversation to one folder, for mailboxes whose mail sits in one
- * folder at a time (IMAP: no `multipleLabels`): the folder is added and the
- * folders it was in (Inbox, or another of `labels`) come off.
+ * Moving a conversation to one folder, for mail that sits in one folder at a
+ * time (IMAP's, Outlook's folders): the folder is added and the folders it was
+ * in (Inbox, the Archive, or another of `labels`) come off.
  */
 export function moveToFolder(labelIds: string[], folderId: string, labels: MailLabel[]) {
-  const folders = new Set(["INBOX", ...labels.filter(isAssignableLabel).map((l) => l.id)]);
+  const folders = new Set([
+    "INBOX",
+    ARCHIVE_LABEL_ID,
+    SNOOZED_LABEL_ID,
+    ...labels.filter(isAssignableLabel).map((l) => l.id),
+  ]);
   return {
     addLabelIds: [folderId],
     removeLabelIds: labelIds.filter((id) => id !== folderId && folders.has(id)),
@@ -101,30 +109,35 @@ export function moveToFolder(labelIds: string[], folderId: string, labels: MailL
 
 /**
  * A conversation's label checklist: the labels it can take, and toggling one.
- * In a mailbox with one folder per message it becomes "Move to folder": Inbox
- * first, and picking a folder moves the conversation there.
+ * For folders (a mailbox with one folder per message, or Outlook's folders
+ * beside its categories) it's "Move to folder": Inbox and the Archive first,
+ * and picking a folder moves the conversation there.
  */
-export function useLabelChoices({ accountId, threadId, labelIds }: LabelChoicesParams) {
+export function useLabelChoices({
+  accountId,
+  threadId,
+  labelIds,
+  folders: outlookFolders = false,
+}: LabelChoicesParams) {
   const labelsQuery = useLabels(accountId);
   const modifyThread = useModifyThread();
-  const { multipleLabels, foldersAndCategories } = useCapabilities(accountId);
-  const labels = labelsQuery.data ?? [];
-  const tree = buildLabelTree(
-    labels
-      .filter(isAssignableLabel)
-      .filter((label) => !foldersAndCategories || label.id.startsWith("category:")),
-  );
+  const { multipleLabels, foldersAndCategories, archiveFolder } = useCapabilities(accountId);
+  const folders = !multipleLabels || outlookFolders;
+  const choices = (labelsQuery.data ?? [])
+    .filter(isAssignableLabel)
+    .filter((label) => !foldersAndCategories || label.id.startsWith("folder:") === folders);
+  const tree = buildLabelTree(choices);
   const applied = new Set(labelIds);
 
   const toggle = (labelId: string, checked: boolean) => {
     console.log("[LabelPickerMenu:toggle]", { accountId, threadId, labelId, checked });
-    if (!multipleLabels) {
+    if (folders) {
       // Unchecking the folder it's in has nowhere to move it.
       if (checked) {
         void modifyThread.mutateAsync({
           accountId,
           threadId,
-          ...moveToFolder(labelIds, labelId, labels),
+          ...moveToFolder(labelIds, labelId, choices),
         });
       }
       return;
@@ -141,15 +154,19 @@ export function useLabelChoices({ accountId, threadId, labelIds }: LabelChoicesP
     tree,
     applied,
     toggle,
-    folders: !multipleLabels,
-    title: foldersAndCategories ? "Categorize" : multipleLabels ? "Label" : "Move to folder",
+    folders,
+    /** Where the Archive is a folder, it's one to move to. */
+    archive: folders && !!archiveFolder,
+    /** Outlook's categories: its folders are a menu of their own (`folders: true`). */
+    alsoFolders: foldersAndCategories && !folders,
+    title: folders ? "Move to folder" : foldersAndCategories ? "Categorize" : "Label",
     empty: foldersAndCategories ? "No categories" : "No labels",
   };
 }
 
-/** The checklist's items: "No labels", or the tree (after Inbox, for folders). */
+/** The checklist's items: "No labels", or the tree (after Inbox and the Archive, for folders). */
 export function renderLabelChoices(
-  { tree, applied, toggle, folders, empty }: ReturnType<typeof useLabelChoices>,
+  { tree, applied, toggle, folders, archive, empty }: ReturnType<typeof useLabelChoices>,
   kit: LabelMenuKit,
 ): React.ReactNode {
   if (!folders) {
@@ -167,6 +184,14 @@ export function renderLabelChoices(
       >
         Inbox
       </kit.CheckboxItem>
+      {archive ? (
+        <kit.CheckboxItem
+          checked={applied.has(ARCHIVE_LABEL_ID)}
+          onCheckedChange={(checked) => toggle(ARCHIVE_LABEL_ID, checked)}
+        >
+          Archive
+        </kit.CheckboxItem>
+      ) : null}
       {tree.length > 0 ? <kit.Separator /> : null}
       {renderLabelMenuNodes(tree, applied, toggle, kit)}
     </>

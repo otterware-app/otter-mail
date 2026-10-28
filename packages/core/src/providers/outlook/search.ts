@@ -7,7 +7,7 @@
  * `is:starred`, a category) is checked on each result.
  */
 
-import { ARCHIVE_LABEL_ID, OTHER_LABEL_ID, SNOOZED_LABEL_ID } from "@otter-mail/contracts";
+import { ARCHIVE_LABEL_ID, SNOOZED_LABEL_ID } from "@otter-mail/contracts";
 
 import { categoryOf, folderOfLabel, labelsFor } from "./folders.js";
 import { graph, type Page } from "./graph.js";
@@ -20,7 +20,6 @@ function filterFor(labelId: string): string | null {
   if (labelId === "UNREAD") return "isRead eq false";
   if (labelId === "STARRED") return "flag/flagStatus eq 'flagged'";
   if (labelId === "IMPORTANT") return "importance eq 'high'";
-  if (labelId === OTHER_LABEL_ID) return "inferenceClassification eq 'other'";
   const category = categoryOf(labelId);
   return category !== null ? `categories/any(c:c eq ${quote(category)})` : null;
 }
@@ -71,7 +70,6 @@ const SYSTEM_LABELS: Record<string, string> = {
   trash: "TRASH",
   archive: ARCHIVE_LABEL_ID,
   snoozed: SNOOZED_LABEL_ID,
-  other: OTHER_LABEL_ID,
   starred: "STARRED",
   flagged: "STARRED",
   unread: "UNREAD",

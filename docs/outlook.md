@@ -53,11 +53,7 @@ MailProvider               packages/core/src/providers/provider.ts
 - Categories are labels `category:<name>`: several per message, with Outlook's preset colors
   (picking a color in the app takes the nearest preset). New labels are categories. Outlook
   can't rename a category, so renaming makes a new one and moves it onto its messages.
-- Flagged → `STARRED` (Flagged in the sidebar), unread → `UNREAD`, high importance → `IMPORTANT`,
-  Focused Inbox's Other (`inferenceClassification`) → `OTHER`. The inbox has All · Focused ·
-  Other tabs (`capabilities.focusedInbox`; All until picked, as Graph doesn't say whether
-  Focused Inbox is on), and a row's menu moves it between Focused and Other (a PATCH, so
-  Outlook learns from it). Mail cached before `OTHER` existed gets it once.
+- Flagged → `STARRED` (Flagged in the sidebar), unread → `UNREAD`, high importance → `IMPORTANT`.
 - Writes (`outlook/writes.ts`): those three are message properties, categories are set on the
   message; adding a folder label (ARCHIVE included) moves the message there; removing its
   folder's label moves it to Archive (`POST /me/messages/{id}/move`, `destinationId: "archive"`),
