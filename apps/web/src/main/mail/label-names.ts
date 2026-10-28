@@ -4,8 +4,8 @@ import type { MailLabel } from "./types";
 /** Pseudo label id for "All Mail" (every message but Spam/Trash) — mirrors the backend. */
 export const ALL_MAIL_LABEL_ID = "ALL_MAIL";
 
-/** The Archive folder's label (Outlook, IMAP); Outlook's Snoozed; Focused Inbox's Other. */
-export { ARCHIVE_LABEL_ID, OTHER_LABEL_ID, SNOOZED_LABEL_ID } from "@otter-mail/contracts";
+/** The Archive folder's label (Outlook, IMAP); Outlook's Snoozed. */
+export { ARCHIVE_LABEL_ID, SNOOZED_LABEL_ID } from "@otter-mail/contracts";
 
 /** Friendly display names for Gmail's system labels. */
 export const SYSTEM_LABEL_NAMES: Record<string, string> = {

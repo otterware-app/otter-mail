@@ -1,4 +1,4 @@
-import { ARCHIVE_LABEL_ID, OTHER_LABEL_ID } from "@otter-mail/contracts";
+import { ARCHIVE_LABEL_ID } from "@otter-mail/contracts";
 
 import type { ActionSummary } from "./undo";
 
@@ -23,8 +23,6 @@ export function summarizeLabelChange(
   if (remove.includes("TRASH")) return s("Restored", " from Trash");
   if (add.includes("SPAM")) return s("Marked", " as junk");
   if (remove.includes("SPAM")) return s("Marked", " as not junk");
-  if (add.includes(OTHER_LABEL_ID)) return s("Moved", " to Other");
-  if (remove.includes(OTHER_LABEL_ID)) return s("Moved", " to Focused");
 
   const addedLabel = add.find(isUser);
   if (addedLabel) {

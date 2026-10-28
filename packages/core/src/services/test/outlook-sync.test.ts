@@ -44,8 +44,6 @@ type Message = {
   flagged: boolean;
   importance: "normal" | "high";
   categories: string[];
-  /** Focused Inbox sorted it as Other. */
-  other?: boolean;
   /** Sent by the mailbox itself. */
   fromMe: boolean;
   date: number;
@@ -118,7 +116,6 @@ const resource = (m: Message) => ({
   flag: { flagStatus: m.flagged ? "flagged" : "notFlagged" },
   importance: m.importance,
   categories: m.categories,
-  inferenceClassification: m.other ? "other" : "focused",
   hasAttachments: false,
   parentFolderId: m.folder,
   internetMessageId: `<${m.id}@example.test>`,
@@ -173,12 +170,9 @@ function handle(method: string, url: URL, body: unknown): Response {
   const search = url.searchParams.get("$search");
   if (search) searches.push({ path, search });
   if (list) {
-    const otherOnly = /inferenceClassification eq 'other'/.test(
-      url.searchParams.get("$filter") ?? "",
-    );
     return json({
       value: [...messages.values()]
-        .filter((m) => m.folder === list[1] && (!otherOnly || m.other))
+        .filter((m) => m.folder === list[1])
         .sort((a, b) => b.date - a.date)
         .map(resource),
     });
@@ -207,10 +201,8 @@ function handle(method: string, url: URL, body: unknown): Response {
         isRead?: boolean;
         flag?: { flagStatus: string };
         categories?: string[];
-        inferenceClassification?: string;
       };
       if (patch.isRead !== undefined) m.isRead = patch.isRead;
-      if (patch.inferenceClassification) m.other = patch.inferenceClassification === "other";
       if (patch.flag) m.flagged = patch.flag.flagStatus === "flagged";
       if (patch.categories) m.categories = patch.categories;
       m.version = ++version;
@@ -581,28 +573,6 @@ describe("Outlook sync", () => {
     expect(labelsOf("old")).toEqual(["ARCHIVE"]);
     expect(labelsOf("in")?.sort()).toEqual(["INBOX", "UNREAD"]);
     expect(mailStore.getThreadsPage(account.id, "ARCHIVE", 0, 10).messages).toHaveLength(1);
-  });
-
-  it("keeps Focused Inbox's Other as OTHER, and moves mail between Focused and Other", async () => {
-    deliver("other", "inbox", { other: true });
-    deliver("focused", "inbox");
-    const { status, labelsOf, provider, mailStore, sync } = await boot();
-    await until(() => status().fullSyncDone && !status().syncing, "the first sync");
-    expect(labelsOf("other")?.sort()).toEqual(["INBOX", "OTHER", "UNREAD"]);
-    expect(labelsOf("focused")?.sort()).toEqual(["INBOX", "UNREAD"]);
-
-    await provider.modifyMessage(account.id, "focused", { addLabelIds: ["OTHER"] });
-    expect(messages.get("focused")?.other).toBe(true);
-    await provider.modifyMessage(account.id, "other", { removeLabelIds: ["OTHER"] });
-    expect(messages.get("other")?.other).toBe(false);
-
-    // Mail cached before its sorting was kept gets OTHER once.
-    mailStore.applyHistoryChanges(account.id, [
-      { kind: "labelsRemoved", id: "focused", labelIds: ["OTHER"] },
-    ]);
-    mailStore.setKv(`outlookOther:${account.id}`, "");
-    await sync();
-    expect(labelsOf("focused")).toContain("OTHER");
   });
 
   it("shows Outlook's Scheduled folder, where its Snooze keeps mail, as SNOOZED", async () => {

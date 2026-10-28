@@ -10,11 +10,10 @@
  *
  * Categories are Outlook's labels: several per message, each with a color.
  * They're user labels too, `category:<name>`. Flags, read state and
- * importance stand for STARRED, UNREAD and IMPORTANT, and Focused Inbox's
- * Other for OTHER.
+ * importance stand for STARRED, UNREAD and IMPORTANT.
  */
 
-import { ARCHIVE_LABEL_ID, OTHER_LABEL_ID, SNOOZED_LABEL_ID } from "@otter-mail/contracts";
+import { ARCHIVE_LABEL_ID, SNOOZED_LABEL_ID } from "@otter-mail/contracts";
 
 import * as store from "../../services/mail-store.js";
 import type { MailLabel } from "../../types.js";
@@ -52,7 +51,7 @@ const SYSTEM_LABEL: Partial<Record<WellKnown, string>> = {
 const SKIPPED: WellKnown[] = ["outbox", "conversationhistory", "syncissues"];
 
 /** The labels flags and properties stand for, besides the folder's own and categories. */
-export const FLAG_LABELS = ["UNREAD", "STARRED", "IMPORTANT", OTHER_LABEL_ID];
+export const FLAG_LABELS = ["UNREAD", "STARRED", "IMPORTANT"];
 
 export interface Folder {
   id: string;
@@ -358,7 +357,6 @@ export function labelsFor(
     flag?: { flagStatus?: string } | null;
     importance?: string;
     categories?: string[];
-    inferenceClassification?: string;
   },
 ): string[] {
   const labels: string[] = [];
@@ -367,7 +365,6 @@ export function labelsFor(
   if (message.isRead === false) labels.push("UNREAD");
   if (message.flag?.flagStatus === "flagged") labels.push("STARRED");
   if (message.importance === "high") labels.push("IMPORTANT");
-  if (message.inferenceClassification === "other") labels.push(OTHER_LABEL_ID);
   for (const category of message.categories ?? []) labels.push(categoryLabel(category));
   return labels;
 }

@@ -76,14 +76,7 @@ import { useCommandHandlers } from "../keybindings/dispatch";
 import { SEARCH_HINT, SearchHeader } from "./search-header";
 import { labelSearchToken, viewSearchQuery } from "./gmail-query";
 import { getAccountColor, getAccountDisplayName } from "./account-style";
-import {
-  ALL_MAIL_LABEL_ID,
-  OTHER_LABEL_ID,
-  SYSTEM_LABEL_NAMES,
-  folderName,
-  labelDisplayName,
-} from "./label-names";
-import { Toggle, ToggleGroup } from "~/components/ui/toggle-group";
+import { ALL_MAIL_LABEL_ID, SYSTEM_LABEL_NAMES, folderName, labelDisplayName } from "./label-names";
 import { decodeEntities } from "./text";
 import { parseAddressEntry, senderLabel, splitAddressList } from "./address";
 import type { MailAccount, MailLabel, MessageSummary, ViewRule } from "./types";
@@ -317,6 +310,13 @@ function MessageDayGroup({
   );
 }
 
+const CONTEXT_MENU_KIT = {
+  Item: ContextMenuItem,
+  CheckboxItem: ContextMenuCheckboxItem,
+  Sub: ContextMenuSub,
+  Separator: ContextMenuSeparator,
+};
+
 type MessageRowProps = {
   message: MessageSummary;
   selected: boolean;
@@ -332,8 +332,6 @@ type MessageRowProps = {
   showInboxChip: boolean;
   /** What archiving takes off a conversation with these labels (archive.ts); null: Move to Inbox. */
   archiveFrom: (labelIds: string[]) => string | null;
-  /** It's in an Outlook inbox with Focused Inbox: it can move between Focused and Other. */
-  focusedInbox: boolean;
   /** Labels that define the current view; every row has them, so no chip. */
   viewLabelIds: ReadonlySet<string>;
   /** Opens the permanent-delete confirm (offered on trashed/junk rows only). */
@@ -360,7 +358,6 @@ function MessageRow({
   combinedMeta,
   showInboxChip,
   archiveFrom,
-  focusedInbox,
   viewLabelIds,
   onDeleteForever,
   onChatAgent,
@@ -391,6 +388,13 @@ function MessageRow({
 
   // Labels apply to the whole conversation, like Gmail's list.
   const labelChoices = useLabelChoices({ accountId: ownerAccountId, threadId, labelIds });
+  // Outlook: its folders beside its categories.
+  const folderChoices = useLabelChoices({
+    accountId: ownerAccountId,
+    threadId,
+    labelIds,
+    folders: true,
+  });
 
   const handleToggleRead = () => {
     const isUnread = message.threadUnread ?? message.unread;
@@ -457,15 +461,6 @@ function MessageRow({
       removeLabelIds: archiveSource ? [archiveSource] : undefined,
     });
   };
-
-  const other = message.labelIds.includes(OTHER_LABEL_ID);
-  const handleFocusedToggle = () =>
-    void modifyThread.mutateAsync({
-      accountId: ownerAccountId,
-      threadId,
-      addLabelIds: other ? undefined : [OTHER_LABEL_ID],
-      removeLabelIds: other ? [OTHER_LABEL_ID] : undefined,
-    });
 
   const trashed = labelIds.includes("TRASH");
 
@@ -697,13 +692,13 @@ function MessageRow({
           </ContextMenuItem>
           <ContextMenuSeparator />
           <ContextMenuSub label={labelChoices.title}>
-            {renderLabelChoices(labelChoices, {
-              Item: ContextMenuItem,
-              CheckboxItem: ContextMenuCheckboxItem,
-              Sub: ContextMenuSub,
-              Separator: ContextMenuSeparator,
-            })}
+            {renderLabelChoices(labelChoices, CONTEXT_MENU_KIT)}
           </ContextMenuSub>
+          {labelChoices.alsoFolders ? (
+            <ContextMenuSub label={folderChoices.title}>
+              {renderLabelChoices(folderChoices, CONTEXT_MENU_KIT)}
+            </ContextMenuSub>
+          ) : null}
           <ContextMenuSeparator />
           {trashed || junk ? null : (
             <ContextMenuItem
@@ -716,11 +711,6 @@ function MessageRow({
           {inInbox && !trashed && !junk && (
             <ContextMenuItem onSelect={() => setSnoozeOpen(true)}>Snooze…</ContextMenuItem>
           )}
-          {focusedInbox ? (
-            <ContextMenuItem onSelect={handleFocusedToggle}>
-              {other ? "Move to Focused" : "Move to Other"}
-            </ContextMenuItem>
-          ) : null}
           {trashed ? null : (
             <ContextMenuItem icon={junk ? "checkmark.shield" : "xmark.bin"} onSelect={handleJunk}>
               {junk ? "Not junk" : "Move to junk"}
@@ -846,23 +836,6 @@ function UnreadFilterIcon({ on, className }: { on: boolean; className?: string }
       <path d="M7.5 9h9M9.5 12.5h5M11 16h2" />
     </svg>
   );
-}
-
-/** Which of Focused Inbox's tabs an Outlook inbox shows (all of it by default). */
-type FocusedTab = "all" | "focused" | "other";
-
-/** The mailbox's Focused Inbox tab, as last picked on this device. */
-function useFocusedTab(accountId: string): [FocusedTab, (tab: FocusedTab) => void] {
-  const key = `mail:focused-inbox:${accountId}`;
-  const [picked, setPicked] = useState<Record<string, FocusedTab>>({});
-  const tab = picked[key] ?? (localStorage.getItem(key) as FocusedTab | null) ?? "all";
-  return [
-    tab,
-    (next) => {
-      localStorage.setItem(key, next);
-      setPicked((tabs) => ({ ...tabs, [key]: next }));
-    },
-  ];
 }
 
 /** "260 messages, 7 unread" — omits the unread clause when nothing is unread. */
@@ -991,17 +964,9 @@ export function MessageList({
   // would normally drop it from this filter instantly. Keep the currently
   // selected row pinned in place — Gmail-style — so it only disappears once the
   // selection moves to another message.
-  // Outlook's Focused Inbox: its inbox shows Focused or Other mail, or all of it.
-  const focusedInbox =
-    !!listCapabilities.focusedInbox && !isCombined && !search && labelId === "INBOX";
-  const [focusedTab, setFocusedTab] = useFocusedTab(accountId);
-  const focusTab = focusedInbox ? focusedTab : "all";
-  const filteredMessages = allMessages.filter(
-    (m) =>
-      m.id === openMessageId ||
-      ((!unreadOnly || (m.threadUnread ?? m.unread)) &&
-        (focusTab === "all" || m.labelIds.includes(OTHER_LABEL_ID) === (focusTab === "other"))),
-  );
+  const filteredMessages = unreadOnly
+    ? allMessages.filter((m) => (m.threadUnread ?? m.unread) || m.id === openMessageId)
+    : allMessages;
   const dayGroups = groupByDay ? groupMessagesByDay(filteredMessages) : [];
   const visibleMessages = groupByDay
     ? dayGroups.flatMap((group) => (collapsedDays.has(group.day) ? [] : group.messages))
@@ -1865,7 +1830,6 @@ export function MessageList({
         combinedMeta={resolveCombinedMeta(message, combined, accounts, resolveLabel)}
         showInboxChip={!inInboxContext}
         archiveFrom={archiveSourceOf}
-        focusedInbox={focusedInbox}
         onDeleteForever={() => setConfirmDeleteRows([message])}
         onDeselect={onDeselect}
         onChatAgent={() => {
@@ -1956,29 +1920,6 @@ export function MessageList({
         </HintTooltip>
         {headerTrailing}
       </div>
-      {/* Outlook's Focused Inbox: its tabs, under the title as Outlook has them. */}
-      {focusedInbox ? (
-        <div className="shrink-0 px-4 pb-2">
-          <ToggleGroup
-            aria-label="Focused Inbox"
-            className="w-full"
-            value={[focusedTab]}
-            onValueChange={(next) => {
-              if (next[0]) setFocusedTab(next[0] as FocusedTab);
-            }}
-          >
-            <Toggle value="all" className="flex-1">
-              All
-            </Toggle>
-            <Toggle value="focused" className="flex-1">
-              Focused
-            </Toggle>
-            <Toggle value="other" className="flex-1">
-              Other
-            </Toggle>
-          </ToggleGroup>
-        </div>
-      ) : null}
 
       <ScrollArea
         ref={scrollRef}

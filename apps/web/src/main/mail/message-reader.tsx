@@ -2765,6 +2765,14 @@ export function MessageReader({
                     threadId={conversationId}
                     labelIds={conversationLabelIds}
                   />
+                  {foldersAndCategories ? (
+                    <LabelSubmenu
+                      accountId={accountId}
+                      threadId={conversationId}
+                      labelIds={conversationLabelIds}
+                      folders
+                    />
+                  ) : null}
                   <DropdownMenuItem
                     icon={<FlagIcon />}
                     accelerator={flagShortcut}
