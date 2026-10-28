@@ -13,7 +13,8 @@ import { CHATS_SPACE, isViewSpaceId } from "./mail/spaces";
 import { SEARCH_MAILBOX } from "./mail/gmail-query";
 import { useLabels, useMessage } from "./mail/hooks";
 import { isBlank, useChats } from "./mail/chat-store";
-import { SYSTEM_LABEL_NAMES, labelDisplayName } from "./mail/label-names";
+import { folderName, labelDisplayName } from "./mail/label-names";
+import { capabilitiesOf } from "./mail/capabilities";
 import type { GmailAccount, MailView } from "./mail/types";
 import type { SettingsPane } from "./mail/api";
 import { SETTINGS_SECTION_LABELS } from "./settings/settings-search";
@@ -22,6 +23,7 @@ import { SETTINGS_SECTION_LABELS } from "./settings/settings-search";
 export type RecentIcon =
   | "inbox"
   | "starred"
+  | "flagged"
   | "sent"
   | "drafts"
   | "important"
@@ -170,14 +172,19 @@ export function useRecordRecentlyViewed({
     // A view's space is its list: the view itself.
     const view = views.find((v) => v.id === (isViewSpaceId(mailbox) ? mailbox : label));
     const ownLabel = ownLabels?.find((l) => l.id === label);
+    const capabilities = capabilitiesOf(account);
     const title =
-      view?.name ?? SYSTEM_LABEL_NAMES[label] ?? (ownLabel && labelDisplayName(ownLabel));
+      view?.name ?? folderName(label, capabilities) ?? (ownLabel && labelDisplayName(ownLabel));
     if (context && title) {
       place = {
         href,
         context,
         title,
-        icon: view ? view.kind : (SYSTEM_LABEL_ICONS[label] ?? "label"),
+        icon: view
+          ? view.kind
+          : label === "STARRED" && !capabilities.stars
+            ? "flagged"
+            : (SYSTEM_LABEL_ICONS[label] ?? "label"),
       };
     }
   }

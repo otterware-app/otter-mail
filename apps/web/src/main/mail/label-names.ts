@@ -1,3 +1,4 @@
+import type { MailCapabilities } from "@otter-mail/contracts";
 import type { GmailLabel } from "./types";
 
 /** Pseudo label id for "All Mail" (every message but Spam/Trash) — mirrors the backend. */
@@ -26,6 +27,17 @@ export const SYSTEM_LABEL_NAMES: Record<string, string> = {
 };
 
 export const SYSTEM_LABEL_ORDER = Object.keys(SYSTEM_LABEL_NAMES);
+
+/**
+ * A system folder's name as the sidebar shows it, in the mailbox's own words:
+ * Gmail's Starred is Outlook's and IMAP's Flagged; Spam is Junk.
+ */
+export function folderName(labelId: string, capabilities: MailCapabilities): string | undefined {
+  if (labelId === "STARRED") return capabilities.stars ? "Starred" : "Flagged";
+  if (labelId === "SPAM") return "Junk";
+  if (labelId === ALL_MAIL_LABEL_ID) return "All Mail";
+  return SYSTEM_LABEL_NAMES[labelId];
+}
 
 export function labelDisplayName(label: GmailLabel): string {
   if (label.type === "system") {

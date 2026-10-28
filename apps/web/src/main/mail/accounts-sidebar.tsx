@@ -16,6 +16,7 @@ import {
   InboxIcon,
   MailsIcon,
   StarIcon,
+  FlagIcon,
   SendIcon,
   FileIcon,
   BookmarkIcon,
@@ -108,6 +109,8 @@ const SYSTEM_LABEL_MAP: Record<string, { name: string; icon: ReactNode }> = {
   SPAM: { name: "Junk", icon: <ArchiveXIcon className="size-4" /> },
   TRASH: { name: "Trash", icon: <Trash2Icon className="size-4" /> },
 };
+
+const FLAGGED = { name: "Flagged", icon: <FlagIcon className="size-4" /> };
 
 /** An open search, listed under the view it was started from. */
 export type SidebarSearch = { id: string; parent: string; title: string; selected: boolean };
@@ -555,7 +558,8 @@ export function MailboxFolders({
             }))
           : SIDEBAR_SYSTEM_ORDER.filter(shown).map((id) => ({ id, unread: 0, total: 0 }))
         ).map(({ id, unread, total }) => {
-          const meta = SYSTEM_LABEL_MAP[id];
+          // Outlook's and IMAP's flag is Flagged, Gmail's star Starred.
+          const meta = id === "STARRED" && !capabilities.stars ? FLAGGED : SYSTEM_LABEL_MAP[id];
           if (!meta) return null;
           // Drafts is a raw count of drafts, not an unread signal.
           const isDrafts = id === "DRAFT";

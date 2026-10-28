@@ -16,6 +16,7 @@ import {
   SendIcon,
   Settings2Icon,
   StarIcon,
+  FlagIcon,
   TagIcon,
   Trash2Icon,
 } from "lucide-react";
@@ -64,6 +65,7 @@ function trackHistory(history: RouterHistory): void {
 const RECENT_ICONS: Record<RecentIcon, ComponentType<{ className?: string }>> = {
   inbox: InboxIcon,
   starred: StarIcon,
+  flagged: FlagIcon,
   sent: SendIcon,
   drafts: FileIcon,
   important: BookmarkIcon,

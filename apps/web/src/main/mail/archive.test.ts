@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { summarizeLabelChange } from "./action-summary";
 import { archiveFrom } from "./archive";
+import { folderName } from "./label-names";
 import type { GmailLabel } from "./types";
 
 const folder = (id: string): GmailLabel => ({ id, name: id, type: "user" });
@@ -47,5 +48,15 @@ describe("The toast for an archive", () => {
       verb: "Moved",
       suffix: " to Inbox",
     });
+  });
+});
+
+describe("Folder names", () => {
+  it("call Outlook's and IMAP's flag Flagged, Gmail's star Starred", () => {
+    expect(folderName("STARRED", GMAIL_CAPABILITIES)).toBe("Starred");
+    expect(folderName("STARRED", OUTLOOK_CAPABILITIES)).toBe("Flagged");
+    expect(folderName("STARRED", IMAP_CAPABILITIES)).toBe("Flagged");
+    expect(folderName("ARCHIVE", OUTLOOK_CAPABILITIES)).toBe("Archive");
+    expect(folderName("SPAM", GMAIL_CAPABILITIES)).toBe("Junk");
   });
 });

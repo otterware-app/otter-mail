@@ -215,6 +215,7 @@ function providerScenario(
     expect(await subjects("label:work old")).toEqual(["Old report"]);
     expect(await subjects("in:inbox")).toEqual(["Lunch?"]);
     expect(await subjects("is:unread has:attachment")).toEqual(["Lunch?"]);
+    expect(await subjects("is:flagged")).toEqual(await subjects("is:starred"));
     expect(await subjects("from:bob -in:inbox")).toEqual(["Old report", "Report"]);
     expect(await subjects("in:sent lunch")).toEqual(["Re: Lunch?"]);
   });

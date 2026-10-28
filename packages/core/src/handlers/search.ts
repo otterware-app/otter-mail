@@ -65,6 +65,7 @@ const SYSTEM_LABELS: Record<string, string> = {
   junk: "SPAM",
   trash: "TRASH",
   starred: "STARRED",
+  flagged: "STARRED",
   unread: "UNREAD",
   important: "IMPORTANT",
 };

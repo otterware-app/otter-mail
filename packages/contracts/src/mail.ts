@@ -49,6 +49,8 @@ export interface MailCapabilities {
    * ARCHIVE. Without it (Gmail), archived mail just lacks INBOX: it's in All Mail.
    */
   archiveFolder?: boolean;
+  /** Gmail's stars: STARRED is the Starred folder. Without it (Outlook, IMAP), it's their Flagged. */
+  stars?: boolean;
   /** Label colors, kept by the server. */
   labelColors: boolean;
   /** Signatures kept by the server (Gmail's settings) rather than on this device. */
@@ -60,6 +62,7 @@ export interface MailCapabilities {
 }
 
 export const GMAIL_CAPABILITIES: MailCapabilities = {
+  stars: true,
   categories: true,
   multipleLabels: true,
   labelColors: true,

@@ -76,7 +76,7 @@ import { useCommandHandlers } from "../keybindings/dispatch";
 import { SEARCH_HINT, SearchHeader } from "./search-header";
 import { labelSearchToken, viewSearchQuery } from "./gmail-query";
 import { getAccountColor, getAccountDisplayName } from "./account-style";
-import { ALL_MAIL_LABEL_ID, SYSTEM_LABEL_NAMES, labelDisplayName } from "./label-names";
+import { ALL_MAIL_LABEL_ID, SYSTEM_LABEL_NAMES, folderName, labelDisplayName } from "./label-names";
 import { decodeEntities } from "./text";
 import { parseAddressEntry, senderLabel, splitAddressList } from "./address";
 import type { GmailAccount, GmailLabel, GmailMessageSummary, ViewRule } from "./types";
@@ -824,12 +824,6 @@ function UnreadFilterIcon({ on, className }: { on: boolean; className?: string }
   );
 }
 
-/** The sidebar's names where they aren't Gmail's (accounts-sidebar.tsx). */
-const SIDEBAR_LABEL_NAMES: Record<string, string> = {
-  [ALL_MAIL_LABEL_ID]: "All Mail",
-  SPAM: "Junk",
-};
-
 /** "260 messages, 7 unread" — omits the unread clause when nothing is unread. */
 function formatMailboxSummary(total: number, unread: number): string {
   const messages = `${total.toLocaleString()} message${total === 1 ? "" : "s"}`;
@@ -928,8 +922,7 @@ export function MessageList({
   // Named as the sidebar names it.
   const listName = combined
     ? combined.name
-    : (SIDEBAR_LABEL_NAMES[labelId] ??
-      SYSTEM_LABEL_NAMES[labelId] ??
+    : (folderName(labelId, listCapabilities) ??
       (activeLabel ? labelDisplayName(activeLabel) : null));
   const { mailboxTotal, mailboxUnread } =
     isCombined || allMailRules.length > 0
