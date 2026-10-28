@@ -244,6 +244,28 @@ const personal: SeedAccount = {
         ],
       },
       {
+        subject: "Your Linden sign-in code",
+        labels: ["INBOX", "CATEGORY_UPDATES"],
+        messages: [
+          {
+            from: p("Linden", "no-reply@linden.example"),
+            hoursAgo: 0.2,
+            unread: true,
+            text: "Hi Robin,\n\nUse this code to sign in to Linden:\n\n482913\n\nIt expires in 10 minutes. If you didn't try to sign in, you can ignore this email.\n\nLinden",
+            html: `<!doctype html><html><body style="margin:0;background:#f5f5f4">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:32px 12px">
+    <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="max-width:480px;background:#fff;border-radius:12px;font:15px/1.6 system-ui,sans-serif;color:#333">
+      <tr><td style="padding:28px 32px 0;font:700 20px system-ui,sans-serif;color:#166534">Linden</td></tr>
+      <tr><td style="padding:16px 32px 0">Hi Robin,<br><br>Use this code to sign in to Linden:</td></tr>
+      <tr><td style="padding:20px 32px;font:600 32px/1 ui-monospace,monospace;letter-spacing:6px;color:#111">482913</td></tr>
+      <tr><td style="padding:0 32px 28px;color:#666;font-size:13px">It expires in 10 minutes. If you didn't try to sign in, you can ignore this email.</td></tr>
+    </table>
+  </td></tr></table>
+</body></html>`,
+          },
+        ],
+      },
+      {
         subject: "Dinner Saturday? 🍝",
         labels: ["INBOX", "IMPORTANT", "CATEGORY_PERSONAL"],
         messages: [
