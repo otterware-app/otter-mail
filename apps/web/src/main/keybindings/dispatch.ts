@@ -3,7 +3,7 @@ import { useEffect } from "react";
 import { labelMoveName, type CommandHandlerKey, type KeybindingCommand } from "./commands";
 import { evaluateWhen, isModifierOnly, matchesStroke, type WhenContext } from "./keys";
 import { getKeybindings, type ResolvedKeybinding } from "./store";
-import { isOverlayOpen } from "../gmail/keyboard";
+import { isOverlayOpen } from "../mail/keyboard";
 
 /**
  * One window-level dispatcher resolves every keydown against the live

@@ -1,5 +1,5 @@
 import { type CSSProperties, useState } from "react";
-import { cn } from "../gmail/ui";
+import { cn } from "../mail/ui";
 
 /** A tiny window whose side panels open and close at the chosen speed (ported from Otter Code). */
 export function PanelAnimationsPreview({ durationMs }: { durationMs: number }) {

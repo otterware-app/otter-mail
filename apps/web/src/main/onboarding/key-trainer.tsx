@@ -4,8 +4,8 @@ import { CheckIcon, StarIcon } from "lucide-react";
 import type { KeybindingCommand } from "../keybindings/commands";
 import { isModifierOnly, matchesStroke } from "../keybindings/keys";
 import { getKeybindings } from "../keybindings/store";
-import { isTypingTarget } from "../gmail/keyboard";
-import { cn } from "../gmail/ui";
+import { isTypingTarget } from "../mail/keyboard";
+import { cn } from "../mail/ui";
 import { ShortcutKeys } from "./keycap";
 
 /**

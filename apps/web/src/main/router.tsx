@@ -10,10 +10,10 @@ import { HomeView } from "./home-view";
 import { RootView } from "./root-view";
 import { QueryClient } from "@tanstack/react-query";
 import { ErrorBoundaryView } from "~/components/ui/error-boundary-view";
-import type { SettingsPane } from "./gmail/api";
-import { COMBINED_ACCOUNT_ID } from "./gmail/custom-views";
-import { SEARCH_MAILBOX } from "./gmail/gmail-query";
-import { CHATS_SPACE } from "./gmail/spaces";
+import type { SettingsPane } from "./mail/api";
+import { COMBINED_ACCOUNT_ID } from "./mail/custom-views";
+import { SEARCH_MAILBOX } from "./mail/gmail-query";
+import { CHATS_SPACE } from "./mail/spaces";
 
 const rootRoute = createRootRouteWithContext<{
   queryClient: QueryClient;

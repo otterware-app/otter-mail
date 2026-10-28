@@ -7,33 +7,33 @@ import { Text } from "~/components/ui/text";
 import { CheckIcon, GripVerticalIcon, LayersIcon, PlusIcon, RotateCwIcon } from "lucide-react";
 import { Switch } from "~/components/ui/switch";
 import { arrangeAccounts, setMailboxArrangement, useMailboxArrangement } from "../mailboxes";
-import { gmailApi } from "../gmail/api";
+import { gmailApi } from "../mail/api";
 import { useOtterAccount } from "../otter-account";
-import { toast } from "../gmail/toast";
+import { toast } from "../mail/toast";
 import {
   syncStatusPollMs,
   useAccounts,
   useAddAccount,
   useRemoveAccount,
   useUpdateAccount,
-} from "../gmail/hooks";
-import { RichTextArea, type RichTextRef } from "../gmail/rich-text";
-import { AddMailboxMenu, ImapPasswordForm } from "../gmail/add-mailbox";
-import { ProviderMark } from "../gmail/provider-mark";
+} from "../mail/hooks";
+import { RichTextArea, type RichTextRef } from "../mail/rich-text";
+import { AddMailboxMenu, ImapPasswordForm } from "../mail/add-mailbox";
+import { ProviderMark } from "../mail/provider-mark";
 import {
   capabilitiesOf,
   mailServerName,
   signInProvider,
   signsInWithPassword,
-} from "../gmail/capabilities";
+} from "../mail/capabilities";
 import {
   ACCOUNT_COLOR_PALETTE,
   getAccountColor,
   getAccountDisplayName,
-} from "../gmail/account-style";
-import type { GmailAccount, SyncStatus } from "../gmail/types";
-import { StatusText, accountStatus, needsSignIn, takeRequestedMailbox } from "../gmail/sync-health";
-import { Btn, HintTooltip, cn, restoreFocusForKeyboardOnly } from "../gmail/ui";
+} from "../mail/account-style";
+import type { GmailAccount, SyncStatus } from "../mail/types";
+import { StatusText, accountStatus, needsSignIn, takeRequestedMailbox } from "../mail/sync-health";
+import { Btn, HintTooltip, cn, restoreFocusForKeyboardOnly } from "../mail/ui";
 import {
   DraftInput,
   SettingResetButton,

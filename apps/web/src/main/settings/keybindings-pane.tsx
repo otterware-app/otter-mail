@@ -10,15 +10,15 @@ import {
 } from "lucide-react";
 import { Dialog } from "~/components/ui/dialog";
 import { Text } from "~/components/ui/text";
-import { toast } from "../gmail/toast";
-import { Btn, HintTooltip, IconBtn, cn, restoreFocusForKeyboardOnly } from "../gmail/ui";
+import { toast } from "../mail/toast";
+import { Btn, HintTooltip, IconBtn, cn, restoreFocusForKeyboardOnly } from "../mail/ui";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "../gmail/menu";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../gmail/select";
+} from "../mail/menu";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../mail/select";
 import {
   DEFAULT_KEYBINDINGS,
   IN_MAIL,
@@ -46,7 +46,7 @@ import {
   useKeybindingsState,
 } from "../keybindings/store";
 import { useCommandHandlers } from "../keybindings/dispatch";
-import { useAccounts, useAllAccountLabels } from "../gmail/hooks";
+import { useAccounts, useAllAccountLabels } from "../mail/hooks";
 import {
   SettingsGroup,
   SettingsPageContainer,

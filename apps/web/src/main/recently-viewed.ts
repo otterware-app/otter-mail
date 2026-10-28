@@ -7,16 +7,16 @@
  */
 
 import { useEffect, useSyncExternalStore } from "react";
-import { getAccountDisplayName } from "./gmail/account-style";
-import { senderLabel } from "./gmail/address";
-import { COMBINED_ACCOUNT_ID } from "./gmail/custom-views";
-import { CHATS_SPACE, isViewSpaceId } from "./gmail/spaces";
-import { SEARCH_MAILBOX } from "./gmail/gmail-query";
-import { useLabels, useMessage } from "./gmail/hooks";
-import { isBlank, useChats } from "./gmail/chat-store";
-import { SYSTEM_LABEL_NAMES, labelDisplayName } from "./gmail/label-names";
-import type { GmailAccount, MailView, ViewKind } from "./gmail/types";
-import type { SettingsPane } from "./gmail/api";
+import { getAccountDisplayName } from "./mail/account-style";
+import { senderLabel } from "./mail/address";
+import { COMBINED_ACCOUNT_ID } from "./mail/custom-views";
+import { CHATS_SPACE, isViewSpaceId } from "./mail/spaces";
+import { SEARCH_MAILBOX } from "./mail/gmail-query";
+import { useLabels, useMessage } from "./mail/hooks";
+import { isBlank, useChats } from "./mail/chat-store";
+import { SYSTEM_LABEL_NAMES, labelDisplayName } from "./mail/label-names";
+import type { GmailAccount, MailView, ViewKind } from "./mail/types";
+import type { SettingsPane } from "./mail/api";
 import { SETTINGS_SECTION_LABELS } from "./settings/settings-search";
 
 /** The icon a place shows: a view's kind, a label, a conversation, Settings, or a chat. */

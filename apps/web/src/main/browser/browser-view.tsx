@@ -16,7 +16,7 @@ import {
   XIcon,
 } from "lucide-react";
 
-import { gmailApi } from "../gmail/api";
+import { gmailApi } from "../mail/api";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -24,9 +24,9 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "../gmail/menu";
-import { toast } from "../gmail/toast";
-import { Btn, HintTooltip, IconBtn, cn } from "../gmail/ui";
+} from "../mail/menu";
+import { toast } from "../mail/toast";
+import { Btn, HintTooltip, IconBtn, cn } from "../mail/ui";
 import { ExtensionToolbar } from "./extension-toolbar";
 import {
   CHROME_WEB_STORE_URL,

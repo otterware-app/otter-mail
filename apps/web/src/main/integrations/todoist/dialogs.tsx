@@ -11,10 +11,10 @@ import { CheckIcon, ExternalLinkIcon, RefreshCwIcon, PencilIcon, Trash2Icon } fr
 import { Dialog } from "~/components/ui/dialog";
 import { Field } from "~/components/ui/field";
 import { Input } from "~/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../gmail/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../mail/select";
 import { todoistApi } from "./api";
-import { Btn, IconBtn } from "../../gmail/ui";
-import { toast } from "../../gmail/toast";
+import { Btn, IconBtn } from "../../mail/ui";
+import { toast } from "../../mail/toast";
 
 export function useTodoistStatus() {
   return useQuery({ queryKey: ["todoist", "status"], queryFn: todoistApi.todoistStatus });

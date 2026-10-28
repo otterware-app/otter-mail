@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 
 import { ipc } from "~/lib/ipc";
-import { gmailApi } from "../gmail/api";
+import { gmailApi } from "../mail/api";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -20,8 +20,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuSub,
   DropdownMenuTrigger,
-} from "../gmail/menu";
-import { HintTooltip, IconBtn, cn } from "../gmail/ui";
+} from "../mail/menu";
+import { HintTooltip, IconBtn, cn } from "../mail/ui";
 import { CHROME_WEB_STORE_URL, openTab, setExtensionsButton, setPinned, useBrowser } from "./store";
 
 /** A toolbar button of an extension's (apps/desktop/src/services/extensions.ts' ExtensionAction). */

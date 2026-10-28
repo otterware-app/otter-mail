@@ -1,6 +1,6 @@
 import { features } from "../features";
 import { osNames } from "../os-names";
-import type { SettingsPane } from "../gmail/api";
+import type { SettingsPane } from "../mail/api";
 import { commandLabel, DEFAULT_KEYBINDINGS, KEYBINDING_COMMANDS } from "../keybindings/commands";
 
 /*

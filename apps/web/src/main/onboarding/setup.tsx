@@ -16,23 +16,23 @@ import {
   ServerIcon,
   ZapIcon,
 } from "lucide-react";
-import { AgentIcon } from "../gmail/agent-icon";
+import { AgentIcon } from "../mail/agent-icon";
 import { Switch } from "~/components/ui/switch";
 import {
   gmailApi,
   type NotificationsMode,
   type ProvidersState,
   type SyncSettings,
-} from "../gmail/api";
-import { ImapAccountDialog, readableError, useAddOutlook } from "../gmail/add-mailbox";
-import { GmailMark, MicrosoftMark } from "../gmail/provider-mark";
-import { getAccountDisplayName } from "../gmail/account-style";
-import { AccountPicture } from "../gmail/account-picture";
+} from "../mail/api";
+import { ImapAccountDialog, readableError, useAddOutlook } from "../mail/add-mailbox";
+import { GmailMark, MicrosoftMark } from "../mail/provider-mark";
+import { getAccountDisplayName } from "../mail/account-style";
+import { AccountPicture } from "../mail/account-picture";
 import {
   getAdvanceDirection,
   setAdvanceDirection,
   type AdvanceDirection,
-} from "../gmail/advance-direction";
+} from "../mail/advance-direction";
 import {
   PROVIDER_STATUS_DOT,
   ProviderIcon,
@@ -40,7 +40,7 @@ import {
   providerSummary,
   useAgentProviders,
   useSetProvidersState,
-} from "../gmail/agent-providers";
+} from "../mail/agent-providers";
 import {
   syncLabel,
   useAccountSync,
@@ -48,11 +48,11 @@ import {
   useAddAccount,
   useGlobalSyncStatus,
   useMailProviders,
-} from "../gmail/hooks";
-import { toast } from "../gmail/toast";
-import type { GmailAccount } from "../gmail/types";
-import { Btn, cn } from "../gmail/ui";
-import { WindowTitle } from "../gmail/top-bar";
+} from "../mail/hooks";
+import { toast } from "../mail/toast";
+import type { GmailAccount } from "../mail/types";
+import { Btn, cn } from "../mail/ui";
+import { WindowTitle } from "../mail/top-bar";
 import { OtterSignInOnboardingLink } from "../settings/otter-account-pane";
 import {
   FontSizeRow,

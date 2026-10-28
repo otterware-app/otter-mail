@@ -35,13 +35,14 @@ when a feature lands or goes.
   - `src/windows/`: the main window, and where its pages load from.
   - `src/updates.ts`: electron-updater against GitHub Releases.
 - `apps/web`: the React renderer, one build for both apps. `index.html` is the main window.
-  UI primitives live in `src/components/ui/`.
+  UI primitives live in `src/components/ui/`. `src/main/mail/` is the mail UI for every
+  provider (sidebar, lists, reader, composer); it gates on the mailbox's capabilities.
   Where the main window is (mailbox, label, conversation, Settings pane) is its route
   (`src/main/router.tsx`, TanStack Router): in the hash in the desktop app, real paths on the web
   (`/you@gmail.com/INBOX/<id>`, `/all/inbox`, `/settings/appearance`).
   `src/main/browser/` is the browser (Mac): the panel of `<webview>` tabs beside the mail, a
   chat's pages in the AI workspace, and `openLink`, where links from mail and chat go.
-  The agent's chats are `src/main/gmail/chat-store.ts` (synced through core), shown in the
+  The agent's chats are `src/main/mail/chat-store.ts` (synced through core), shown in the
   small window over the mail (⌘I, `chat-window.tsx`) or the AI workspace, the Chats space
   (`/chats/<id>`, `chat-workspace.tsx`), with what each chat used and made as tabs.
   `src/web/` is the browser shell: core in a Web Worker (SQLite WASM on OPFS) hosted by one
@@ -78,7 +79,7 @@ when a feature lands or goes.
   for the blueprint. The iPhone has stable and dev icons. Every icon is drawn from
   the one mark, `prod/otter-mail-symbol.svg`: `pnpm icons:export` regenerates them all.
   `agent/` is Otterware's agent (the face): the app draws it with `AgentIcon`
-  (`apps/web/src/main/gmail/agent-icon.tsx`), the iPhone with its `OtterAgent` image.
+  (`apps/web/src/main/mail/agent-icon.tsx`), the iPhone with its `OtterAgent` image.
 - `changelog/`: notes on Mac and web releases (`<version>.md`, images in `images/`), shown on
   otterware.app/mail/changelog (the website repository copies them hourly) and on the version's
   GitHub Release (workflows copy it there); the app only links there. A note is marketing, written only when the user asks for one (the

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { useAccounts } from "./gmail/hooks";
-import type { GmailAccount } from "./gmail/types";
+import { useAccounts } from "./mail/hooks";
+import type { GmailAccount } from "./mail/types";
 import { setSyncedPreference } from "./synced-preferences";
 
 /**

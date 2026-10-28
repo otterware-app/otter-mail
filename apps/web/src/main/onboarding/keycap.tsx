@@ -1,7 +1,7 @@
 import type { KeybindingCommand } from "../keybindings/commands";
 import { strokeTokens } from "../keybindings/keys";
 import { useKeybindingsState } from "../keybindings/store";
-import { cn } from "../gmail/ui";
+import { cn } from "../mail/ui";
 
 /** One key, drawn as a keycap. */
 export function Keycap({ children, className }: { children: string; className?: string }) {

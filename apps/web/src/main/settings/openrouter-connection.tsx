@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { gmailApi, type ProviderSnapshot } from "../gmail/api";
-import { useSetProvidersState } from "../gmail/agent-providers";
-import { toast } from "../gmail/toast";
-import { Btn } from "../gmail/ui";
+import { gmailApi, type ProviderSnapshot } from "../mail/api";
+import { useSetProvidersState } from "../mail/agent-providers";
+import { toast } from "../mail/toast";
+import { Btn } from "../mail/ui";
 import { SettingsRow, SettingsSection, TextInput } from "./settings-ui";
 
 export function OpenRouterConnection({ provider }: { provider: ProviderSnapshot }) {

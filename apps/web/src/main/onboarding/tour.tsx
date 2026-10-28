@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import { XIcon } from "lucide-react";
 import type { KeybindingCommand } from "../keybindings/commands";
 import { isMacPlatform, modKeyName, shortcutText } from "../keybindings/keys";
-import { Btn, IconBtn, cn } from "../gmail/ui";
+import { Btn, IconBtn, cn } from "../mail/ui";
 import { ShortcutKeys } from "./keycap";
 
 /**

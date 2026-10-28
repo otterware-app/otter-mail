@@ -3,13 +3,13 @@ import { DEFAULT_SETTINGS } from "@otter-mail/contracts";
 import { TodoistSettingsPane } from "../integrations/todoist";
 import { useCallback, useEffect, useState } from "react";
 import { Switch } from "~/components/ui/switch";
-import { toast } from "../gmail/toast";
-import { gmailApi, type MailApp, type NotificationsMode, type SettingsPane } from "../gmail/api";
+import { toast } from "../mail/toast";
+import { gmailApi, type MailApp, type NotificationsMode, type SettingsPane } from "../mail/api";
 import {
   getAdvanceDirection,
   setAdvanceDirection as persistAdvanceDirection,
   type AdvanceDirection,
-} from "../gmail/advance-direction";
+} from "../mail/advance-direction";
 import { AppearancePane } from "./appearance-pane";
 import { KeybindingsPane } from "./keybindings-pane";
 import { AccountsPane } from "./accounts-pane";
@@ -29,7 +29,7 @@ import {
 import { searchableSetting } from "./settings-search";
 import { features } from "../features";
 import { osNames } from "../os-names";
-import { Btn } from "../gmail/ui";
+import { Btn } from "../mail/ui";
 import { requestTour, startSetup } from "../onboarding/onboarding";
 import { requestProblemReport } from "../support/report-problem";
 

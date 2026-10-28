@@ -2,9 +2,9 @@ import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { todoistApi } from "./api";
 import { browseTodoist, useTodoistStatus } from "./dialogs";
-import { Btn } from "../../gmail/ui";
+import { Btn } from "../../mail/ui";
 import { Input } from "~/components/ui/input";
-import { toast } from "../../gmail/toast";
+import { toast } from "../../mail/toast";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "../../settings/settings-ui";
 import { searchableSetting } from "../../settings/settings-search";
 

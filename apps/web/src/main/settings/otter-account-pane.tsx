@@ -6,10 +6,10 @@ import { LaptopIcon } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "~/components/ui/avatar";
 import { Dialog } from "~/components/ui/dialog";
 import { Text } from "~/components/ui/text";
-import { gmailApi } from "../gmail/api";
-import { useAccounts, useAddAccount } from "../gmail/hooks";
-import { toast } from "../gmail/toast";
-import { Btn, cn } from "../gmail/ui";
+import { gmailApi } from "../mail/api";
+import { useAccounts, useAddAccount } from "../mail/hooks";
+import { toast } from "../mail/toast";
+import { Btn, cn } from "../mail/ui";
 import { otterApi, useOtterAccount } from "../otter-account";
 import {
   SettingsGroup,

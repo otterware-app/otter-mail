@@ -8,11 +8,11 @@ import { useEffect, useRef, type MutableRefObject } from "react";
 import { PlusIcon } from "lucide-react";
 
 import { useCommandHandlers } from "../keybindings/dispatch";
-import { PanelTab } from "../gmail/panel-tab";
-import { mostRecentTab } from "../gmail/panel-tabs";
-import { PanelControlSlot } from "../gmail/top-bar";
-import { HintTooltip, IconBtn } from "../gmail/ui";
-import { usePanelTabDrag } from "../gmail/use-panel-tab-drag";
+import { PanelTab } from "../mail/panel-tab";
+import { mostRecentTab } from "../mail/panel-tabs";
+import { PanelControlSlot } from "../mail/top-bar";
+import { HintTooltip, IconBtn } from "../mail/ui";
+import { usePanelTabDrag } from "../mail/use-panel-tab-drag";
 import { BrowserPages, BrowserTabIcon } from "./browser-view";
 import { closeTab, hostOf, newTab, panelTabs, reorderTabs, selectTab, useBrowser } from "./store";
 

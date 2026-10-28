@@ -38,9 +38,9 @@ import {
 import { Field } from "~/components/ui/field";
 import { Input } from "~/components/ui/input";
 import { features } from "../features";
-import { Btn } from "../gmail/ui";
-import { gmailApi } from "../gmail/api";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../gmail/select";
+import { Btn } from "../mail/ui";
+import { gmailApi } from "../mail/api";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../mail/select";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -50,8 +50,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuSub,
   DropdownMenuTrigger,
-} from "../gmail/menu";
-import { toast } from "../gmail/toast";
+} from "../mail/menu";
+import { toast } from "../mail/toast";
 
 export function requestProblemReport(): void {
   // Let the originating menu close before Radix transfers focus to the sheet.

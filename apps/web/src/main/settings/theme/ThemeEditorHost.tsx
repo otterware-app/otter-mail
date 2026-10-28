@@ -13,7 +13,7 @@ import {
   type ThemeAppearance,
   type ThemeDefinition,
 } from "../../theme/themePalette";
-import { toast } from "../../gmail/toast";
+import { toast } from "../../mail/toast";
 import { refreshTheme, setThemeForAppearance, useThemeChoice } from "../../theme/apply-theme";
 import { useThemeEditorStore } from "./themeEditorStore";
 

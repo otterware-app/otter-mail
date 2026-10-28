@@ -11,7 +11,7 @@ import { Field } from "~/components/ui/field";
 import { Switch } from "~/components/ui/switch";
 import { Text } from "~/components/ui/text";
 import { Toggle, ToggleGroup } from "~/components/ui/toggle-group";
-import { toast } from "../gmail/toast";
+import { toast } from "../mail/toast";
 import { CheckIcon, RotateCwIcon, StarIcon } from "lucide-react";
 import {
   gmailApi,
@@ -21,7 +21,7 @@ import {
   type ProviderSnapshot,
   type ProvidersState,
   type RuntimeMode,
-} from "../gmail/api";
+} from "../mail/api";
 import {
   PROVIDER_STATUS_DOT,
   ProviderIcon,
@@ -29,9 +29,9 @@ import {
   providerVersionLabel,
   useAgentProviders,
   useSetProvidersState,
-} from "../gmail/agent-providers";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../gmail/select";
-import { Btn, cn } from "../gmail/ui";
+} from "../mail/agent-providers";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../mail/select";
+import { Btn, cn } from "../mail/ui";
 import {
   DraftInput,
   RowSelect,
@@ -46,7 +46,7 @@ import { AgentTokensSection, CopyButton } from "./agent-tokens-section";
 import { OpenRouterConnection } from "./openrouter-connection";
 import { features } from "../features";
 import { osNames } from "../os-names";
-import { RUNTIME_MODE_OPTIONS } from "../gmail/model-picker";
+import { RUNTIME_MODE_OPTIONS } from "../mail/model-picker";
 import {
   modelKey,
   resetModelPrefs,
@@ -54,12 +54,12 @@ import {
   toggleAllHidden,
   toggleFavorite,
   useModelPrefs,
-} from "../gmail/model-prefs";
+} from "../mail/model-prefs";
 import {
   setFollowUpBehavior,
   useFollowUpBehavior,
   type FollowUpBehavior,
-} from "../gmail/chat-queue";
+} from "../mail/chat-queue";
 import { shortcutText } from "../keybindings/keys";
 
 function useNow(intervalMs: number): number {

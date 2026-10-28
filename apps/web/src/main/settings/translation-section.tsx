@@ -1,23 +1,23 @@
 import { DEFAULT_SETTINGS } from "@otter-mail/contracts";
 import { Switch } from "~/components/ui/switch";
-import { toast } from "../gmail/toast";
+import { toast } from "../mail/toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { PlusIcon, StarIcon, XIcon } from "lucide-react";
-import { gmailApi, type TranslationSettings } from "../gmail/api";
+import { gmailApi, type TranslationSettings } from "../mail/api";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "../gmail/menu";
+} from "../mail/menu";
 import {
   systemReadLanguages,
   languageName,
   TRANSLATION_LANGUAGES,
   useTranslationSettings,
-} from "../gmail/translation";
+} from "../mail/translation";
 import { features } from "../features";
-import { Btn, HintTooltip, IconBtn } from "../gmail/ui";
+import { Btn, HintTooltip, IconBtn } from "../mail/ui";
 import { SettingResetButton, SettingsRow, SettingsSection } from "./settings-ui";
 import { searchableSetting } from "./settings-search";
 

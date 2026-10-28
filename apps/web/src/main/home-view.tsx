@@ -16,23 +16,23 @@ import { useMatch, useNavigate, useRouter } from "@tanstack/react-router";
 import { ArrowLeftIcon } from "lucide-react";
 import { EmptyState } from "~/components/ui/empty-state";
 import { useQueryClient } from "@tanstack/react-query";
-import { toast, type ToastId } from "./gmail/toast";
-import { setDraftOpener } from "./gmail/undo-send";
-import { AppSidebar } from "./gmail/app-sidebar";
-import { SidebarPeekCard, useSidebarPeek } from "./gmail/sidebar-peek";
-import { ViewEditorDialog } from "./gmail/view-editor";
-import { MessageList } from "./gmail/message-list";
-import { MessageReader } from "./gmail/message-reader";
-import { NewMessageView } from "./gmail/new-message-view";
-import { CommandPalette } from "./gmail/command-palette";
+import { toast, type ToastId } from "./mail/toast";
+import { setDraftOpener } from "./mail/undo-send";
+import { AppSidebar } from "./mail/app-sidebar";
+import { SidebarPeekCard, useSidebarPeek } from "./mail/sidebar-peek";
+import { ViewEditorDialog } from "./mail/view-editor";
+import { MessageList } from "./mail/message-list";
+import { MessageReader } from "./mail/message-reader";
+import { NewMessageView } from "./mail/new-message-view";
+import { CommandPalette } from "./mail/command-palette";
 import { BrowserPanel } from "./browser/browser-panel";
-import { ChatLauncher, ChatWindow } from "./gmail/chat-window";
-import { ChatWorkspace } from "./gmail/chat-workspace";
-import { newChat, showChat, useChatEvents, useChats } from "./gmail/chat-store";
-import { useMailChatContext } from "./gmail/chat-context";
-import { useChatProvider } from "./gmail/agent-providers";
-import { SEARCH_MAILBOX } from "./gmail/gmail-query";
-import { searchTabId, searchTitle, type SearchTab } from "./gmail/search-tabs";
+import { ChatLauncher, ChatWindow } from "./mail/chat-window";
+import { ChatWorkspace } from "./mail/chat-workspace";
+import { newChat, showChat, useChatEvents, useChats } from "./mail/chat-store";
+import { useMailChatContext } from "./mail/chat-context";
+import { useChatProvider } from "./mail/agent-providers";
+import { SEARCH_MAILBOX } from "./mail/gmail-query";
+import { searchTabId, searchTitle, type SearchTab } from "./mail/search-tabs";
 import {
   PanelControl,
   SidebarControl,
@@ -40,13 +40,13 @@ import {
   TitleTrailing,
   TitlebarInset,
   SidebarTitle,
-} from "./gmail/top-bar";
+} from "./mail/top-bar";
 import { SettingsPage, type SettingsRoute } from "./settings/settings-page";
 import { SettingsNav } from "./settings/settings-nav";
-import { isTypingTarget } from "./gmail/keyboard";
-import { cn, HintTooltip, IconBtn } from "./gmail/ui";
+import { isTypingTarget } from "./mail/keyboard";
+import { cn, HintTooltip, IconBtn } from "./mail/ui";
 import { useMailLayout } from "./theme/interface-settings";
-import { FloatingReader } from "./gmail/floating-reader";
+import { FloatingReader } from "./mail/floating-reader";
 import { usePanelAnimationSettings, usePanelPresence } from "./panel-animations";
 import {
   keybindingContext,
@@ -67,7 +67,7 @@ import {
   useTrashThread,
   useUntrashThread,
   useUntrashMessage,
-} from "./gmail/hooks";
+} from "./mail/hooks";
 import {
   beginUndoGroup,
   onUndoableAction,
@@ -76,11 +76,11 @@ import {
   takeRedo,
   takeUndo,
   type UndoAction,
-} from "./gmail/undo";
-import { getAccountColor, getAccountContrastColor } from "./gmail/account-style";
-import { gmailApi, type ChatChange, type MailtoTarget, type SettingsPane } from "./gmail/api";
-import type { QuoteContext } from "./gmail/chat-context";
-import type { GmailAccount, GmailMessageSummary, MailView } from "./gmail/types";
+} from "./mail/undo";
+import { getAccountColor, getAccountContrastColor } from "./mail/account-style";
+import { gmailApi, type ChatChange, type MailtoTarget, type SettingsPane } from "./mail/api";
+import type { QuoteContext } from "./mail/chat-context";
+import type { GmailAccount, GmailMessageSummary, MailView } from "./mail/types";
 import {
   useMailViews,
   resolveRules,
@@ -92,8 +92,8 @@ import {
   STARRED_VIEW_ID,
   DRAFTS_VIEW_ID,
   ALL_MAIL_VIEW_ID,
-} from "./gmail/custom-views";
-import { ALL_MAIL_LABEL_ID } from "./gmail/label-names";
+} from "./mail/custom-views";
+import { ALL_MAIL_LABEL_ID } from "./mail/label-names";
 import { useMonochromeTheme } from "./theme/apply-theme";
 import { features } from "./features";
 import { useMailboxes } from "./mailboxes";
@@ -105,8 +105,8 @@ import {
   isViewSpaceId,
   spaceOf,
   spansMailboxes as spanning,
-} from "./gmail/spaces";
-import { useSignInAlerts } from "./gmail/sync-health";
+} from "./mail/spaces";
+import { useSignInAlerts } from "./mail/sync-health";
 import { useRecordRecentlyViewed } from "./recently-viewed";
 import { SetupFlow } from "./onboarding/setup";
 import {

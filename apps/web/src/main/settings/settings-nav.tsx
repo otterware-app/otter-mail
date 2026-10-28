@@ -25,18 +25,18 @@ import {
   SearchIcon,
   XIcon,
 } from "lucide-react";
-import { AgentIcon } from "../gmail/agent-icon";
+import { AgentIcon } from "../mail/agent-icon";
 import { changelogUrl } from "@otter-mail/shared/changelog";
 import { openLink } from "../browser/store";
 import { ScrollArea } from "~/components/ui/scroll-area";
-import { gmailApi, type SettingsPane } from "../gmail/api";
+import { gmailApi, type SettingsPane } from "../mail/api";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "../gmail/menu";
-import { HintTooltip, IconBtn, cn } from "../gmail/ui";
+} from "../mail/menu";
+import { HintTooltip, IconBtn, cn } from "../mail/ui";
 import { features } from "../features";
 import { useCommandHandlers } from "../keybindings/dispatch";
 import {
