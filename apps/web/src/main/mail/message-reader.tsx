@@ -60,6 +60,8 @@ import {
 } from "../theme/interface-settings";
 import { useTranslationSettings } from "./translation";
 import { InviteCard, requestRsvp, rsvpFromGoogleLink } from "./invite-card";
+import { CodeCard } from "./code-card";
+import { findVerificationCode } from "@otter-mail/shared/verification-code";
 import type { RsvpResponse } from "./api";
 import {
   useAccounts,
@@ -1384,6 +1386,7 @@ export function ExpandedRow({
   accountId,
   summary,
   onCollapse,
+  onTrash,
   onDownload,
   onQuoteText,
   onComposeTo,
@@ -1393,6 +1396,8 @@ export function ExpandedRow({
   summary: MessageSummary;
   /** Absent for single-message conversations, which always stay expanded. */
   onCollapse?: () => void;
+  /** Moves this message to the Trash (absent when it's there). */
+  onTrash?: () => void;
   onDownload: DownloadAttachment;
   onQuoteText?: (text: string) => void;
   onComposeTo?: (email: string) => void;
@@ -1432,6 +1437,17 @@ export function ExpandedRow({
   // Mail in a language the user doesn't read gets the translate banner; once
   // translated, the body's text is swapped in place.
   const translation = useMessageTranslation(accountId, detail);
+  // Sign-in and verification mail gets its code on a card, with Copy.
+  const code = useMemo(
+    () =>
+      detail
+        ? findVerificationCode(
+            summary.subject,
+            detail.bodyText ?? (detail.bodyHtml ? htmlToText(detail.bodyHtml) : ""),
+          )
+        : null,
+    [detail, summary.subject],
+  );
   // Calendar invitations (an .ics part) get the RSVP bar.
   const hasInvite = Boolean(
     detail?.attachments.some(
@@ -1527,6 +1543,7 @@ export function ExpandedRow({
             <>
               {translation.banner}
               {hasInvite ? <InviteCard accountId={accountId} messageId={summary.id} /> : null}
+              {code ? <CodeCard code={code} onTrash={onTrash} /> : null}
               <MessageBody
                 inviteMessageId={hasInvite ? summary.id : undefined}
                 bodyHtml={translation.bodyHtml}
@@ -2947,6 +2964,15 @@ export function MessageReader({
                       accountId={accountId}
                       summary={m}
                       onCollapse={rows.length === 1 ? undefined : () => toggleExpanded(m.id)}
+                      onTrash={
+                        m.labelIds.includes("TRASH")
+                          ? undefined
+                          : () => {
+                              // A conversation of one goes with it, as with the toolbar's Trash.
+                              if (rows.length === 1) onAdvance?.();
+                              void trashMessage.mutateAsync({ accountId, messageId: m.id });
+                            }
+                      }
                       onDownload={handleDownloadAttachment}
                       onQuoteText={(text) => emitQuote(text)}
                       onComposeTo={onComposeTo}

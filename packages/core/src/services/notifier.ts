@@ -8,20 +8,45 @@
  * syncs, body backfills, or an account's first sync. The badge mirrors
  * total INBOX unread across the mailboxes that are on, after syncs, local
  * mutations, and turning a mailbox on or off.
+ *
+ * A sign-in code in the mail is shown in the notification, and on the Mac
+ * offered to copy (its Copy & trash button: the mail goes once the code is used).
  */
 
+import {
+  findVerificationCode,
+  mentionsVerificationCode,
+} from "@otter-mail/shared/verification-code";
 import { logger } from "../logger.js";
 import { platform } from "../platform.js";
+import { providerFor } from "../providers/index.js";
 import { getAccount } from "./account-store.js";
 import { turnedOffMailboxes } from "./mail-sync.js";
 import { getSettings } from "./settings-store.js";
 import * as mailStore from "./mail-store.js";
+import { bodyText } from "./agent/tools/text.js";
 import type { MailAccount, MessageSummary } from "../types.js";
 
 const MAX_INDIVIDUAL_NOTIFICATIONS = 3;
 
 function accountLabel(account: MailAccount): string {
   return account.displayName?.trim() || account.name || account.email;
+}
+
+/**
+ * The sign-in code in new mail, read from its body: the one sync stored (Gmail
+ * on the desktop), else fetched now when the preview names a code, and kept
+ * for opening it. A preview is one line, too little to find the code in.
+ */
+async function codeIn(accountId: string, m: MessageSummary): Promise<string | undefined> {
+  let detail = mailStore.getMessageDetail(accountId, m.id);
+  if (!detail && mentionsVerificationCode(`${m.subject}\n${m.snippet}`)) {
+    detail = await providerFor(accountId)
+      .getMessage(accountId, m.id)
+      .catch(() => null);
+    if (detail) mailStore.upsertMessageDetail(accountId, detail);
+  }
+  return findVerificationCode(m.subject, detail ? bodyText(detail) : m.snippet) ?? undefined;
 }
 
 /**
@@ -55,11 +80,15 @@ export async function notifyNewMail(
     const subtitle = accountLabel(account);
     if (fresh.length <= MAX_INDIVIDUAL_NOTIFICATIONS) {
       for (const m of fresh) {
+        const about = m.subject || m.snippet;
+        const code = await codeIn(accountId, m);
         platform().notify({
           title: m.fromName || m.fromEmail,
           subtitle,
-          body: m.subject || m.snippet,
+          // The code in the text too, for notifications without buttons (Linux, browsers).
+          body: code && !about.includes(code) ? `${about}\n${code}` : about,
           open: { accountId, messageId: m.id },
+          code,
         });
       }
     } else {

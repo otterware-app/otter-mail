@@ -8,6 +8,7 @@
 
 import {
   app,
+  clipboard,
   dialog,
   ipcMain,
   Notification,
@@ -194,9 +195,13 @@ function carryOut(effect: MainEffect): void {
       broadcast(effect.channel, effect.params);
       return;
     case "notify": {
-      const { kind: _kind, open, ...options } = effect;
+      const { kind: _kind, open, code, ...options } = effect;
       if (!Notification.isSupported()) return;
-      const notification = new Notification(options);
+      const notification = new Notification({
+        ...options,
+        // A button on macOS; Linux has none (the code is in the text).
+        ...(code && { actions: [{ type: "button" as const, text: "Copy & trash" }] }),
+      });
       notificationsAwaitingClick.add(notification);
       if (notificationsAwaitingClick.size > MAX_AWAITING_CLICK) {
         notificationsAwaitingClick.delete(notificationsAwaitingClick.values().next().value!);
@@ -206,6 +211,17 @@ function carryOut(effect: MainEffect): void {
         // The main window pulls it on mount, or on mail:open.
         if (open) setPendingOpenMessage(open);
         void focusMainWindow().then(() => open && broadcast("mail:open"));
+      });
+      notification.on("action", () => {
+        notificationsAwaitingClick.delete(notification);
+        if (!code) return;
+        clipboard.writeText(code);
+        // A code is spent once used: its mail goes to the Trash.
+        if (open) {
+          invokeBackend("gmail:trashMessage", open).catch((err: unknown) =>
+            logger.warn("notify", "trashing the code's mail failed", String(err)),
+          );
+        }
       });
       notification.show();
       return;

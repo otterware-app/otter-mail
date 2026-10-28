@@ -194,6 +194,8 @@ export interface Platform {
     subtitle?: string;
     body?: string;
     open?: { accountId: string; messageId: string };
+    /** The mail's sign-in code, for a Copy & trash button where notifications have them. */
+    code?: string;
   }): void;
   /** Total unread in the inbox, for the Dock or tab badge. */
   setUnreadCount(count: number): void;

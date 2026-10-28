@@ -2,7 +2,7 @@
   "name": "@otter-mail/shared",
   "version": "0.1.0",
   "private": true,
-  "description": "What every app shows the same, the iPhone app included: the color themes, the demo mailbox and what views can wear; and the changelog's format, for the website and the GitHub Releases.",
+  "description": "What every app shows the same, the iPhone app included: the color themes, the demo mailbox, what views can wear and the codes sign-in mail carries; and the changelog's format, for the website and the GitHub Releases.",
   "type": "module",
   "exports": {
     "./release-channel": "./src/release-channel.ts",
@@ -12,7 +12,8 @@
     "./support": "./src/support.ts",
     "./changelog": "./src/changelog.ts",
     "./view-marks": "./src/view-marks.ts",
-    "./sign-in-page": "./src/sign-in-page.ts"
+    "./sign-in-page": "./src/sign-in-page.ts",
+    "./verification-code": "./src/verification-code.ts"
   },
   "scripts": {
     "test": "vp test run",

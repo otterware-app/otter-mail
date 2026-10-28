@@ -32,6 +32,7 @@ export type MainEffect =
       subtitle?: string;
       body?: string;
       open?: { accountId: string; messageId: string };
+      code?: string;
     }
   /** The Dock badge. */
   | { kind: "unread"; count: number }
