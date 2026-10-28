@@ -3,8 +3,10 @@
  * system labels (\Sent → SENT, \Drafts → DRAFT, \Trash → TRASH, \Junk →
  * SPAM, \Archive → ARCHIVE); every other folder is a user label whose id is
  * its path. Servers that don't flag their special folders get them by name.
- * Gmail's IMAP archives into All Mail (\All, which isn't synced: it holds
- * every message), which only takes them out of the inbox.
+ * Gmail's IMAP archives into All Mail (\All), which only takes them out of
+ * the inbox; of All Mail, only what's archived is synced (the rest is in the
+ * other folders). Other servers' \All, \Flagged and \Important folders hold
+ * copies of mail in other folders: they aren't synced.
  *
  * Message ids are `<uidvalidity>:<uid>:<path>`: a message moved to another
  * folder gets a new id.
@@ -24,7 +26,12 @@ export interface Folder {
   labelId: string | null;
   /** The label's name: the path with "/" between levels. */
   name: string;
+  /** Only what Gmail's search finds is synced (X-GM-RAW): Gmail's All Mail, its archived mail. */
+  gmailRaw?: string;
 }
+
+/** Gmail's archived mail: in All Mail and nowhere else (no inbox, no label, not Sent or Drafts). */
+const GMAIL_ARCHIVED = "-in:inbox -in:sent -in:drafts -in:chats has:nouserlabels";
 
 const SPECIAL_USE_ROLES: Partial<Record<SpecialUse, Role>> = {
   "\\Sent": "SENT",
@@ -83,12 +90,18 @@ export class Folders {
   readonly synced: Folder[];
   /** Where archived mail goes, when there's a folder for it yet. */
   readonly archive: Folder | undefined;
+  /** Gmail's All Mail, its archive. */
+  private readonly allMail: string | undefined;
   private readonly byPath = new Map<string, Folder>();
 
   /** `gmail`: the server is Gmail's (X-GM-EXT-1), whose archive is All Mail. */
   constructor(list: ImapFolder[], gmail = false) {
     const usable = list.filter(
-      (f) => f.selectable && f.specialUse !== "\\All" && f.specialUse !== "\\Flagged",
+      (f) =>
+        f.selectable &&
+        f.specialUse !== "\\All" &&
+        f.specialUse !== "\\Flagged" &&
+        f.specialUse !== "\\Important",
     );
     const roles = new Map<Role, string>([["INBOX", "INBOX"]]);
     for (const f of usable) {
@@ -116,15 +129,23 @@ export class Folders {
         name: labelName(f.path, f.delimiter),
       });
     }
+    const all = gmail ? list.find((f) => f.selectable && f.specialUse === "\\All") : undefined;
+    if (all) {
+      this.allMail = all.path;
+      this.byPath.set(all.path, {
+        path: all.path,
+        delimiter: all.delimiter,
+        role: null,
+        labelId: null,
+        name: labelName(all.path, all.delimiter),
+        gmailRaw: GMAIL_ARCHIVED,
+      });
+    }
     const ORDER: Partial<Record<Role, number>> = { INBOX: 0, SENT: 1, DRAFT: 2, SPAM: 4, TRASH: 5 };
     const order = (f: Folder) => (f.role && ORDER[f.role]) ?? 3;
     this.synced = [...this.byPath.values()].sort((a, b) => order(a) - order(b));
-    const all = list.find((f) => f.selectable && f.specialUse === "\\All");
     this.archive =
-      this.withRole("ARCHIVE") ??
-      (gmail && all
-        ? { path: all.path, delimiter: all.delimiter, role: null, labelId: null, name: all.name }
-        : undefined);
+      this.withRole("ARCHIVE") ?? (this.allMail ? this.byPath.get(this.allMail) : undefined);
   }
 
   get(path: string): Folder | undefined {
@@ -141,9 +162,9 @@ export class Folders {
     return byRole ? this.withRole(byRole) : this.byPath.get(labelId);
   }
 
-  /** Gmail's All Mail, where its archived mail is (not synced). */
+  /** Gmail's All Mail, where its archived mail is. */
   isAllMail(path: string): boolean {
-    return this.archive?.path === path && !this.byPath.has(path);
+    return path === this.allMail;
   }
 
   /** Where a new folder named "A/B" goes: with the server's separator, under INBOX where all others are. */

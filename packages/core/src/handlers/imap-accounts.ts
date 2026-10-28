@@ -9,6 +9,7 @@ import { IMAP_CAPABILITIES, type ImapSettings, type MailServer } from "@otter-ma
 
 import { broadcast, handle } from "../ipc.js";
 import { MailProtocolError, connectImap, connectSmtp } from "../protocols/index.js";
+import { capabilitiesOf } from "../providers/index.js";
 import * as accountStore from "../services/account-store.js";
 import { appPasswordUrl, discoverImap, mxHosts, servesImap } from "../services/imap-discovery.js";
 import { setImapPassword } from "../services/imap-passwords.js";
@@ -106,7 +107,7 @@ function settings(value: unknown): ImapSettings {
 
 const withCapabilities = (account: GmailAccount) => ({
   ...account,
-  capabilities: IMAP_CAPABILITIES,
+  capabilities: capabilitiesOf(account) ?? IMAP_CAPABILITIES,
 });
 
 /** Checks the password, keeps it on this device, saves the mailbox, links it and syncs. */

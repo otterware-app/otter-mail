@@ -13,7 +13,10 @@ const mocks = vi.hoisted(() => ({
   getAccount: vi.fn(),
   broadcast: vi.fn(),
 }));
-vi.mock("../../providers/index.js", () => ({ providerFor: () => mocks }));
+vi.mock("../../providers/index.js", () => ({
+  providerFor: () => mocks,
+  capabilitiesOf: () => mocks.capabilities,
+}));
 vi.mock("../account-store.js", () => ({ getAccount: mocks.getAccount }));
 vi.mock("../notifier.js", () => ({ updateDockBadge: () => {} }));
 let database: DatabaseSync;

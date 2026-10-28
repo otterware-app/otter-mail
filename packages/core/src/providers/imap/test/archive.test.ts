@@ -2,8 +2,9 @@
  * Archiving on every kind of IMAP server, against a pretend one (no Docker):
  * the Archive found by its special use or its name, made (flagged \Archive)
  * where there's none, Gmail's archive being All Mail (out of the inbox, never
- * a copy, and back with a copy only), and moves with MOVE or, without it,
- * COPY + \Deleted + EXPUNGE. Archived mail carries ARCHIVE.
+ * a copy, and back with a copy only; only its archived mail synced), and
+ * moves with MOVE or, without it, COPY + \Deleted + EXPUNGE. Archived mail
+ * carries ARCHIVE, except Gmail's, which is All Mail's as in Gmail.
  */
 
 import { afterEach, describe, expect, it } from "vite-plus/test";
@@ -261,7 +262,7 @@ describe("Archiving over IMAP", () => {
     expect(server.commands).toContain('UID MOVE 1 "[Gmail]/All Mail"');
     expect(server.commands.some((c) => c.startsWith("CREATE"))).toBe(false);
     expect(server.boxes.get("Archive")!.uids).toEqual([]);
-    // All Mail isn't synced (it holds every message): no folder label, nor ARCHIVE.
+    // Gmail's archived mail is All Mail's: no folder label, nor ARCHIVE.
     expect(thread(accountId)).toEqual([
       { path: "[Gmail]/All Mail", labels: ["UNREAD"] },
       { path: "[Gmail]/Sent Mail", labels: ["SENT"] },
@@ -301,10 +302,37 @@ describe("Finding the archive", () => {
     const list = [folder("INBOX"), folder("All", "\\All"), folder("Archive")];
     // A server's virtual All folder (Dovecot) isn't somewhere to move mail.
     expect(new Folders(list).archive?.path).toBe("Archive");
-    const gmail = new Folders(list, true);
+    const gmail = new Folders([...list, folder("Important", "\\Important")], true);
     expect(gmail.archive?.path).toBe("All");
     expect(gmail.isAllMail("All")).toBe(true);
-    expect(gmail.synced.map((f) => f.path)).toEqual(["INBOX", "Archive"]);
-    expect(gmail.get("Archive")?.labelId).toBe("Archive");
+    // Of All Mail, only what's archived (Gmail's search) is synced; Important holds copies.
+    expect(gmail.synced.map((f) => [f.path, f.labelId, f.gmailRaw])).toEqual([
+      ["INBOX", "INBOX", undefined],
+      ["Archive", "Archive", undefined],
+      ["All", null, "-in:inbox -in:sent -in:drafts -in:chats has:nouserlabels"],
+    ]);
+  });
+});
+
+describe("Gmail over IMAP", () => {
+  it("is Gmail to the app: All Mail, not an Archive folder, and stars", async () => {
+    const { capabilitiesOf } = await import("../../index.ts");
+    const settings = (host: string) => ({
+      id: "me@example.com",
+      email: "me@example.com",
+      name: "Me",
+      provider: "imap" as const,
+      imap: {
+        username: "me@example.com",
+        imap: { host, port: 993, security: "tls" as const },
+        smtp: { host, port: 465, security: "tls" as const },
+      },
+    });
+    expect(capabilitiesOf(settings("imap.gmail.com"))).toMatchObject({
+      archiveFolder: false,
+      stars: true,
+    });
+    expect(capabilitiesOf(settings("imap.fastmail.com"))).toMatchObject({ archiveFolder: true });
+    expect(capabilitiesOf(settings("imap.fastmail.com"))?.stars).toBeUndefined();
   });
 });

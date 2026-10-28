@@ -1,7 +1,7 @@
 import { landLabelChange, type MailSchedule } from "@otter-mail/contracts";
 import { broadcast } from "../ipc.js";
 import { platform } from "../platform.js";
-import { providerFor } from "../providers/index.js";
+import { capabilitiesOf, providerFor } from "../providers/index.js";
 import type { OutgoingMail } from "../providers/provider.js";
 import { getAccount } from "./account-store.js";
 import * as store from "./mail-store.js";
@@ -23,7 +23,7 @@ function db() {
 function mirror(accountId: string, messageId: string, add: string[], remove: string[]): void {
   const prior = store.getMessageLabelIds(accountId, messageId);
   if (!prior) return;
-  const archiveFolder = providerFor(accountId).capabilities.archiveFolder;
+  const archiveFolder = capabilitiesOf(accountId)?.archiveFolder;
   const landed = landLabelChange(prior, add, remove, { archiveFolder });
   store.applyLabelChange(accountId, messageId, landed.add, landed.remove);
 }

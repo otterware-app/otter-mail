@@ -358,9 +358,11 @@ class FolderSync {
     const top = state.below === Number.MAX_SAFE_INTEGER ? "*" : String(state.below - 1);
     const uids =
       state.below > 1
-        ? (await this.run((client) => client.search({ uids: `1:${top}`, deleted: false }))).filter(
-            (uid) => uid < state.below,
-          )
+        ? (
+            await this.run((client) =>
+              client.search({ uids: `1:${top}`, deleted: false, gmailRaw: this.folder.gmailRaw }),
+            )
+          ).filter((uid) => uid < state.below)
         : [];
     const synced = { count: store.countAllMessages(this.accountId) };
     for (let end = uids.length; end > 0; end -= PAGE) {
@@ -407,7 +409,8 @@ class FolderSync {
     } else if (!hasPendingLabelWrites(accountId)) {
       // No mod-sequences: every UID's flags (which also lists what's left).
       flags = await this.run((client) => client.fetch("1:*", { flags: true }));
-      listing = flags.filter((m) => !isDeleted(m)).map((m) => m.uid);
+      // (Gmail's All Mail lists more than is synced: its search says what's there.)
+      if (!folder.gmailRaw) listing = flags.filter((m) => !isDeleted(m)).map((m) => m.uid);
     }
     const ops: store.HistoryOp[] = [];
     const known = cachedUids(accountId, state.uidValidity, folder.path);
@@ -439,9 +442,11 @@ class FolderSync {
     // New mail.
     let fresh: number[] = [];
     if (mailbox.uidNext === null || mailbox.uidNext > state.uidNext) {
-      fresh = (await this.run((client) => client.search({ uids: `${state.uidNext}:*` }))).filter(
-        (uid) => uid >= state.uidNext,
-      );
+      fresh = (
+        await this.run((client) =>
+          client.search({ uids: `${state.uidNext}:*`, gmailRaw: this.folder.gmailRaw }),
+        )
+      ).filter((uid) => uid >= state.uidNext);
     }
 
     // Expunged mail, and anything an earlier run missed: when the counts disagree.
@@ -450,7 +455,10 @@ class FolderSync {
     const count = await this.run(async (_client, box) => box.exists);
     if (listing || known.size + fresh.length !== count) {
       const onServer = new Set(
-        listing ?? (await this.run((client) => client.search({ deleted: false }))),
+        listing ??
+          (await this.run((client) =>
+            client.search({ deleted: false, gmailRaw: this.folder.gmailRaw }),
+          )),
       );
       for (const [uid, id] of known) {
         if (!onServer.has(uid)) ops.push({ kind: "deleted", id });

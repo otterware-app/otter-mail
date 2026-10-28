@@ -22,7 +22,7 @@ import { fromBase64 } from "../bytes.js";
 import { SignInCancelledError } from "../google.js";
 import { broadcast, handle, registeredHandlers } from "../ipc.js";
 import { platform } from "../platform.js";
-import { findProvider, isSignedIn, providerFor } from "../providers/index.js";
+import { capabilitiesOf, findProvider, isSignedIn, providerFor } from "../providers/index.js";
 import { DraftChanged } from "../providers/provider.js";
 import {
   getAccount,
@@ -161,7 +161,7 @@ function settleLabelWrite(
   write: () => Promise<unknown>,
   { thread = false } = {},
 ): Promise<{ ok: true; pending?: boolean }> {
-  const landing = { archiveFolder: findProvider(accountId)?.capabilities.archiveFolder, thread };
+  const landing = { archiveFolder: capabilitiesOf(accountId)?.archiveFolder, thread };
   const revert = applyLocalLabelChange(accountId, messageIds, add, remove, landing);
   const tracked = trackLabelWrite(accountId, messageIds, add, remove, landing);
   const running = afterEarlierWrites(accountId, messageIds, write);
@@ -259,7 +259,7 @@ export function registerGmailHandlers(): void {
       const accounts = await listAccounts();
       return accounts.map((account) => ({
         ...account,
-        capabilities: findProvider(account)?.capabilities ?? GMAIL_CAPABILITIES,
+        capabilities: capabilitiesOf(account) ?? GMAIL_CAPABILITIES,
         ...(isSignedIn(account) ? {} : { signedOut: true }),
       }));
     } catch (err) {

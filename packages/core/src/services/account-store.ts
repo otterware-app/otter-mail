@@ -10,17 +10,26 @@ import type { MailProviderKind } from "@otter-mail/contracts";
 import { readJson, writeJson } from "../json-file.js";
 import type { GmailAccount } from "../types.js";
 
-/** Each account's provider as last read or written, for lookups by id that can't wait. */
+/** Each account's provider (and IMAP server) as last read or written, for lookups by id that can't wait. */
 const providerKinds = new Map<string, MailProviderKind>();
+const imapHosts = new Map<string, string>();
 
 function rememberProviders(accounts: GmailAccount[]): GmailAccount[] {
-  for (const account of accounts) providerKinds.set(account.id, account.provider ?? "gmail");
+  for (const account of accounts) {
+    providerKinds.set(account.id, account.provider ?? "gmail");
+    if (account.imap) imapHosts.set(account.id, account.imap.imap.host);
+  }
   return accounts;
 }
 
 /** An account's provider by id (Gmail until accounts.json was read). */
 export function providerKindOf(accountId: string): MailProviderKind {
   return providerKinds.get(accountId) ?? "gmail";
+}
+
+/** An IMAP account's server by id (null: not IMAP, or not read yet). */
+export function imapHostOf(accountId: string): string | null {
+  return imapHosts.get(accountId) ?? null;
 }
 
 /**

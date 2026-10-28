@@ -3,9 +3,9 @@
  * meaning Gmail (accounts stored before IMAP).
  */
 
-import type { MailProviderKind } from "@otter-mail/contracts";
+import type { MailCapabilities, MailProviderKind } from "@otter-mail/contracts";
 
-import { providerKindOf } from "../services/account-store.js";
+import { imapHostOf, providerKindOf } from "../services/account-store.js";
 import type { GmailAccount } from "../types.js";
 import { gmailProvider } from "./gmail/index.js";
 import { imapProvider } from "./imap/index.js";
@@ -32,6 +32,22 @@ export function providerFor(account: GmailAccount | string): MailProvider {
   const provider = findProvider(account);
   if (!provider) throw new Error(UNAVAILABLE);
   return provider;
+}
+
+/** Gmail's own IMAP servers. */
+const GMAIL_IMAP_HOSTS = ["imap.gmail.com", "imap.googlemail.com"];
+
+/**
+ * What the account's mailbox can do: its provider's, except that Gmail
+ * reached over IMAP is still Gmail: its archive is All Mail, not a folder,
+ * and its \Flagged is the star (imap/folders.ts).
+ */
+export function capabilitiesOf(account: GmailAccount | string): MailCapabilities | null {
+  const capabilities = findProvider(account)?.capabilities ?? null;
+  const host = typeof account === "string" ? imapHostOf(account) : account.imap?.imap.host;
+  return capabilities && host && GMAIL_IMAP_HOSTS.includes(host.toLowerCase())
+    ? { ...capabilities, archiveFolder: false, stars: true }
+    : capabilities;
 }
 
 /** Whether this device can reach the account's mail now. */

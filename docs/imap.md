@@ -64,8 +64,11 @@ MailProvider                packages/core/src/providers/provider.ts
   that folder away (`apps/web/src/main/mail/archive.ts`).
 - Gmail's IMAP (X-GM-EXT-1) archives into `[Gmail]/All Mail` (`\All`), which only takes the
   message out of the inbox; a folder named Archive there is just a label. Moving mail back out
-  of All Mail is a COPY (taking it out of All Mail would delete it). All Mail isn't synced, so
-  Gmail-over-IMAP mailboxes have no Archive in the sidebar.
+  of All Mail is a COPY (taking it out of All Mail would delete it). Of All Mail, only archived
+  mail is synced (Gmail's own search, `X-GM-RAW "-in:inbox -in:sent -in:drafts -in:chats
+has:nouserlabels"`), so nothing is cached twice; `[Gmail]/Important` (`\Important`) isn't
+  synced for the same reason. To the app such a mailbox is Gmail (core's `capabilitiesOf`, by
+  its server): All Mail rather than an Archive folder, and Starred.
 - Message ids: `<uidvalidity>:<uid>:<folder path>`, re-keyed in the cache when the message
   moves (COPYUID tells the new uid, else the next sync finds it by Message-ID).
 - Threads: the root Message-ID of `References` (else `In-Reply-To`, else its own Message-ID),
