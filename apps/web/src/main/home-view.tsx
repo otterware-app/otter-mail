@@ -1428,6 +1428,7 @@ function MailHome() {
       titleTrailing={trailing}
       accountId={readerAccount ?? ""}
       messageId={focusedMessageId ?? selectedMessageId}
+      listLabelId={spansMailboxes || selectedLabelId === SEARCH_MAILBOX ? null : selectedLabelId}
       autoFocusDraft={autoFocusDraft}
       single={focusedMessageId != null}
       onShowConversation={() => go({ focusId: null })}

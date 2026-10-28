@@ -69,6 +69,7 @@ import { SenderAvatar } from "./sender-avatar";
 import { SignedOutMailbox } from "./signed-out-mailbox";
 import { LabelOverlay, type LabelOverlayMode } from "./label-overlay";
 import { useCapabilities } from "./capabilities";
+import { archiveFrom } from "./archive";
 import { moveToFolder, renderLabelChoices, useLabelChoices } from "./label-picker-menu";
 import { isTypingTarget } from "./keyboard";
 import { useCommandHandlers } from "../keybindings/dispatch";
@@ -322,6 +323,8 @@ type MessageRowProps = {
   combinedMeta: CombinedMeta | null;
   /** Mark rows still in the inbox (shown when browsing non-inbox views). */
   showInboxChip: boolean;
+  /** What archiving takes off a conversation with these labels (archive.ts); null: Move to Inbox. */
+  archiveFrom: (labelIds: string[]) => string | null;
   /** Labels that define the current view; every row has them, so no chip. */
   viewLabelIds: ReadonlySet<string>;
   /** Opens the permanent-delete confirm (offered on trashed/junk rows only). */
@@ -347,6 +350,7 @@ function MessageRow({
   resolveLabel,
   combinedMeta,
   showInboxChip,
+  archiveFrom,
   viewLabelIds,
   onDeleteForever,
   onChatAgent,
@@ -431,15 +435,16 @@ function MessageRow({
   };
 
   const inInbox = labelIds.includes("INBOX");
+  const archiveSource = archiveFrom(labelIds);
 
   const handleArchive = (e?: React.MouseEvent) => {
     e?.stopPropagation();
-    console.log("[MessageList:archiveToggle]", { threadId, inInbox });
+    console.log("[MessageList:archiveToggle]", { threadId, archiveSource });
     void modifyThread.mutateAsync({
       accountId: ownerAccountId,
       threadId,
-      addLabelIds: inInbox ? undefined : ["INBOX"],
-      removeLabelIds: inInbox ? ["INBOX"] : undefined,
+      addLabelIds: archiveSource ? undefined : ["INBOX"],
+      removeLabelIds: archiveSource ? [archiveSource] : undefined,
     });
   };
 
@@ -683,10 +688,10 @@ function MessageRow({
           <ContextMenuSeparator />
           {trashed || junk ? null : (
             <ContextMenuItem
-              icon={inInbox ? "archivebox" : "tray.and.arrow.down"}
+              icon={archiveSource ? "archivebox" : "tray.and.arrow.down"}
               onSelect={() => handleArchive()}
             >
-              {inInbox ? "Archive" : "Move to inbox"}
+              {archiveSource ? "Archive" : "Move to inbox"}
             </ContextMenuItem>
           )}
           {inInbox && !trashed && !junk && (
@@ -892,6 +897,10 @@ export function MessageList({
       : accountMessages;
 
   const resolveLabel = useLabelResolver(isCombined ? accountIds : [accountId]);
+  // What archiving takes off a row (archive.ts): a folder listed here, or INBOX.
+  const listLabel = isCombined || searching ? undefined : resolveLabel(accountId, labelId);
+  const listCapabilities = useCapabilities(accountId);
+  const archiveSourceOf = (labels: string[]) => archiveFrom(labels, listLabel, listCapabilities);
   // A view has no single "active account" to drive per-account label
   // sync (see useAccountSync), so the header's counts need their own refresh loop.
   useSyncAccountLabels(accountIds, isCombined);
@@ -980,7 +989,7 @@ export function MessageList({
   const selectedRow = filteredMessages.find((m) => m.id === selectedMessageId) ?? null;
   const selectedOwner = selectedRow ? (selectedRow.accountId ?? accountId) : null;
   const selectedCapabilities = useCapabilities(selectedOwner);
-  const { multipleLabels } = useCapabilities(accountId);
+  const { multipleLabels } = listCapabilities;
 
   // Conversations opened up in place (Apple Mail), keyed `${owner}:${threadId}`;
   // cleared with the multi-selection when the view changes.
@@ -1214,7 +1223,7 @@ export function MessageList({
         void listModifyThread.mutateAsync({
           accountId: m.accountId ?? accountId,
           threadId: m.threadId || m.id,
-          removeLabelIds: ["INBOX"],
+          removeLabelIds: [archiveSourceOf(rowLabels(m)) ?? "INBOX"],
         }),
     );
   const bulkTrash = () =>
@@ -1527,25 +1536,26 @@ export function MessageList({
       if (checkedRef.current.size > 0) return bulkArchive();
       if (!row) return false;
       if (focus) {
-        const focusInInbox = focus.labelIds.includes("INBOX");
-        if (focusInInbox) advanceFocus();
+        const from = archiveSourceOf(focus.labelIds);
+        if (from) advanceFocus();
         void listModifyMessage.mutateAsync({
           accountId: owner,
           messageId: focus.id,
-          addLabelIds: focusInInbox ? undefined : ["INBOX"],
-          removeLabelIds: focusInInbox ? ["INBOX"] : undefined,
+          addLabelIds: from ? undefined : ["INBOX"],
+          removeLabelIds: from ? [from] : undefined,
         });
         return;
       }
-      // Archived rows un-archive; rows still in the inbox archive (and
-      // advance, since they leave the current view).
-      const rowInInbox = rowLabels(row).includes("INBOX");
-      if (rowInInbox) advance();
+      // Archived rows un-archive; rows still in the inbox (or, where the
+      // Archive is a folder, in the folder listed) archive, and advance, since
+      // they leave the current view.
+      const from = archiveSourceOf(rowLabels(row));
+      if (from) advance();
       void listModifyThread.mutateAsync({
         accountId: owner,
         threadId,
-        addLabelIds: rowInInbox ? undefined : ["INBOX"],
-        removeLabelIds: rowInInbox ? ["INBOX"] : undefined,
+        addLabelIds: from ? undefined : ["INBOX"],
+        removeLabelIds: from ? [from] : undefined,
       });
     }),
     // oxlint-disable-next-line react/refs -- rowCommand builds an event handler; its ref reads happen when the command runs.
@@ -1812,6 +1822,7 @@ export function MessageList({
         resolveLabel={resolveLabel}
         combinedMeta={resolveCombinedMeta(message, combined, accounts, resolveLabel)}
         showInboxChip={!inInboxContext}
+        archiveFrom={archiveSourceOf}
         onDeleteForever={() => setConfirmDeleteRows([message])}
         onDeselect={onDeselect}
         onChatAgent={() => {

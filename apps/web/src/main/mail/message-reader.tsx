@@ -91,6 +91,7 @@ import {
 import { decodeEntities, htmlToText } from "./text";
 import { LabelPickerMenu, LabelSubmenu } from "./label-picker-menu";
 import { useCapabilities } from "./capabilities";
+import { archiveFrom } from "./archive";
 import {
   formatAddressEntry,
   normalizeAddressList,
@@ -141,6 +142,8 @@ import { isModClick } from "../keybindings/keys";
 type MessageReaderProps = {
   accountId: string;
   messageId: string | null;
+  /** The folder or label of the list it was opened from (none: a view, a search, a chat). */
+  listLabelId?: string | null;
   /** Browsing the list previews drafts without taking focus from navigation. */
   autoFocusDraft?: boolean;
   /** Show only this message, not its whole conversation (picked from an
@@ -2087,6 +2090,7 @@ function ReaderShell({
 export function MessageReader({
   accountId,
   messageId,
+  listLabelId = null,
   autoFocusDraft = true,
   single = false,
   onShowConversation,
@@ -2161,7 +2165,8 @@ export function MessageReader({
   const modifyThread = useModifyThread();
   // No inbox categories (IMAP): no category chips. One folder per message: a
   // folder chip can't just come off.
-  const { categories, multipleLabels, foldersAndCategories } = useCapabilities(accountId);
+  const capabilities = useCapabilities(accountId);
+  const { categories, multipleLabels, foldersAndCategories } = capabilities;
   const trashThread = useTrashThread();
   const untrashThread = useUntrashThread();
   const untrashMessage = useUntrashMessage();
@@ -2371,16 +2376,22 @@ export function MessageReader({
     if (!isUnread) onDeselect?.();
   };
 
-  const handleArchive = () => {
-    console.log("[MessageReader:archive]", { messageId, isThread });
+  // What archiving takes off (archive.ts): INBOX, or the folder it was opened from.
+  const archiveSource = archiveFrom(
+    isThread ? conversationLabelIds : message.labelIds,
+    labelsQuery.data?.find((l) => l.id === listLabelId),
+    capabilities,
+  );
+  const handleArchive = (from = archiveSource ?? "INBOX") => {
+    console.log("[MessageReader:archive]", { messageId, isThread, from });
     if (isThread && threadId) {
-      void modifyThread.mutateAsync({ accountId, threadId, removeLabelIds: ["INBOX"] });
+      void modifyThread.mutateAsync({ accountId, threadId, removeLabelIds: [from] });
       return;
     }
     void modifyMessage.mutateAsync({
       accountId,
       messageId,
-      removeLabelIds: ["INBOX"],
+      removeLabelIds: [from],
     });
   };
 
@@ -2550,7 +2561,9 @@ export function MessageReader({
       (categories && conversationLabelIds.some(isCategoryLabelId)) ||
       messageLabels.length > 0 ? (
         <span className="flex flex-wrap items-center gap-1">
-          {conversationLabelIds.includes("INBOX") ? <InboxChip onRemove={handleArchive} /> : null}
+          {conversationLabelIds.includes("INBOX") ? (
+            <InboxChip onRemove={() => handleArchive("INBOX")} />
+          ) : null}
           {(categories ? conversationLabelIds.filter(isCategoryLabelId) : []).map((id) => (
             <CategoryChip
               key={id}
@@ -2630,11 +2643,7 @@ export function MessageReader({
                 <RotateCcwIcon className="size-4" />
               </IconBtn>
             </HintTooltip>
-          ) : (
-              isThread
-                ? rows.some((m) => m.labelIds.includes("INBOX"))
-                : message.labelIds.includes("INBOX")
-            ) ? (
+          ) : archiveSource ? (
             <HintTooltip label="Archive" shortcut="message.archive" side="bottom">
               <IconBtn
                 label="Archive"

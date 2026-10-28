@@ -59,7 +59,9 @@ MailProvider                packages/core/src/providers/provider.ts
   it (UID MOVE, or COPY + `\Deleted` + UID EXPUNGE), archive (taking INBOX or a folder away)
   moves to the Archive folder, made (flagged `\Archive` where the server has CREATE-SPECIAL-USE)
   when there's none, and trash moves to Trash. Taking ARCHIVE away puts mail back in the inbox.
-  Archived mail lands in ARCHIVE in the cache at once (contracts' `landLabelChange`).
+  Archived mail lands in ARCHIVE in the cache at once (contracts' `landLabelChange`). The app's
+  Archive archives from any of your folders, as Apple Mail's does: in a folder's list it takes
+  that folder away (`apps/web/src/main/mail/archive.ts`).
 - Gmail's IMAP (X-GM-EXT-1) archives into `[Gmail]/All Mail` (`\All`), which only takes the
   message out of the inbox; a folder named Archive there is just a label. Moving mail back out
   of All Mail is a COPY (taking it out of All Mail would delete it). All Mail isn't synced, so

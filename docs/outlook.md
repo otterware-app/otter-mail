@@ -59,7 +59,9 @@ MailProvider               packages/core/src/providers/provider.ts
   folder's label moves it to Archive (`POST /me/messages/{id}/move`, `destinationId: "archive"`),
   as Outlook's Archive button does (out of Junk, Deleted Items or the Archive: back to Inbox, or
   Sent Items for your own mail). On a thread, sent mail and drafts stay put unless the thread is
-  trashed; the cache shows the move at once (contracts' `landLabelChange`). Deleting a folder label
+  trashed; the cache shows the move at once (contracts' `landLabelChange`). The app's Archive
+  (button, `e`, bulk) archives from any of your folders, as Outlook's does: in a folder's list it
+  takes that folder away (`apps/web/src/main/mail/archive.ts`). Deleting a folder label
   deletes the folder (it goes to Deleted Items with its mail, as in Outlook); deleting a category
   takes it off every message.
 - Graph allows 4 requests in flight per mailbox: requests take turns, the user's first, then

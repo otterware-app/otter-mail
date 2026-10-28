@@ -1,14 +1,19 @@
+import { ARCHIVE_LABEL_ID } from "@otter-mail/contracts";
+
 import type { ActionSummary } from "./undo";
 
 /**
  * Names a label change the way the action toast reads it: "Archived",
- * "Moved to “Clients”", "Marked as junk". `labelName` resolves user labels.
+ * "Moved to “Clients”", "Marked as junk". `labelName` resolves user labels;
+ * `archiveFolder`: the Archive is a folder (Outlook, IMAP), so mail taken out
+ * of a folder of the user's is archived.
  */
 export function summarizeLabelChange(
   add: string[],
   remove: string[],
   noun: ActionSummary["noun"],
   labelName: (labelId: string) => string | undefined,
+  archiveFolder = false,
 ): ActionSummary {
   const s = (verb: string, suffix?: string): ActionSummary => ({ verb, suffix, noun });
   const quoted = (id: string) => `“${labelName(id) ?? id}”`;
@@ -27,8 +32,10 @@ export function summarizeLabelChange(
       : s("Labeled", ` ${quoted(addedLabel)}`);
   }
   if (add.includes("INBOX")) return s("Moved", " to Inbox");
-  if (remove.includes("INBOX")) return s("Archived");
+  if (remove.includes("INBOX") || add.includes(ARCHIVE_LABEL_ID)) return s("Archived");
+  if (remove.includes(ARCHIVE_LABEL_ID)) return s("Moved", " to Inbox");
   const removedLabel = remove.find(isUser);
+  if (removedLabel && archiveFolder && !removedLabel.startsWith("category:")) return s("Archived");
   if (removedLabel) return s("Removed", ` from ${quoted(removedLabel)}`);
   if (add.includes("STARRED")) return s("Flagged");
   if (remove.includes("STARRED")) return s("Unflagged");

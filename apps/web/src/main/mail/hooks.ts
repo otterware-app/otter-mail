@@ -849,7 +849,13 @@ function labelChangeSummary(
 ): ActionSummary | undefined {
   const labels = qc.getQueryData<GmailLabel[]>(queryKeys.labels(params.accountId)) ?? [];
   const nameOf = (id: string) => labels.find((l) => l.id === id && l.type === "user")?.name;
-  return summarizeLabelChange(params.addLabelIds ?? [], params.removeLabelIds ?? [], noun, nameOf);
+  return summarizeLabelChange(
+    params.addLabelIds ?? [],
+    params.removeLabelIds ?? [],
+    noun,
+    nameOf,
+    archiveFolderOf(qc, params.accountId),
+  );
 }
 
 export function useModifyMessage() {
